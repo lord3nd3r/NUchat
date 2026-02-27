@@ -18,6 +18,50 @@ Dialog {
         Text { anchors.centerIn: parent; text: "Network List"; color: "#ddd"; font.pixelSize: 14; font.bold: true }
     }
 
+    // ── Persistence helpers ──
+    function saveNetworks() {
+        var arr = []
+        for (var i = 0; i < networkModel.count; i++) {
+            var item = networkModel.get(i)
+            arr.push({
+                network: item.network, server: item.server, port: item.port, ssl: item.ssl,
+                saslMethod: item.saslMethod, saslUser: item.saslUser, saslPass: item.saslPass,
+                useGlobalNick: item.useGlobalNick, customNick: item.customNick,
+                customUser: item.customUser, customReal: item.customReal,
+                serverPass: item.serverPass, isZnc: item.isZnc,
+                zncUser: item.zncUser, zncPass: item.zncPass, zncNetwork: item.zncNetwork
+            })
+        }
+        appSettings.setValue("networks/list", JSON.stringify(arr))
+        appSettings.sync()
+    }
+
+    function loadNetworks() {
+        var json = appSettings.value("networks/list", "")
+        if (json === "" || json === undefined) return  // keep hardcoded defaults
+        try {
+            var arr = JSON.parse(json)
+            if (!Array.isArray(arr) || arr.length === 0) return
+            networkModel.clear()
+            for (var i = 0; i < arr.length; i++) {
+                var n = arr[i]
+                networkModel.append({
+                    network: n.network || "", server: n.server || "", port: n.port || 6667, ssl: !!n.ssl,
+                    saslMethod: n.saslMethod || "None", saslUser: n.saslUser || "", saslPass: n.saslPass || "",
+                    useGlobalNick: n.useGlobalNick !== false, customNick: n.customNick || "",
+                    customUser: n.customUser || "", customReal: n.customReal || "",
+                    serverPass: n.serverPass || "", isZnc: !!n.isZnc,
+                    zncUser: n.zncUser || "", zncPass: n.zncPass || "", zncNetwork: n.zncNetwork || ""
+                })
+            }
+            networkList.currentIndex = 0
+        } catch (e) {
+            console.warn("Failed to load saved networks:", e)
+        }
+    }
+
+    Component.onCompleted: loadNetworks()
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 12
@@ -33,6 +77,7 @@ Dialog {
                 placeholderText: "Your nickname"; placeholderTextColor: "#666"
                 color: "#ddd"; font.pixelSize: 12
                 background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                onEditingFinished: { appSettings.setValue("user/nickname", text); appSettings.sync() }
             }
         }
 
@@ -275,6 +320,7 @@ Dialog {
                 onClicked: {
                     networkModel.append({network: "New Network", server: "irc.example.com", port: 6697, ssl: true, saslMethod: "None", saslUser: "", saslPass: "", useGlobalNick: true, customNick: "", customUser: "", customReal: "", serverPass: "", isZnc: false, zncUser: "", zncPass: "", zncNetwork: ""})
                     networkList.currentIndex = networkModel.count - 1
+                    dlg.saveNetworks()
                 }
                 background: Rectangle { color: parent.down ? "#1177bb" : "#0e639c"; radius: 3 }
                 contentItem: Text { text: parent.text; color: "#fff"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
@@ -282,7 +328,7 @@ Dialog {
             Button {
                 text: "Remove"
                 enabled: networkList.currentIndex >= 0
-                onClicked: { if (networkList.currentIndex >= 0) networkModel.remove(networkList.currentIndex) }
+                onClicked: { if (networkList.currentIndex >= 0) { networkModel.remove(networkList.currentIndex); dlg.saveNetworks() } }
                 background: Rectangle { color: parent.enabled ? (parent.down ? "#a02020" : "#802020") : "#444"; radius: 3 }
                 contentItem: Text { text: parent.text; color: parent.enabled ? "#fff" : "#777"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
             }
@@ -308,6 +354,7 @@ Dialog {
                         networkModel.setProperty(i, "customNick", editCustomNick.text)
                         networkModel.setProperty(i, "customUser", editCustomUser.text)
                         networkModel.setProperty(i, "customReal", editCustomReal.text)
+                        dlg.saveNetworks()
                     }
                 }
                 background: Rectangle { color: parent.enabled ? (parent.down ? "#1177bb" : "#0e639c") : "#444"; radius: 3 }

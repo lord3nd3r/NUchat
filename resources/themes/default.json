@@ -1,0 +1,25 @@
+{
+    "name": "Default Dark",
+    "colors": {
+        "background": "#2b2b2b",
+        "sidebar": "#1e1e1e",
+        "text": "#d4d4d4",
+        "highlight": "#264f78",
+        "input": "#333333",
+        "inputBorder": "#555555",
+        "inputFocus": "#569cd6",
+        "timestamp": "#6a9955",
+        "system": "#808080",
+        "error": "#f44747",
+        "action": "#c586c0",
+        "nick": "#569cd6",
+        "menubar": "#252526",
+        "topicbar": "#252526",
+        "border": "#404040",
+        "hover": "#333333",
+        "selected": "#264f78",
+        "button": "#0e639c",
+        "buttonHover": "#1177bb",
+        "altRow": "#2e2e2e"
+    }
+}

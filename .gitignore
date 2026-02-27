@@ -1,0 +1,44 @@
+# Build
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+
+# Qt
+*.moc
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+*.qmlc
+*.jsc
+*_autogen/
+
+# Compiled
+*.o
+*.so
+*.so.*
+*.dylib
+*.a
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+*.user
+*.creator
+*.creator.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

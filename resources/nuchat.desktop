@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=NUchat
+Comment=Open-source IRC client
+Exec=NUchat
+Icon=nuchat
+Terminal=false
+Type=Application
+Categories=Network;Chat;IRCClient;
+Keywords=irc;chat;messaging;
+StartupWMClass=NUchat

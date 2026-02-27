@@ -1,0 +1,27 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/">
+    <file alias="qml/main.qml">../qml/main.qml</file>
+    <file alias="qml/ChannelView.qml">../qml/ChannelView.qml</file>
+    <file alias="qml/ServerTree.qml">../qml/ServerTree.qml</file>
+    <file alias="qml/NickList.qml">../qml/NickList.qml</file>
+    <file alias="qml/EmojiPicker.qml">../qml/EmojiPicker.qml</file>
+    <file alias="qml/SettingsDialog.qml">../qml/SettingsDialog.qml</file>
+    <file alias="qml/NetworkListDialog.qml">../qml/NetworkListDialog.qml</file>
+    <file alias="qml/QuickConnectDialog.qml">../qml/QuickConnectDialog.qml</file>
+    <file alias="qml/JoinChannelDialog.qml">../qml/JoinChannelDialog.qml</file>
+    <file alias="qml/NickChangeDialog.qml">../qml/NickChangeDialog.qml</file>
+    <file alias="qml/ChannelListDialog.qml">../qml/ChannelListDialog.qml</file>
+    <file alias="qml/DccDialog.qml">../qml/DccDialog.qml</file>
+    <file alias="qml/RawLogDialog.qml">../qml/RawLogDialog.qml</file>
+    <file alias="qml/UrlGrabberDialog.qml">../qml/UrlGrabberDialog.qml</file>
+    <file alias="qml/SearchDialog.qml">../qml/SearchDialog.qml</file>
+    <file alias="qml/BanListDialog.qml">../qml/BanListDialog.qml</file>
+    <file alias="qml/ChannelModeDialog.qml">../qml/ChannelModeDialog.qml</file>
+    <file alias="qml/TopicDialog.qml">../qml/TopicDialog.qml</file>
+    <file alias="qml/AboutDialog.qml">../qml/AboutDialog.qml</file>
+    <file alias="qml/PreferencesDialog.qml">../qml/PreferencesDialog.qml</file>
+    <file alias="qml/ThemeManager.qml">../qml/ThemeManager.qml</file>
+    <file alias="icons/nuchat.svg">../resources/icons/nuchat.svg</file>
+    <file alias="themes/default.json">../resources/themes/default.json</file>
+</qresource>
+</RCC>

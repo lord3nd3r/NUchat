@@ -1,0 +1,313 @@
+import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
+
+Dialog {
+    id: dlg
+    title: "Network List — NUchat"
+    width: 620
+    height: 580
+    modal: true
+    anchors.centerIn: parent
+
+    background: Rectangle { color: "#2b2b2b"; border.color: "#555"; border.width: 1; radius: 6 }
+
+    header: Rectangle {
+        height: 38; color: "#252526"; radius: 6
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 6; color: "#252526" }
+        Text { anchors.centerIn: parent; text: "Network List"; color: "#ddd"; font.pixelSize: 14; font.bold: true }
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 12
+        spacing: 8
+
+        // ── Global Nickname ──
+        RowLayout {
+            Layout.fillWidth: true; spacing: 8
+            Text { text: "Global Nickname:"; color: "#ccc"; font.pixelSize: 12 }
+            TextField {
+                id: nickField; Layout.fillWidth: true
+                text: appSettings.value("user/nickname", "NUchat_user")
+                placeholderText: "Your nickname"; placeholderTextColor: "#666"
+                color: "#ddd"; font.pixelSize: 12
+                background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+            }
+        }
+
+        // ── Saved networks list ──
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            color: "#1e1e1e"
+            border.color: "#404040"
+            radius: 3
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 1
+                spacing: 0
+
+                ListView {
+                    id: networkList
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    model: ListModel {
+                        id: networkModel
+                        ListElement { network: "Libera.Chat"; server: "irc.libera.chat"; port: 6697; ssl: true; saslMethod: "PLAIN"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: "" }
+                        ListElement { network: "OFTC"; server: "irc.oftc.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: "" }
+                        ListElement { network: "EFnet"; server: "irc.efnet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: "" }
+                        ListElement { network: "DALnet"; server: "irc.dal.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: "" }
+                        ListElement { network: "Undernet"; server: "irc.undernet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: "" }
+                        ListElement { network: "Rizon"; server: "irc.rizon.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: "" }
+                        ListElement { network: "IRCnet"; server: "open.ircnet.net"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: "" }
+                        ListElement { network: "QuakeNet"; server: "irc.quakenet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: "" }
+                        ListElement { network: "Snoonet"; server: "irc.snoonet.org"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: "" }
+                        ListElement { network: "freenode (legacy)"; server: "chat.freenode.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: "" }
+                    }
+                    currentIndex: 0
+                    delegate: Rectangle {
+                        required property int index
+                        required property string network
+                        required property string server
+                        required property int port
+                        required property bool ssl
+                        width: networkList.width
+                        height: 28
+                        color: networkList.currentIndex === index ? "#264f78"
+                             : nwMouse.containsMouse ? "#333" : "transparent"
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            Text { text: network; color: "#ddd"; font.pixelSize: 12; Layout.fillWidth: true }
+                            Text { text: server + ":" + port; color: "#888"; font.pixelSize: 11 }
+                            Text { text: ssl ? "🔒" : ""; font.pixelSize: 11; Layout.preferredWidth: 16 }
+                        }
+                        MouseArea {
+                            id: nwMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: networkList.currentIndex = index
+                            onDoubleClicked: { networkList.currentIndex = index; connectBtn.clicked() }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Edit section for selected network ──
+        GroupBox {
+            Layout.fillWidth: true
+            label: Text { text: " Server Details "; color: "#aaa"; font.pixelSize: 11 }
+            background: Rectangle { color: "#222"; border.color: "#404040"; radius: 3; y: 10 }
+
+            GridLayout {
+                columns: 4
+                anchors.fill: parent
+                columnSpacing: 8
+                rowSpacing: 6
+
+                Text { text: "Network:"; color: "#ccc"; font.pixelSize: 12 }
+                TextField {
+                    id: editNetwork; Layout.fillWidth: true; Layout.columnSpan: 3
+                    text: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).network : ""
+                    color: "#ddd"; font.pixelSize: 12
+                    background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                }
+
+                Text { text: "Server:"; color: "#ccc"; font.pixelSize: 12 }
+                TextField {
+                    id: editServer; Layout.fillWidth: true
+                    text: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).server : ""
+                    color: "#ddd"; font.pixelSize: 12
+                    background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                }
+                Text { text: "Port:"; color: "#ccc"; font.pixelSize: 12 }
+                TextField {
+                    id: editPort; Layout.preferredWidth: 70
+                    text: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).port : ""
+                    color: "#ddd"; font.pixelSize: 12; inputMethodHints: Qt.ImhDigitsOnly
+                    background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                }
+
+                Text { text: "SSL/TLS:"; color: "#ccc"; font.pixelSize: 12 }
+                CheckBox {
+                    id: editSsl; Layout.columnSpan: 3
+                    checked: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).ssl : false
+                    indicator: Rectangle {
+                        width: 16; height: 16; radius: 2; color: editSsl.checked ? "#0e639c" : "#333"; border.color: "#555"
+                        Text { anchors.centerIn: parent; text: editSsl.checked ? "✓" : ""; color: "#fff"; font.pixelSize: 11 }
+                    }
+                    contentItem: Text { text: " Use SSL/TLS encryption"; color: "#ccc"; font.pixelSize: 12; leftPadding: editSsl.indicator.width + 6 }
+                }
+
+                Text { text: "SASL:"; color: "#ccc"; font.pixelSize: 12 }
+                ComboBox {
+                    id: editSasl; Layout.columnSpan: 3; Layout.preferredWidth: 200
+                    model: ["None", "PLAIN", "EXTERNAL", "SCRAM-SHA-256", "ECDSA-NIST256P-CHALLENGE"]
+                    currentIndex: {
+                        if (networkList.currentIndex < 0) return 0
+                        var m = networkModel.get(networkList.currentIndex).saslMethod
+                        var idx = ["None", "PLAIN", "EXTERNAL", "SCRAM-SHA-256", "ECDSA-NIST256P-CHALLENGE"].indexOf(m)
+                        return idx >= 0 ? idx : 0
+                    }
+                }
+
+                Text { text: "SASL User:"; color: "#ccc"; font.pixelSize: 12; visible: editSasl.currentIndex > 0 }
+                TextField {
+                    id: editSaslUser; Layout.fillWidth: true; visible: editSasl.currentIndex > 0
+                    text: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).saslUser : ""
+                    placeholderText: "username"; placeholderTextColor: "#666"
+                    color: "#ddd"; font.pixelSize: 12
+                    background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                }
+                Text { text: "SASL Pass:"; color: "#ccc"; font.pixelSize: 12; visible: editSasl.currentIndex === 1 }
+                TextField {
+                    id: editSaslPass; Layout.preferredWidth: 160; visible: editSasl.currentIndex === 1
+                    text: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).saslPass : ""
+                    echoMode: TextInput.Password; placeholderText: "password"; placeholderTextColor: "#666"
+                    color: "#ddd"; font.pixelSize: 12
+                    background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                }
+
+                // ── Per-network identity ──
+                Rectangle { Layout.columnSpan: 4; Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#404040"; Layout.topMargin: 4; Layout.bottomMargin: 2 }
+
+                Text { text: "Identity:"; color: "#aaa"; font.pixelSize: 11; font.bold: true; Layout.columnSpan: 4 }
+
+                CheckBox {
+                    id: editUseGlobal; Layout.columnSpan: 4
+                    checked: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).useGlobalNick : true
+                    indicator: Rectangle {
+                        width: 16; height: 16; radius: 2; color: editUseGlobal.checked ? "#0e639c" : "#333"; border.color: "#555"
+                        Text { anchors.centerIn: parent; text: editUseGlobal.checked ? "✓" : ""; color: "#fff"; font.pixelSize: 11 }
+                    }
+                    contentItem: Text { text: " Use global nickname / identity"; color: "#ccc"; font.pixelSize: 12; leftPadding: editUseGlobal.indicator.width + 6 }
+                }
+
+                Text { text: "Nickname:"; color: editUseGlobal.checked ? "#666" : "#ccc"; font.pixelSize: 12; visible: !editUseGlobal.checked }
+                TextField {
+                    id: editCustomNick; Layout.fillWidth: true; Layout.columnSpan: 3; visible: !editUseGlobal.checked
+                    text: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).customNick : ""
+                    placeholderText: "Network-specific nick"; placeholderTextColor: "#666"
+                    color: "#ddd"; font.pixelSize: 12; enabled: !editUseGlobal.checked
+                    background: Rectangle { color: editUseGlobal.checked ? "#2a2a2a" : "#333"; border.color: "#555"; radius: 2 }
+                }
+
+                Text { text: "Username:"; color: editUseGlobal.checked ? "#666" : "#ccc"; font.pixelSize: 12; visible: !editUseGlobal.checked }
+                TextField {
+                    id: editCustomUser; Layout.fillWidth: true; Layout.columnSpan: 3; visible: !editUseGlobal.checked
+                    text: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).customUser : ""
+                    placeholderText: "Network-specific username"; placeholderTextColor: "#666"
+                    color: "#ddd"; font.pixelSize: 12; enabled: !editUseGlobal.checked
+                    background: Rectangle { color: editUseGlobal.checked ? "#2a2a2a" : "#333"; border.color: "#555"; radius: 2 }
+                }
+
+                Text { text: "Real name:"; color: editUseGlobal.checked ? "#666" : "#ccc"; font.pixelSize: 12; visible: !editUseGlobal.checked }
+                TextField {
+                    id: editCustomReal; Layout.fillWidth: true; Layout.columnSpan: 3; visible: !editUseGlobal.checked
+                    text: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).customReal : ""
+                    placeholderText: "Network-specific real name"; placeholderTextColor: "#666"
+                    color: "#ddd"; font.pixelSize: 12; enabled: !editUseGlobal.checked
+                    background: Rectangle { color: editUseGlobal.checked ? "#2a2a2a" : "#333"; border.color: "#555"; radius: 2 }
+                }
+            }
+        }
+
+        // ── Buttons ──
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 6
+
+            Button {
+                text: "Add Network"
+                onClicked: {
+                    networkModel.append({network: "New Network", server: "irc.example.com", port: 6697, ssl: true, saslMethod: "None", saslUser: "", saslPass: "", useGlobalNick: true, customNick: "", customUser: "", customReal: ""})
+                    networkList.currentIndex = networkModel.count - 1
+                }
+                background: Rectangle { color: parent.down ? "#1177bb" : "#0e639c"; radius: 3 }
+                contentItem: Text { text: parent.text; color: "#fff"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+            }
+            Button {
+                text: "Remove"
+                enabled: networkList.currentIndex >= 0
+                onClicked: { if (networkList.currentIndex >= 0) networkModel.remove(networkList.currentIndex) }
+                background: Rectangle { color: parent.enabled ? (parent.down ? "#a02020" : "#802020") : "#444"; radius: 3 }
+                contentItem: Text { text: parent.text; color: parent.enabled ? "#fff" : "#777"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+            }
+            Button {
+                text: "Save"
+                enabled: networkList.currentIndex >= 0
+                onClicked: {
+                    var i = networkList.currentIndex
+                    if (i >= 0) {
+                        networkModel.setProperty(i, "network", editNetwork.text)
+                        networkModel.setProperty(i, "server", editServer.text)
+                        networkModel.setProperty(i, "port", parseInt(editPort.text) || 6667)
+                        networkModel.setProperty(i, "ssl", editSsl.checked)
+                        networkModel.setProperty(i, "saslMethod", editSasl.currentText)
+                        networkModel.setProperty(i, "saslUser", editSaslUser.text)
+                        networkModel.setProperty(i, "saslPass", editSaslPass.text)
+                        networkModel.setProperty(i, "useGlobalNick", editUseGlobal.checked)
+                        networkModel.setProperty(i, "customNick", editCustomNick.text)
+                        networkModel.setProperty(i, "customUser", editCustomUser.text)
+                        networkModel.setProperty(i, "customReal", editCustomReal.text)
+                    }
+                }
+                background: Rectangle { color: parent.enabled ? (parent.down ? "#1177bb" : "#0e639c") : "#444"; radius: 3 }
+                contentItem: Text { text: parent.text; color: parent.enabled ? "#fff" : "#777"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+            }
+
+            Item { Layout.fillWidth: true }
+
+            Button {
+                id: connectBtn
+                text: "Connect"
+                enabled: networkList.currentIndex >= 0
+                onClicked: {
+                    if (networkList.currentIndex >= 0) {
+                        var nw = networkModel.get(networkList.currentIndex)
+                        // Determine nick/user/realname: per-network or global
+                        var useNick, useUser, useReal
+                        if (nw.useGlobalNick || nw.customNick === "") {
+                            useNick = nickField.text !== "" ? nickField.text : appSettings.value("user/nickname", "NUchat_user")
+                        } else {
+                            useNick = nw.customNick
+                        }
+                        if (nw.useGlobalNick || nw.customUser === "") {
+                            useUser = appSettings.value("user/username", "nuchat")
+                        } else {
+                            useUser = nw.customUser
+                        }
+                        if (nw.useGlobalNick || nw.customReal === "") {
+                            useReal = appSettings.value("user/realname", "NUchat User")
+                        } else {
+                            useReal = nw.customReal
+                        }
+                        ircManager.connectToServer(
+                            nw.server,
+                            nw.port,
+                            nw.ssl,
+                            useNick,
+                            useUser,
+                            useReal,
+                            ""
+                        )
+                        root.refreshChannelList()
+                        dlg.close()
+                    }
+                }
+                background: Rectangle { color: parent.enabled ? (parent.down ? "#28a745" : "#218838") : "#444"; radius: 3 }
+                contentItem: Text { text: parent.text; color: parent.enabled ? "#fff" : "#777"; font.pixelSize: 12; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+            }
+            Button {
+                text: "Close"
+                onClicked: dlg.close()
+                background: Rectangle { color: parent.down ? "#555" : "#444"; radius: 3 }
+                contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+            }
+        }
+    }
+}

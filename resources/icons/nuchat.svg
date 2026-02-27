@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a73e8"/>
+      <stop offset="100%" style="stop-color:#0d47a1"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.15"/>
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <!-- Background rounded square -->
+  <rect x="32" y="32" width="448" height="448" rx="80" ry="80" fill="url(#bg)" filter="url(#shadow)"/>
+  <!-- Subtle inner shine -->
+  <rect x="32" y="32" width="448" height="448" rx="80" ry="80" fill="url(#shine)"/>
+  <!-- Chat bubble shape -->
+  <path d="M 140 160 Q 140 130 170 130 L 342 130 Q 372 130 372 160 L 372 290 Q 372 320 342 320 L 220 320 L 170 370 L 180 320 L 170 320 Q 140 320 140 290 Z" fill="#ffffff" fill-opacity="0.95"/>
+  <!-- NU text -->
+  <text x="256" y="258" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="120" font-weight="800" fill="#0d47a1" text-anchor="middle" dominant-baseline="central" letter-spacing="-4">NU</text>
+  <!-- Small accent line under text -->
+  <rect x="195" y="288" width="122" height="4" rx="2" fill="#1a73e8" opacity="0.6"/>
+</svg>

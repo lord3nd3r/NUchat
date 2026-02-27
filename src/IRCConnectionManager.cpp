@@ -1056,18 +1056,16 @@ QString IRCConnectionManager::gatherSysInfo()
     // Kernel
     parts << "Kernel: " + QSysInfo::kernelType() + " " + QSysInfo::kernelVersion();
 
-    // CPU
+    // CPU — use readAll() since /proc files report size 0, breaking QTextStream::atEnd()
     {
         QFile f("/proc/cpuinfo");
         if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QTextStream in(&f);
+            const QStringList lines = QString::fromUtf8(f.readAll()).split('\n');
             int cores = 0;
             QString model;
-            while (!in.atEnd()) {
-                QString line = in.readLine();
-                if (line.startsWith("model name") && model.isEmpty()) {
+            for (const QString &line : lines) {
+                if (line.startsWith("model name") && model.isEmpty())
                     model = line.section(':', 1).trimmed();
-                }
                 if (line.startsWith("processor"))
                     cores++;
             }
@@ -1076,14 +1074,13 @@ QString IRCConnectionManager::gatherSysInfo()
         }
     }
 
-    // RAM
+    // RAM — use readAll() since /proc files report size 0, breaking QTextStream::atEnd()
     {
         QFile f("/proc/meminfo");
         if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QTextStream in(&f);
+            const QStringList lines = QString::fromUtf8(f.readAll()).split('\n');
             qint64 totalKb = 0, availKb = 0;
-            while (!in.atEnd()) {
-                QString line = in.readLine();
+            for (const QString &line : lines) {
                 if (line.startsWith("MemTotal:"))
                     totalKb = line.split(QRegularExpression("\\s+")).value(1).toLongLong();
                 else if (line.startsWith("MemAvailable:"))

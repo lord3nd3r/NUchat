@@ -90,6 +90,7 @@ private:
                          const QString &type, const QString &text);
     QString serverNameFor(IrcConnection *conn) const;
     IrcConnection *connectionForServer(const QString &name) const;
+    static QString gatherSysInfo();
 
     QVector<IrcConnection*> m_connections;
     QMap<IrcConnection*, QString> m_connToName;  // conn -> display name (host)

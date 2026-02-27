@@ -4,6 +4,11 @@
 #include "ServerChannelModel.h"
 #include <QDebug>
 #include <QDateTime>
+#include <QSysInfo>
+#include <QProcess>
+#include <QFile>
+#include <QTextStream>
+#include <QRegularExpression>
 #include <algorithm>
 
 IRCConnectionManager::IRCConnectionManager(QObject *parent)
@@ -302,6 +307,16 @@ void IRCConnectionManager::sendMessage(const QString &target, const QString &mes
             } else if (cmd == "UNIGNORE") {
                 if (m_msgModel)
                     m_msgModel->addMessage("system", "Ignore list: not yet implemented");
+            }
+            // ── System info ──
+            else if (cmd == "SYSINFO") {
+                QString info = gatherSysInfo();
+                // Send to channel as ACTION so it looks like: * nick's system: ...
+                QString actionText = "\x01" "ACTION " + info + "\x01";
+                conn->sendRaw("PRIVMSG " + target + " :" + actionText);
+                if (m_msgModel)
+                    m_msgModel->addMessage("action", "* " + conn->nickname() + " " + info);
+                appendToChannel(m_activeServer, target, "action", "* " + conn->nickname() + " " + info);
             } else {
                 // Unknown /command — send as raw
                 conn->sendRaw(cmd + " " + args);
@@ -971,6 +986,149 @@ void IRCConnectionManager::appendToChannel(const QString &server, const QString 
 QString IRCConnectionManager::serverNameFor(IrcConnection *conn) const
 {
     return m_connToName.value(conn, "unknown");
+}
+
+// ── /SYSINFO helper ──
+static QString readFileFirstLine(const QString &path)
+{
+    QFile f(path);
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QTextStream(&f).readLine().trimmed();
+    }
+    return {};
+}
+
+static QString runProcess(const QString &program, const QStringList &args, int timeout = 2000)
+{
+    QProcess proc;
+    proc.start(program, args);
+    if (proc.waitForFinished(timeout))
+        return proc.readAllStandardOutput().trimmed();
+    return {};
+}
+
+QString IRCConnectionManager::gatherSysInfo()
+{
+    QStringList parts;
+
+    // OS
+    QString prettyName = readFileFirstLine("/etc/os-release");
+    // Parse PRETTY_NAME from os-release
+    {
+        QFile f("/etc/os-release");
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&f);
+            while (!in.atEnd()) {
+                QString line = in.readLine();
+                if (line.startsWith("PRETTY_NAME=")) {
+                    prettyName = line.mid(12).remove('"').trimmed();
+                    break;
+                }
+            }
+        }
+    }
+    if (!prettyName.isEmpty())
+        parts << "OS: " + prettyName;
+    else
+        parts << "OS: " + QSysInfo::prettyProductName();
+
+    // Kernel
+    parts << "Kernel: " + QSysInfo::kernelType() + " " + QSysInfo::kernelVersion();
+
+    // CPU
+    {
+        QFile f("/proc/cpuinfo");
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&f);
+            int cores = 0;
+            QString model;
+            while (!in.atEnd()) {
+                QString line = in.readLine();
+                if (line.startsWith("model name") && model.isEmpty()) {
+                    model = line.section(':', 1).trimmed();
+                }
+                if (line.startsWith("processor"))
+                    cores++;
+            }
+            if (!model.isEmpty())
+                parts << "CPU: " + model + " (" + QString::number(cores) + " threads)";
+        }
+    }
+
+    // RAM
+    {
+        QFile f("/proc/meminfo");
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&f);
+            qint64 totalKb = 0, availKb = 0;
+            while (!in.atEnd()) {
+                QString line = in.readLine();
+                if (line.startsWith("MemTotal:"))
+                    totalKb = line.split(QRegularExpression("\\s+")).value(1).toLongLong();
+                else if (line.startsWith("MemAvailable:"))
+                    availKb = line.split(QRegularExpression("\\s+")).value(1).toLongLong();
+            }
+            if (totalKb > 0) {
+                qint64 usedMb = (totalKb - availKb) / 1024;
+                qint64 totalMb = totalKb / 1024;
+                parts << "RAM: " + QString::number(usedMb) + "/" + QString::number(totalMb) + " MB";
+            }
+        }
+    }
+
+    // Uptime
+    {
+        QString uptimeStr = readFileFirstLine("/proc/uptime");
+        if (!uptimeStr.isEmpty()) {
+            double secs = uptimeStr.section(' ', 0, 0).toDouble();
+            int days = (int)(secs / 86400);
+            int hours = ((int)secs % 86400) / 3600;
+            int mins = ((int)secs % 3600) / 60;
+            QString up;
+            if (days > 0) up += QString::number(days) + "d ";
+            up += QString::number(hours) + "h " + QString::number(mins) + "m";
+            parts << "Uptime: " + up;
+        }
+    }
+
+    // GPU (try lspci)
+    {
+        QString gpu = runProcess("lspci", {});
+        if (!gpu.isEmpty()) {
+            for (const QString &line : gpu.split('\n')) {
+                if (line.contains("VGA") || line.contains("3D controller")) {
+                    QString name = line.section(':', 2).trimmed();
+                    if (!name.isEmpty()) {
+                        parts << "GPU: " + name;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Shell
+    {
+        QString shell = qEnvironmentVariable("SHELL");
+        if (!shell.isEmpty())
+            parts << "Shell: " + shell.section('/', -1);
+    }
+
+    // Desktop
+    {
+        QString de = qEnvironmentVariable("XDG_CURRENT_DESKTOP");
+        if (de.isEmpty()) de = qEnvironmentVariable("DESKTOP_SESSION");
+        if (!de.isEmpty())
+            parts << "DE: " + de;
+    }
+
+    // Qt version
+    parts << "Qt: " + QString::fromLatin1(qVersion());
+
+    // NUchat version
+    parts << "NUchat 1.0.0";
+
+    return "SysInfo: " + parts.join(" | ");
 }
 
 IrcConnection *IRCConnectionManager::connectionForServer(const QString &name) const

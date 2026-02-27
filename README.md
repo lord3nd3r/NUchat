@@ -336,6 +336,7 @@ All commands are case-insensitive. Unknown commands are sent to the server as ra
 | `/LIST` | | Channel list |
 | `/IGNORE` | | Add to ignore list |
 | `/UNIGNORE` | | Remove from ignore list |
+| `/SYSINFO` | | Display system info (OS, CPU, RAM, GPU, uptime) |
 
 ---
 

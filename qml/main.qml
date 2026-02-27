@@ -157,7 +157,7 @@ ApplicationWindow {
             Action { text: "URL Grabber...";          onTriggered: urlGrabberDialog.open() }
             Action { text: "Raw Log...";              onTriggered: rawLogDialog.open() }
             MenuSeparator {}
-            Action { text: "Plugins and Scripts...";  onTriggered: preferencesDialog.open() /* opens to Plugins tab */ }
+            Action { text: "Plugins and Scripts...";  onTriggered: scriptsDialog.open() }
             Action { text: "Away Log";               onTriggered: msgModel.addMessage("system", "Away log not yet implemented") }
             MenuSeparator {}
             Action { text: "Search Text...";          onTriggered: searchDialog.open() }
@@ -295,6 +295,18 @@ ApplicationWindow {
             Action { text: "Close All Tabs";          onTriggered: ircManager.disconnectAll() }
         }
 
+
+        // ═══ Scripts ═══
+        Menu {
+            title: "Scripts"
+
+            Action { text: "Loaded Scripts..."; onTriggered: scriptsDialog.open() }
+            MenuSeparator {}
+            Action { text: "Load Script..."; onTriggered: scriptFileDialog.open() }
+            Action { text: "Reload All Scripts"; onTriggered: { if (typeof pyEngine !== 'undefined') pyEngine.reloadAll() } }
+            MenuSeparator {}
+            Action { text: "Open Scripts Folder"; onTriggered: { if (typeof pyEngine !== 'undefined') pyEngine.openScriptsFolder() } }
+        }
 
         // ═══ Services ═══
         Menu {
@@ -1080,6 +1092,40 @@ ApplicationWindow {
     TopicDialog         { id: topicDialog }
     AboutDialog         { id: aboutDialog }
     PreferencesDialog   { id: preferencesDialog }
+    ScriptsDialog       { id: scriptsDialog }
+
+    // ── Script file picker (simple inline dialog) ──
+    Dialog {
+        id: scriptFileDialog; title: "Load Script"; width: 440; height: 160; modal: true; anchors.centerIn: parent
+        background: Rectangle { color: "#2b2b2b"; border.color: "#555"; border.width: 1; radius: 6 }
+        ColumnLayout {
+            anchors.fill: parent; anchors.margins: 16; spacing: 10
+            Text { text: "Enter full path or filename (in scripts folder):"; color: "#ccc"; font.pixelSize: 12 }
+            TextField {
+                id: scriptPathField; Layout.fillWidth: true
+                placeholderText: "/path/to/script.py or script.py"; placeholderTextColor: "#666"
+                color: "#ddd"; font.pixelSize: 12
+                background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                onAccepted: { if (typeof pyEngine !== 'undefined') pyEngine.loadScript(text); scriptFileDialog.close() }
+            }
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Load"
+                    onClicked: { if (typeof pyEngine !== 'undefined') pyEngine.loadScript(scriptPathField.text); scriptFileDialog.close() }
+                    background: Rectangle { color: parent.down ? "#1177bb" : "#0e639c"; radius: 3 }
+                    contentItem: Text { text: parent.text; color: "#fff"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                }
+                Button {
+                    text: "Cancel"
+                    onClicked: scriptFileDialog.close()
+                    background: Rectangle { color: parent.down ? "#555" : "#444"; radius: 3 }
+                    contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                }
+            }
+        }
+    }
 
     // ── Inline mini-dialogs ──
 

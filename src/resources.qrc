@@ -20,6 +20,7 @@
     <file alias="qml/TopicDialog.qml">../qml/TopicDialog.qml</file>
     <file alias="qml/AboutDialog.qml">../qml/AboutDialog.qml</file>
     <file alias="qml/PreferencesDialog.qml">../qml/PreferencesDialog.qml</file>
+    <file alias="qml/ScriptsDialog.qml">../qml/ScriptsDialog.qml</file>
     <file alias="qml/ThemeManager.qml">../qml/ThemeManager.qml</file>
     <file alias="icons/nuchat.svg">../resources/icons/nuchat.svg</file>
     <file alias="themes/default.json">../resources/themes/default.json</file>

@@ -10,6 +10,9 @@
 #include <QTextStream>
 #include <QRegularExpression>
 #include <algorithm>
+#ifdef HAVE_PYTHON
+#include "PythonScriptEngine.h"
+#endif
 
 IRCConnectionManager::IRCConnectionManager(QObject *parent)
     : QObject(parent)
@@ -107,6 +110,24 @@ void IRCConnectionManager::sendMessage(const QString &target, const QString &mes
         if (message.startsWith('/')) {
             QString cmd = message.section(' ', 0, 0).mid(1).toUpper();
             QString args = message.section(' ', 1);
+
+            // ── ECHO — print locally without sending ──
+            if (cmd == "ECHO" || cmd == "SAY" && false /* SAY handled below */) {
+                if (cmd == "ECHO") {
+                    if (m_msgModel)
+                        m_msgModel->addMessage("system", args);
+                    return;
+                }
+            }
+
+#ifdef HAVE_PYTHON
+            // Let Python scripts intercept commands first
+            if (PythonScriptEngine::instance()) {
+                QStringList argParts = args.isEmpty() ? QStringList() : args.split(' ');
+                if (PythonScriptEngine::instance()->handleCommand(cmd, argParts))
+                    return;  // Script consumed the command
+            }
+#endif
 
             if (cmd == "JOIN" || cmd == "J") {
                 QString ch = args.section(' ', 0, 0);

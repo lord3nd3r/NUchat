@@ -1,5 +1,6 @@
 #include <QGuiApplication>
 #include <QIcon>
+#include <QStandardPaths>
 #ifdef QT_QUICK_LIB
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -14,6 +15,9 @@
 #include "PluginManager.h"
 #include "IrcConnection.h"
 #include "ImageDownloader.h"
+#ifdef HAVE_PYTHON
+#include "PythonScriptEngine.h"
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -42,6 +46,9 @@ int main(int argc, char *argv[])
     // allocate script manager on heap to avoid destructor crash
     ScriptManager *scriptMgr = new ScriptManager(&manager);
     PluginManager pluginMgr;
+#ifdef HAVE_PYTHON
+    PythonScriptEngine *pyEngine = new PythonScriptEngine(&manager, &manager);
+#endif
 
     // Wire the manager to our models
     manager.setMessageModel(&msgModel);
@@ -56,6 +63,13 @@ int main(int argc, char *argv[])
     // try to load user scripts from workspace/scripts
     scriptMgr->loadScripts(QCoreApplication::applicationDirPath() + "/../scripts");
 
+#ifdef HAVE_PYTHON
+    // Load Python scripts from ~/.config/NUchat/scripts/
+    QString pyScriptsDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                           + "/NUchat/scripts";
+    pyEngine->loadScripts(pyScriptsDir);
+#endif
+
 #ifdef QT_QUICK_LIB
     engine.rootContext()->setContextProperty("ircManager", &manager);
     engine.rootContext()->setContextProperty("themeManager", &themeManager);
@@ -63,6 +77,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("msgModel", &msgModel);
     engine.rootContext()->setContextProperty("scriptMgr", scriptMgr);
     engine.rootContext()->setContextProperty("pluginMgr", &pluginMgr);
+#ifdef HAVE_PYTHON
+    engine.rootContext()->setContextProperty("pyEngine", pyEngine);
+#endif
     engine.rootContext()->setContextProperty("appSettings", &appSettings);
     engine.rootContext()->setContextProperty("imgDownloader", ImageDownloader::instance());
 #endif
@@ -76,6 +93,9 @@ int main(int argc, char *argv[])
                          [&](const QString &msg){
             pluginMgr.onMessage(conn, msg);
             scriptMgr->handleMessage(conn, QString(), msg);
+#ifdef HAVE_PYTHON
+            pyEngine->handleServerLine(conn, msg);
+#endif
         });
     });
 

@@ -32,6 +32,12 @@ set(CORE_HEADERS
     ImageDownloader.h
 )
 
+# Python scripting engine (optional, requires Python3 dev)
+if(Python3_FOUND)
+    list(APPEND CORE_SRC PythonScriptEngine.cpp)
+    list(APPEND CORE_HEADERS PythonScriptEngine.h)
+endif()
+
 # include qml and theme resources
 set(nuchatcore_RESOURCE_FILES resources.qrc)
 qt6_add_resources(nuchatcore_resources ${nuchatcore_RESOURCE_FILES})
@@ -45,6 +51,12 @@ target_link_libraries(nuchatcore PRIVATE
     Qt6::Gui
     Qt6::Widgets
 )
+
+if(Python3_FOUND)
+    target_include_directories(nuchatcore PRIVATE ${Python3_INCLUDE_DIRS})
+    target_link_libraries(nuchatcore PRIVATE ${Python3_LIBRARIES})
+    target_compile_definitions(nuchatcore PRIVATE HAVE_PYTHON=1)
+endif()
 
 target_compile_definitions(nuchatcore PRIVATE QT_DEPRECATED_WARNINGS)
 

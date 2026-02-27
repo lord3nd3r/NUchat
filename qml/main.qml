@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import QtQuick.Dialogs
 
 ApplicationWindow {
     id: root
@@ -1094,35 +1095,18 @@ ApplicationWindow {
     PreferencesDialog   { id: preferencesDialog }
     ScriptsDialog       { id: scriptsDialog }
 
-    // ── Script file picker (simple inline dialog) ──
-    Dialog {
-        id: scriptFileDialog; title: "Load Script"; width: 440; height: 160; modal: true; anchors.centerIn: parent
-        background: Rectangle { color: "#2b2b2b"; border.color: "#555"; border.width: 1; radius: 6 }
-        ColumnLayout {
-            anchors.fill: parent; anchors.margins: 16; spacing: 10
-            Text { text: "Enter full path or filename (in scripts folder):"; color: "#ccc"; font.pixelSize: 12 }
-            TextField {
-                id: scriptPathField; Layout.fillWidth: true
-                placeholderText: "/path/to/script.py or script.py"; placeholderTextColor: "#666"
-                color: "#ddd"; font.pixelSize: 12
-                background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
-                onAccepted: { if (typeof pyEngine !== 'undefined') pyEngine.loadScript(text); scriptFileDialog.close() }
-            }
-            RowLayout {
-                Layout.fillWidth: true; spacing: 8
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Load"
-                    onClicked: { if (typeof pyEngine !== 'undefined') pyEngine.loadScript(scriptPathField.text); scriptFileDialog.close() }
-                    background: Rectangle { color: parent.down ? "#1177bb" : "#0e639c"; radius: 3 }
-                    contentItem: Text { text: parent.text; color: "#fff"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                }
-                Button {
-                    text: "Cancel"
-                    onClicked: scriptFileDialog.close()
-                    background: Rectangle { color: parent.down ? "#555" : "#444"; radius: 3 }
-                    contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                }
+    // ── Native file browser for loading Python scripts ──
+    FileDialog {
+        id: scriptFileDialog
+        title: "Load Python Script"
+        nameFilters: ["Python scripts (*.py)", "All files (*)"]
+        currentFolder: typeof pyEngine !== 'undefined' ? "file://" + pyEngine.scriptsDirectory : ""
+        onAccepted: {
+            if (typeof pyEngine !== 'undefined') {
+                var path = selectedFile.toString()
+                // Strip file:// prefix
+                if (path.startsWith("file://")) path = path.substring(7)
+                pyEngine.loadScript(path)
             }
         }
     }

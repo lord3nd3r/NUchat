@@ -1045,18 +1045,8 @@ ApplicationWindow {
                                 return
                             }
 
-                            // Then check for nick
-                            var pos = chatArea.positionAt(px, py)
-                            var fullText = chatArea.text
-                            var lineStart = fullText.lastIndexOf('\n', pos - 1) + 1
-                            var lineEnd = fullText.indexOf('\n', pos)
-                            if (lineEnd < 0) lineEnd = fullText.length
-                            var line = fullText.substring(lineStart, lineEnd)
-                            var m = line.match(/<([~&@%+]?)(\S+?)>/)
-                            if (m && m[2]) {
-                                nickContextMenu.targetNick = m[2]
-                                nickContextMenu.popup()
-                            }
+                            // If not over nick or link, show channel options
+                            channelContextMenu.popup()
                         }
                     }
 
@@ -1114,6 +1104,28 @@ ApplicationWindow {
                             radius: 3
                         }
                         onAccepted: sendMessage()
+
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: {
+                                inputContextMenu.popup()
+                            }
+                        }
+
+                        Menu {
+                            id: inputContextMenu
+                            palette.base: theme.menuBg
+                            palette.text: theme.menuText
+                            palette.highlight: theme.menuHighlight
+                            palette.highlightedText: theme.menuHighlightText
+
+                            Action { text: "Cut"; enabled: messageInput.selectedText.length > 0; onTriggered: messageInput.cut() }
+                            Action { text: "Copy"; enabled: messageInput.selectedText.length > 0; onTriggered: messageInput.copy() }
+                            Action { text: "Paste"; enabled: messageInput.canPaste; onTriggered: messageInput.paste() }
+                            Action { text: "Delete"; enabled: messageInput.selectedText.length > 0; onTriggered: messageInput.remove(messageInput.selectionStart, messageInput.selectionEnd) }
+                            MenuSeparator {}
+                            Action { text: "Select All"; enabled: messageInput.length > 0; onTriggered: messageInput.selectAll() }
+                        }
 
                         // Tab completion for nicknames
                         property string tabPrefix: ""
@@ -1471,6 +1483,26 @@ ApplicationWindow {
             Action { text: "GLINE...";  onTriggered: { messageInput.text = "/GLINE " + nickContextMenu.targetNick + "!*@* "; messageInput.forceActiveFocus() } }
             Action { text: "KLINE...";  onTriggered: { messageInput.text = "/KLINE " + nickContextMenu.targetNick + "!*@* "; messageInput.forceActiveFocus() } }
         }
+    }
+
+    // ── Channel right-click menu ──
+    Menu {
+        id: channelContextMenu
+
+        palette.base: theme.menuBg
+        palette.text: theme.menuText
+        palette.highlight: theme.menuHighlight
+        palette.highlightedText: theme.menuHighlightText
+
+        Action { text: "Set Topic...";            onTriggered: topicDialog.open() }
+        Action { text: "Channel Modes...";        onTriggered: channelModeDialog.open() }
+        Action { text: "Ban List...";             onTriggered: banListDialog.open() }
+        MenuSeparator {}
+        Action { text: "Clear Buffer";            onTriggered: msgModel.clear() }
+        Action { text: "Save Buffer...";          onTriggered: msgModel.addMessage("system", "Buffer save not yet implemented") }
+        MenuSeparator {}
+        Action { text: "Invite User...";          onTriggered: inviteDialog.open() }
+        Action { text: "Part Channel";            onTriggered: { if (currentChannel !== "") ircManager.partChannel(currentChannel, "") } }
     }
 
     // ── Chat area link right-click menu ──

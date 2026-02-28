@@ -321,16 +321,7 @@ QString MessageModel::linkifyUrls(const QString &html)
                   + url
                   + QStringLiteral("</a>");
 
-        // For image URLs, add an inline preview if cached
-        if (ImageDownloader::isImageUrl(href)) {
-            if (ImageDownloader::instance()->isCached(href)) {
-                QString localPath = ImageDownloader::instance()->cachedPath(href);
-                result += QStringLiteral("<br><a href=\"") + href.toHtmlEscaped()
-                          + QStringLiteral("\"><img src=\"file://")
-                          + localPath
-                          + QStringLiteral("\" width=\"400\"></a>");
-            }
-        }
+
         // For video URLs, add a label
         if (ImageDownloader::isVideoUrl(href)) {
             result += QStringLiteral(" <span style=\"color:#4fc3f7;\">&#9654; Video</span>");

@@ -617,16 +617,21 @@ QString MessageModel::formatLine(const Message &msg) const {
   QString body = linkifyUrls(colorizeNicks(ircToHtml(msg.text)));
 
   // Highlight messages that mention our nick with a subtle background
+  // Skip the <nick> prefix so our own messages don't trigger
   bool isHighlight = false;
   if (m_highlightEnabled && !m_nickname.isEmpty() &&
       msg.type == QLatin1String("chat")) {
-    isHighlight = msg.text.contains(m_nickname, Qt::CaseInsensitive);
+    // Find end of "<nick> " prefix and only check body after it
+    int gt = msg.text.indexOf(QLatin1Char('>'));
+    if (gt >= 0) {
+      QString body = msg.text.mid(gt + 1);
+      isHighlight = body.contains(m_nickname, Qt::CaseInsensitive);
+    }
   }
 
   if (isHighlight) {
-    return QStringLiteral("<table width=\"100%\" cellpadding=\"2\"><tr>"
-                          "<td style=\"background-color:#3a2a00;\">") +
-           ts + prefix + body + QStringLiteral("</td></tr></table>");
+    return QStringLiteral("<span style=\"background-color:#3a2a00;\">") + ts +
+           prefix + body + QStringLiteral("</span>");
   }
 
   return ts + prefix + body;

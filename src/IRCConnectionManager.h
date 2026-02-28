@@ -9,6 +9,7 @@
 class IrcConnection;
 class MessageModel;
 class ServerChannelModel;
+class Logger;
 
 class IRCConnectionManager : public QObject
 {
@@ -23,6 +24,7 @@ public:
 
     void setMessageModel(MessageModel *model);
     void setServerChannelModel(ServerChannelModel *model);
+    void setLogger(Logger *logger);
 
     // Connect to a server  (called from C++ or QML)
     Q_INVOKABLE void connectToServer(const QString &host, int port = 6697,
@@ -103,6 +105,7 @@ private:
     QMap<IrcConnection*, QString> m_connToName;  // conn -> display name (host)
     MessageModel *m_msgModel = nullptr;
     ServerChannelModel *m_treeModel = nullptr;
+    Logger *m_logger = nullptr;
 
     QString m_activeServer;
     QString m_activeChannel;

@@ -15,6 +15,7 @@
 #include "PluginManager.h"
 #include "IrcConnection.h"
 #include "ImageDownloader.h"
+#include "Logger.h"
 #ifdef HAVE_PYTHON
 #include "PythonScriptEngine.h"
 #endif
@@ -39,6 +40,7 @@ int main(int argc, char *argv[])
 #endif
 
     IRCConnectionManager manager;
+    Logger logger;
     ThemeManager themeManager;
     ServerChannelModel treeModel;
     MessageModel msgModel;
@@ -53,6 +55,7 @@ int main(int argc, char *argv[])
     // Wire the manager to our models
     manager.setMessageModel(&msgModel);
     manager.setServerChannelModel(&treeModel);
+    manager.setLogger(&logger);
 
 #ifdef QT_QUICK_LIB
     QQmlApplicationEngine engine;

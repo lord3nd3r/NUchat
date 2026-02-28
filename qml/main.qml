@@ -973,6 +973,56 @@ ApplicationWindow {
                         }
                     }
                 }
+
+                // ── Channel mode buttons (HexChat-style) ──
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: theme.separator
+                }
+                GridLayout {
+                    Layout.fillWidth: true
+                    Layout.margins: 3
+                    columns: 3
+                    columnSpacing: 2
+                    rowSpacing: 2
+
+                    Repeater {
+                        model: [
+                            { label: "Op",   cmd: "+o" },
+                            { label: "DeOp", cmd: "-o" },
+                            { label: "Ban",  cmd: "ban" },
+                            { label: "Kick", cmd: "kick" },
+                            { label: "Voice",   cmd: "+v" },
+                            { label: "DeVoice", cmd: "-v" }
+                        ]
+                        delegate: Button {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 24
+                            text: modelData.label
+                            enabled: root.selectedNick !== "" && currentChannel.startsWith("#")
+                            onClicked: {
+                                var nick = root.selectedNick
+                                if (!nick) return
+                                if (modelData.cmd === "kick")
+                                    ircManager.sendRawCommand("KICK " + currentChannel + " " + nick)
+                                else if (modelData.cmd === "ban")
+                                    ircManager.sendRawCommand("MODE " + currentChannel + " +b " + nick + "!*@*")
+                                else
+                                    ircManager.sendRawCommand("MODE " + currentChannel + " " + modelData.cmd + " " + nick)
+                            }
+                            background: Rectangle {
+                                color: parent.enabled ? (parent.down ? theme.buttonPressed : theme.buttonBg) : theme.buttonDisabled
+                                radius: 2
+                            }
+                            contentItem: Text {
+                                text: parent.text; color: parent.enabled ? theme.buttonText : theme.buttonTextDisabled
+                                font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                    }
+                }
             }
         }
     }

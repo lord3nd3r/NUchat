@@ -2,6 +2,7 @@
 #include "IrcConnection.h"
 #include "MessageModel.h"
 #include "ServerChannelModel.h"
+#include "Logger.h"
 #include <QDebug>
 #include <QDateTime>
 #include <QSysInfo>
@@ -34,6 +35,11 @@ void IRCConnectionManager::setMessageModel(MessageModel *model)
 void IRCConnectionManager::setServerChannelModel(ServerChannelModel *model)
 {
     m_treeModel = model;
+}
+
+void IRCConnectionManager::setLogger(Logger *logger)
+{
+    m_logger = logger;
 }
 
 void IRCConnectionManager::connectToServer(const QString &host, int port,
@@ -610,6 +616,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
                 m_msgModel->clear();
                 m_msgModel->addMessage("system", "Now talking in " + channel);
             }
+            // Request channel modes so we can display them
+            conn->sendRaw("MODE " + channel);
         } else {
             QString text = nick + " has joined " + channel;
             appendToChannel(srv, channel, "system", text);
@@ -976,6 +984,25 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
             QString text = "[WHOIS] " + nick + " " + trailing;
             if (m_msgModel) m_msgModel->addMessage("system", text);
             appendToChannel(srv, m_activeChannel.isEmpty() ? srv : m_activeChannel, "system", text);
+        } else if (code == 324) {
+            // RPL_CHANNELMODEIS: <channel> <modes> [<mode params>]
+            QString channel = params.value(1);
+            QString modes = params.value(2);
+            QStringList modeParams = params.mid(3);
+            QString text = "Channel modes for " + channel + ": " + modes;
+            if (!modeParams.isEmpty()) text += " " + modeParams.join(" ");
+            appendToChannel(srv, channel, "system", text);
+            if (m_msgModel && m_activeServer == srv && m_activeChannel == channel)
+                m_msgModel->addMessage("system", text);
+        } else if (code == 329) {
+            // RPL_CREATIONTIME: <channel> <timestamp>
+            QString channel = params.value(1);
+            qint64 ts = params.value(2).toLongLong();
+            QString timeStr = QDateTime::fromSecsSinceEpoch(ts).toString("ddd MMM d hh:mm:ss yyyy");
+            QString text = "Channel " + channel + " created on " + timeStr;
+            appendToChannel(srv, channel, "system", text);
+            if (m_msgModel && m_activeServer == srv && m_activeChannel == channel)
+                m_msgModel->addMessage("system", text);
         } else if (code == 314) {
             // RPL_WHOWASUSER
             QString nick = params.value(1);
@@ -1023,6 +1050,10 @@ void IRCConnectionManager::appendToChannel(const QString &server, const QString 
     msg.text = text;
     msg.timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
     m_history[key].append(msg);
+
+    // Log to file
+    if (m_logger)
+        m_logger->log(server, channel, text);
 
     // Track unread state for non-active channels
     bool isActive = (server == m_activeServer && channel == m_activeChannel);

@@ -509,6 +509,10 @@ void MessageModel::setDarkMode(bool dark) { s_darkMode = dark; }
 
 void MessageModel::setNickname(const QString &nick) { m_nickname = nick; }
 
+void MessageModel::setHighlightEnabled(bool enabled) {
+  m_highlightEnabled = enabled;
+}
+
 QString MessageModel::nickColor(const QString &nick) {
   // DJB2 hash for consistent color assignment
   uint hash = 5381;
@@ -614,7 +618,8 @@ QString MessageModel::formatLine(const Message &msg) const {
 
   // Highlight messages that mention our nick with a subtle background
   bool isHighlight = false;
-  if (!m_nickname.isEmpty() && msg.type == QLatin1String("chat")) {
+  if (m_highlightEnabled && !m_nickname.isEmpty() &&
+      msg.type == QLatin1String("chat")) {
     isHighlight = msg.text.contains(m_nickname, Qt::CaseInsensitive);
   }
 

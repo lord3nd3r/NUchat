@@ -39,6 +39,7 @@ public:
                                         const QString &type,
                                         const QString &timestamp) const;
   Q_INVOKABLE void setNickname(const QString &nick);
+  Q_INVOKABLE void setHighlightEnabled(bool enabled);
   static QString ircToHtml(const QString &text);
 
 signals:
@@ -57,4 +58,5 @@ private:
   QList<Message> m_messages;
   QSet<QString> m_pendingImages;
   QString m_nickname;
+  bool m_highlightEnabled = false;
 };

@@ -542,6 +542,9 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
   if (auto *conn = connectionForServer(serverName))
     m_msgModel->setNickname(conn->nickname());
 
+  // Disable highlight during scrollback replay
+  m_msgModel->setHighlightEnabled(false);
+
   // Reload message history for this channel
   m_msgModel->clear();
 
@@ -556,6 +559,9 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
   } else {
     m_msgModel->addMessage("system", "Now talking in " + channel);
   }
+
+  // Re-enable highlight for live messages
+  m_msgModel->setHighlightEnabled(true);
 
   emit currentNickChanged(currentNick());
   emit channelTopicChanged(channelTopic());

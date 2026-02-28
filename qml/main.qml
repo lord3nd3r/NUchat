@@ -911,10 +911,9 @@ ApplicationWindow {
                             z: -1   // below the drag handle
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-                            onClicked: function(mouse) {
+                            onPressed: function(mouse) {
                                 if (mouse.button === Qt.RightButton) {
                                     if (entryType === "channel") {
-                                        // Find the server this channel belongs to
                                         var srv = ""
                                         for (var k = index - 1; k >= 0; k--) {
                                             if (channelListModel.get(k).entryType === "server") {
@@ -929,8 +928,11 @@ ApplicationWindow {
                                         treeServerMenu.targetServer = name
                                         treeServerMenu.popup()
                                     }
-                                } else {
-                                    // Left click logic
+                                }
+                            }
+
+                            onReleased: function(mouse) {
+                                if (mouse.button === Qt.LeftButton) {
                                     serverTree.currentIndex = index
                                     if (entryType === "channel") {
                                         var srvLeft = ""

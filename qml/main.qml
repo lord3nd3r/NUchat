@@ -78,11 +78,29 @@ ApplicationWindow {
         for (var i = 0; i < rc; i++) {
             var sIdx = treeModel.index(i, 0)
             var sName = treeModel.data(sIdx)
-            channelListModel.append({name: sName, entryType: "server"})
+            channelListModel.append({name: sName, entryType: "server", hasUnread: false, hasHighlight: false})
             var cc = treeModel.rowCount(sIdx)
             for (var j = 0; j < cc; j++) {
                 var cIdx = treeModel.index(j, 0, sIdx)
-                channelListModel.append({name: treeModel.data(cIdx), entryType: "channel"})
+                var chName = treeModel.data(cIdx)
+                channelListModel.append({
+                    name: chName, entryType: "channel",
+                    hasUnread: ircManager.hasUnread(sName, chName),
+                    hasHighlight: ircManager.hasHighlight(sName, chName)
+                })
+            }
+        }
+    }
+
+    function updateUnreadStates() {
+        var currentSrv = ""
+        for (var i = 0; i < channelListModel.count; i++) {
+            var entry = channelListModel.get(i)
+            if (entry.entryType === "server") {
+                currentSrv = entry.name
+            } else {
+                channelListModel.setProperty(i, "hasUnread", ircManager.hasUnread(currentSrv, entry.name))
+                channelListModel.setProperty(i, "hasHighlight", ircManager.hasHighlight(currentSrv, entry.name))
             }
         }
     }
@@ -513,6 +531,8 @@ ApplicationWindow {
                         required property int index
                         required property string name
                         required property string entryType
+                        required property bool hasUnread
+                        required property bool hasHighlight
                         width: serverTree.width
                         height: entryType === "server" ? 30 : 26
                         color: serverTree.currentIndex === index ? theme.selectedBg
@@ -532,11 +552,27 @@ ApplicationWindow {
                             }
 
                             Text {
+                                id: channelLabel
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: name
-                                color: serverTree.currentIndex === index ? theme.selectedText : theme.textSecondary
+                                color: {
+                                    if (serverTree.currentIndex === index) return theme.selectedText
+                                    if (hasHighlight) return "#ff4444"   // red for nick mention / PM
+                                    if (hasUnread) return "#ffffff"      // bright white for unread
+                                    return theme.textSecondary
+                                }
                                 font.pixelSize: 12
-                                font.bold: entryType === "server"
+                                font.bold: entryType === "server" || hasUnread || hasHighlight
+
+                                // Pulse animation for nick highlights
+                                SequentialAnimation on opacity {
+                                    id: pulseAnim
+                                    running: hasHighlight && serverTree.currentIndex !== index
+                                    loops: Animation.Infinite
+                                    NumberAnimation { from: 1.0; to: 0.4; duration: 800; easing.type: Easing.InOutSine }
+                                    NumberAnimation { from: 0.4; to: 1.0; duration: 800; easing.type: Easing.InOutSine }
+                                    onRunningChanged: if (!running) channelLabel.opacity = 1.0
+                                }
                             }
                         }
 
@@ -1066,6 +1102,9 @@ ApplicationWindow {
         }
         function onChannelParted(serverName, channel) {
             refreshChannelList()
+        }
+        function onUnreadStateChanged() {
+            updateUnreadStates()
         }
         function onCurrentNickChanged(nick) {
             // Could update a nick display somewhere

@@ -403,6 +403,9 @@ void IRCConnectionManager::switchToChannel(const QString &serverName, const QStr
     m_activeServer = serverName;
     m_activeChannel = channel;
 
+    // Clear unread/highlight for this channel
+    clearUnread(serverName, channel);
+
     if (!m_msgModel) return;
 
     // Reload message history for this channel
@@ -1020,11 +1023,60 @@ void IRCConnectionManager::appendToChannel(const QString &server, const QString 
     msg.text = text;
     msg.timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
     m_history[key].append(msg);
+
+    // Track unread state for non-active channels
+    bool isActive = (server == m_activeServer && channel == m_activeChannel);
+    if (!isActive && (type == "chat" || type == "action")) {
+        QString ukey = unreadKey(server, channel);
+        bool changed = false;
+        if (!m_unread.contains(ukey)) {
+            m_unread.insert(ukey);
+            changed = true;
+        }
+        // Check for nick highlight (mention of our nick in the message)
+        if (auto *conn = connectionForServer(server)) {
+            QString myNick = conn->nickname();
+            if (!myNick.isEmpty() && text.contains(myNick, Qt::CaseInsensitive)) {
+                if (!m_highlighted.contains(ukey)) {
+                    m_highlighted.insert(ukey);
+                    changed = true;
+                }
+            }
+        }
+        // Also mark all PMs (non-channel targets) as highlighted
+        if (!channel.startsWith('#') && !channel.startsWith('&') && channel != server) {
+            if (!m_highlighted.contains(ukey)) {
+                m_highlighted.insert(ukey);
+                changed = true;
+            }
+        }
+        if (changed)
+            emit unreadStateChanged();
+    }
 }
 
 QString IRCConnectionManager::serverNameFor(IrcConnection *conn) const
 {
     return m_connToName.value(conn, "unknown");
+}
+
+bool IRCConnectionManager::hasUnread(const QString &server, const QString &channel) const
+{
+    return m_unread.contains(unreadKey(server, channel));
+}
+
+bool IRCConnectionManager::hasHighlight(const QString &server, const QString &channel) const
+{
+    return m_highlighted.contains(unreadKey(server, channel));
+}
+
+void IRCConnectionManager::clearUnread(const QString &server, const QString &channel)
+{
+    QString ukey = unreadKey(server, channel);
+    bool changed = false;
+    if (m_unread.remove(ukey)) changed = true;
+    if (m_highlighted.remove(ukey)) changed = true;
+    if (changed) emit unreadStateChanged();
 }
 
 // ── /SYSINFO helper ──

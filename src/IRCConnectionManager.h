@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QVector>
 #include <QMap>
+#include <QSet>
 #include <QStringList>
 
 class IrcConnection;
@@ -50,6 +51,11 @@ public:
     // Open a private query tab (creates tab if needed, switches to it)
     Q_INVOKABLE void openQuery(const QString &serverName, const QString &nick);
 
+    // Unread / highlight state queries for the sidebar
+    Q_INVOKABLE bool hasUnread(const QString &server, const QString &channel) const;
+    Q_INVOKABLE bool hasHighlight(const QString &server, const QString &channel) const;
+    Q_INVOKABLE void clearUnread(const QString &server, const QString &channel);
+
     IrcConnection *activeConnection() const;
     QString currentNick() const;
     QString channelTopic() const;
@@ -83,6 +89,7 @@ signals:
     void channelTopicChanged(const QString &topic);
     void channelUsersChanged(const QStringList &users);
     void rawLineReceived(const QString &direction, const QString &line);
+    void unreadStateChanged();
 
 private:
     void wireConnection(IrcConnection *conn);
@@ -106,4 +113,9 @@ private:
     // Per-channel topic and user lists
     QMap<ChannelKey, QString> m_topics;
     QMap<ChannelKey, QStringList> m_users;
+
+    // Unread / highlight tracking
+    QSet<QString> m_unread;       // "server\nchannel" keys with new messages
+    QSet<QString> m_highlighted;  // "server\nchannel" keys with nick mentions
+    QString unreadKey(const QString &server, const QString &channel) const { return server + "\n" + channel; }
 };

@@ -542,9 +542,6 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
   if (auto *conn = connectionForServer(serverName))
     m_msgModel->setNickname(conn->nickname());
 
-  // Disable highlight during scrollback replay
-  m_msgModel->setHighlightEnabled(false);
-
   // Reload message history for this channel
   m_msgModel->clear();
 
@@ -554,14 +551,27 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
   ChannelKey key{serverName, channel};
   if (m_history.contains(key) && !m_history[key].isEmpty()) {
     const auto &msgs = m_history[key];
-    for (const auto &m : msgs)
+    // Disable highlight for log-file scrollback, enable for session messages
+    m_msgModel->setHighlightEnabled(false);
+    bool pastScrollback = false;
+    for (const auto &m : msgs) {
+      // Enable highlights after the scrollback end marker
+      if (!pastScrollback && m.type == QLatin1String("system") &&
+          m.text.contains(QLatin1String("End of scrollback"))) {
+        pastScrollback = true;
+        m_msgModel->addMessage(m.type, m.text);
+        m_msgModel->setHighlightEnabled(true);
+        continue;
+      }
       m_msgModel->addMessage(m.type, m.text);
+    }
+    // If no scrollback was loaded, enable highlights now
+    if (!pastScrollback)
+      m_msgModel->setHighlightEnabled(true);
   } else {
     m_msgModel->addMessage("system", "Now talking in " + channel);
+    m_msgModel->setHighlightEnabled(true);
   }
-
-  // Re-enable highlight for live messages
-  m_msgModel->setHighlightEnabled(true);
 
   emit currentNickChanged(currentNick());
   emit channelTopicChanged(channelTopic());

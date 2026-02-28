@@ -56,9 +56,39 @@ ApplicationWindow {
         close.accepted = true
     }
 
+    // ── Auto-focus input: refocus when window becomes active ──
+    onActiveChanged: {
+        if (active && messageInput) messageInput.forceActiveFocus()
+    }
+
+    // ── Forward keypresses to input when typing anywhere in the window ──
+    Item {
+        focus: true
+        anchors.fill: parent
+        Keys.onPressed: function(event) {
+            // Don't steal from already-focused input or from modifier-only combos (Ctrl+C etc)
+            if (messageInput.activeFocus) return
+            if (event.modifiers & Qt.ControlModifier) return
+            if (event.modifiers & Qt.AltModifier) return
+            // Only forward printable characters and common editing keys
+            if (event.text && event.text.length > 0) {
+                messageInput.forceActiveFocus()
+                messageInput.text += event.text
+                messageInput.cursorPosition = messageInput.text.length
+                event.accepted = true
+            }
+        }
+        z: -1  // behind everything so it doesn't block clicks
+    }
+
     property string currentChannel: ""
     property string currentServer: ""
     property string pendingAutoJoin: ""
+
+    // ── Command history (Up/Down arrow) ──
+    property var commandHistory: []
+    property int historyIndex: -1
+    property string historyStash: ""  // stash current input when browsing history
     property string channelTopic: ircManager.channelTopic
     property var channelUsers: ircManager.channelUsers
     property var selectedNicks: []       // multi-select nick list (bare nicks, no prefix)
@@ -875,10 +905,40 @@ ApplicationWindow {
                         }
 
                         Keys.onPressed: function(event) {
-                            if (event.key !== Qt.Key_Tab) {
+                            // Reset tab completion on non-Tab keys
+                            if (event.key !== Qt.Key_Tab && event.key !== Qt.Key_Up && event.key !== Qt.Key_Down) {
                                 messageInput.tabPrefix = ""
                                 messageInput.tabMatches = []
                                 messageInput.tabIndex = -1
+                            }
+                            // Up arrow: browse history backwards
+                            if (event.key === Qt.Key_Up) {
+                                event.accepted = true
+                                if (commandHistory.length === 0) return
+                                if (historyIndex === -1) {
+                                    historyStash = messageInput.text
+                                    historyIndex = commandHistory.length - 1
+                                } else if (historyIndex > 0) {
+                                    historyIndex--
+                                }
+                                messageInput.text = commandHistory[historyIndex]
+                                messageInput.cursorPosition = messageInput.text.length
+                                return
+                            }
+                            // Down arrow: browse history forwards
+                            if (event.key === Qt.Key_Down) {
+                                event.accepted = true
+                                if (historyIndex === -1) return
+                                if (historyIndex < commandHistory.length - 1) {
+                                    historyIndex++
+                                    messageInput.text = commandHistory[historyIndex]
+                                } else {
+                                    historyIndex = -1
+                                    messageInput.text = historyStash
+                                    historyStash = ""
+                                }
+                                messageInput.cursorPosition = messageInput.text.length
+                                return
                             }
                         }
                     }
@@ -1201,6 +1261,14 @@ ApplicationWindow {
     function sendMessage() {
         var txt = messageInput.text
         if (txt === "") return
+        // Add to command history (avoid duplicating last entry)
+        if (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== txt)
+            commandHistory.push(txt)
+        // Cap history at 200 entries
+        if (commandHistory.length > 200)
+            commandHistory.splice(0, commandHistory.length - 200)
+        historyIndex = -1
+        historyStash = ""
         // Allow /commands even without a channel selected
         if (txt.startsWith("/")) {
             var target = currentChannel !== "" ? currentChannel : (currentServer !== "" ? currentServer : "")

@@ -434,10 +434,29 @@ void IRCConnectionManager::switchToChannel(const QString &serverName, const QStr
     // Reload message history for this channel
     m_msgModel->clear();
     ChannelKey key{serverName, channel};
-    if (m_history.contains(key)) {
+    if (m_history.contains(key) && !m_history[key].isEmpty()) {
         const auto &msgs = m_history[key];
         for (const auto &m : msgs)
             m_msgModel->addMessage(m.type, m.text);
+    } else if (m_logger) {
+        // Load scrollback from log file (last 200 lines)
+        auto entries = m_logger->loadScrollback(serverName, channel, 200);
+        if (!entries.isEmpty()) {
+            m_msgModel->addMessage("system", "── Scrollback from " + channel + " ──");
+            for (const auto &e : entries)
+                m_msgModel->addMessage(e.type, e.text);
+            m_msgModel->addMessage("system", "── End of scrollback ──");
+            // Populate in-memory history so we don't re-read on next switch
+            for (const auto &e : entries) {
+                StoredMessage sm;
+                sm.type = e.type;
+                sm.text = e.text;
+                sm.timestamp = e.timestamp;
+                m_history[key].append(sm);
+            }
+        } else {
+            m_msgModel->addMessage("system", "Now talking in " + channel);
+        }
     } else {
         m_msgModel->addMessage("system", "Now talking in " + channel);
     }
@@ -602,10 +621,13 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
         QString srv = serverNameFor(conn);
         QString nick = prefix.contains('!') ? prefix.section('!', 0, 0) : prefix;
         QString text = "-" + nick + "- " + message;
-        // Route to the target channel if it's a channel, otherwise to the server tab
+        // Route to the target channel if it's a channel, to query if one exists, otherwise server tab
         QString dest;
         if (target.startsWith('#') || target.startsWith('&')) {
             dest = target;
+        } else if (m_treeModel && m_treeModel->hasChannel(srv, nick)) {
+            // Route to existing query window for this user
+            dest = nick;
         } else {
             dest = srv;
         }
@@ -1070,7 +1092,7 @@ void IRCConnectionManager::appendToChannel(const QString &server, const QString 
 
     // Log to file
     if (m_logger)
-        m_logger->log(server, channel, text);
+        m_logger->log(server, channel, type, text);
 
     // Track unread state for non-active channels
     bool isActive = (server == m_activeServer && channel == m_activeChannel);

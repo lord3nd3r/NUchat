@@ -6,43 +6,47 @@
 
 class ImageDownloader;
 
-class MessageModel : public QAbstractListModel
-{
-    Q_OBJECT
+class MessageModel : public QAbstractListModel {
+  Q_OBJECT
 public:
-    enum Roles { TypeRole = Qt::UserRole + 1, TextRole, TimestampRole };
-    Q_ENUM(Roles)
+  enum Roles { TypeRole = Qt::UserRole + 1, TextRole, TimestampRole };
+  Q_ENUM(Roles)
 
-    struct Message {
-        QString text;
-        QString type; // "system", "chat", "action", "error", "embed"
-        QDateTime timestamp;
-    };
+  struct Message {
+    QString text;
+    QString type; // "system", "chat", "action", "error", "embed"
+    QDateTime timestamp;
+  };
 
-    explicit MessageModel(QObject *parent = nullptr);
+  explicit MessageModel(QObject *parent = nullptr);
 
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    QHash<int, QByteArray> roleNames() const override;
+  int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+  QVariant data(const QModelIndex &index,
+                int role = Qt::DisplayRole) const override;
+  QHash<int, QByteArray> roleNames() const override;
 
-    Q_INVOKABLE void addMessage(const QString &type, const QString &text);
-    Q_INVOKABLE void clear();
-    Q_INVOKABLE QString allFormattedText() const;
-    Q_INVOKABLE void setDarkMode(bool dark);
-    static QString ircToHtml(const QString &text);
+  Q_INVOKABLE void addMessage(const QString &type, const QString &text);
+  Q_INVOKABLE void clear();
+  Q_INVOKABLE QString allFormattedText() const;
+  Q_INVOKABLE void setDarkMode(bool dark);
+  Q_INVOKABLE QString formatLineFromQml(const QString &text,
+                                        const QString &type,
+                                        const QString &timestamp) const;
+  static QString ircToHtml(const QString &text);
 
 signals:
-    void messageAdded(const QString &formattedLine);
-    void cleared();
+  void messageAdded(const QString &formattedLine);
+  void cleared();
 
 private slots:
-    void onImageReady(const QString &url, const QString &localPath, int width, int height);
+  void onImageReady(const QString &url, const QString &localPath, int width,
+                    int height);
 
 private:
-    static QString formatLine(const Message &msg);
-    static QString linkifyUrls(const QString &html);
-    static QString colorizeNicks(const QString &html);
-    static QString nickColor(const QString &nick);
-    QList<Message> m_messages;
-    QSet<QString> m_pendingImages;
+  static QString formatLine(const Message &msg);
+  static QString linkifyUrls(const QString &html);
+  static QString colorizeNicks(const QString &html);
+  static QString nickColor(const QString &nick);
+  QList<Message> m_messages;
+  QSet<QString> m_pendingImages;
 };

@@ -570,6 +570,18 @@ QString MessageModel::colorizeNicks(const QString &html) {
   return result;
 }
 
+QString MessageModel::formatLineFromQml(const QString &text,
+                                        const QString &type,
+                                        const QString &timestamp) const {
+  Message msg;
+  msg.text = text;
+  msg.type = type;
+  msg.timestamp = QDateTime::fromString(timestamp, Qt::ISODate);
+  if (!msg.timestamp.isValid())
+    msg.timestamp = QDateTime::currentDateTime();
+  return formatLine(msg);
+}
+
 QString MessageModel::formatLine(const Message &msg) {
   // Embed messages are pre-formatted HTML — pass through
   if (msg.type == QLatin1String("embed"))

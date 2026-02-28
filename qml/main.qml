@@ -1016,83 +1016,83 @@ ApplicationWindow {
             }
 
             // ── Message area ──
-            ScrollView {
-                id: chatScrollView
+            ListView {
+                id: chatView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
+                model: msgModel
+                spacing: 0
+                verticalLayoutDirection: ListView.TopToBottom
+                flickDeceleration: 2000
+                maximumFlickVelocity: 4000
 
-                TextArea {
-                    id: chatArea
-                    readOnly: true
-                    selectByMouse: true
-                    selectedTextColor: theme.highlightText
-                    selectionColor: theme.highlight
-                    color: theme.textPrimary
-                    font.family: root.prefFontFamily
-                    font.pixelSize: root.prefFontSize
-                    wrapMode: TextEdit.Wrap
-                    textFormat: TextEdit.RichText
-                    background: Rectangle { color: theme.chatBg }
-                    padding: 8
+                // Auto-scroll to bottom when new messages arrive
+                onCountChanged: {
+                    if (atYEnd || contentHeight < height)
+                        positionViewAtEnd()
+                }
 
-                    onLinkActivated: function(link) {
-                        if (link.startsWith("nick://")) {
-                            var nick = decodeURIComponent(link.substring(7))
-                            nickContextMenu.targetNick = nick
-                            nickContextMenu.popup()
-                        } else {
-                            Qt.openUrlExternally(link)
-                        }
-                    }
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
 
-                    // Change cursor to hand when hovering a link
-                    HoverHandler {
-                        cursorShape: chatArea.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor
-                    }
+                delegate: Item {
+                    width: chatView.width
+                    height: msgText.implicitHeight + 2
 
-                    TapHandler {
-                        acceptedButtons: Qt.RightButton
-                        onTapped: function(eventPoint) {
-                            var px = eventPoint.position.x
-                            var py = eventPoint.position.y
-
-                            // Check for link under cursor first
-                            var link = chatArea.linkAt(px, py)
-                            if (link && link !== "") {
-                                if (link.startsWith("nick://")) {
-                                    nickContextMenu.targetNick = decodeURIComponent(link.substring(7))
-                                    nickContextMenu.popup()
-                                } else {
-                                    chatLinkMenu.targetUrl = link
-                                    chatLinkMenu.popup()
-                                }
-                                return
+                    Text {
+                        id: msgText
+                        width: parent.width - 16
+                        x: 8
+                        y: 1
+                        text: model.text ? msgModel.formatLineFromQml(model.text, model.type, model.timestamp) : ""
+                        textFormat: Text.RichText
+                        wrapMode: Text.Wrap
+                        color: theme.textPrimary
+                        font.family: root.prefFontFamily
+                        font.pixelSize: root.prefFontSize
+                        linkColor: "#4fc3f7"
+                        onLinkActivated: function(link) {
+                            if (link.startsWith("nick://")) {
+                                var nick = decodeURIComponent(link.substring(7))
+                                nickContextMenu.targetNick = nick
+                                nickContextMenu.popup()
+                            } else {
+                                Qt.openUrlExternally(link)
                             }
-
-                            // If not over nick or link, show channel options
-                            channelContextMenu.popup()
+                        }
+                        HoverHandler {
+                            cursorShape: msgText.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        }
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: function(eventPoint) {
+                                var link = msgText.linkAt(eventPoint.position.x, eventPoint.position.y)
+                                if (link && link !== "") {
+                                    if (link.startsWith("nick://")) {
+                                        nickContextMenu.targetNick = decodeURIComponent(link.substring(7))
+                                        nickContextMenu.popup()
+                                    } else {
+                                        chatLinkMenu.targetUrl = link
+                                        chatLinkMenu.popup()
+                                    }
+                                } else {
+                                    channelContextMenu.popup()
+                                }
+                            }
                         }
                     }
 
-                    Connections {
-                        target: msgModel
-                        function onMessageAdded(formattedLine) {
-                            chatArea.append(formattedLine)
-                            chatArea.cursorPosition = chatArea.length
-                        }
-                        function onCleared() {
-                            chatArea.text = ""
-                        }
-                    }
-
-                    Component.onCompleted: {
-                        text = msgModel.allFormattedText()
-                        cursorPosition = length
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 1
+                        color: theme.separator
+                        opacity: 0.15
                     }
                 }
             }
-
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1

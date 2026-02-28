@@ -12,3 +12,7 @@ target_include_directories(ExamplePlugin PRIVATE ${CMAKE_SOURCE_DIR}/src)
 set_target_properties(ExamplePlugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../plugins"
 )
+
+# Install the plugin
+install(TARGETS ExamplePlugin
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/nuchat/plugins)

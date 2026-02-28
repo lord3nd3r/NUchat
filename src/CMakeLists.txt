@@ -73,3 +73,6 @@ target_link_libraries(NUchat PRIVATE nuchatcore Qt6::Gui Qt6::Widgets Qt6::Quick
 if(Qt6Quick_FOUND)
     target_link_libraries(NUchat PRIVATE Qt6::Quick)
 endif()
+
+# Install the binary
+install(TARGETS NUchat RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

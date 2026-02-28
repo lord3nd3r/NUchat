@@ -20,7 +20,34 @@ if(NOT Python3_FOUND)
     message(WARNING "Python3 development libraries not found; Python scripting will be disabled. Install python3-dev for HexChat script support.")
 endif()
 
+include(GNUInstallDirs)
+
 # add subdirectories
 add_subdirectory(src)
 add_subdirectory(plugins)
 add_subdirectory(tests)
+
+# ── Install rules ──
+
+# Desktop file
+install(FILES resources/nuchat.desktop
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+
+# SVG icon (freedesktop hicolor theme)
+install(FILES resources/icons/nuchat.svg
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps)
+
+# Example scripts
+install(DIRECTORY scripts/
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/nuchat/scripts
+        FILES_MATCHING PATTERN "*.py" PATTERN "*.js")
+
+# Uninstall target (convenience)
+if(NOT TARGET uninstall)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+        IMMEDIATE @ONLY)
+    add_custom_target(uninstall
+        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
+endif()

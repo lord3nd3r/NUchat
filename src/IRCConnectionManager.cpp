@@ -648,12 +648,42 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
                 m_treeModel->addChannel(srv, channel);
             }
             emit channelJoined(srv, channel);
+
+            // Load scrollback from log file before showing "Now talking in"
+            ChannelKey key{srv, channel};
+            if (m_logger && !m_history.contains(key)) {
+                auto entries = m_logger->loadScrollback(srv, channel, 200);
+                if (!entries.isEmpty()) {
+                    for (const auto &e : entries) {
+                        StoredMessage sm;
+                        sm.type = e.type;
+                        sm.text = e.text;
+                        sm.timestamp = e.timestamp;
+                        m_history[key].append(sm);
+                    }
+                }
+            }
+
             appendToChannel(srv, channel, "system", "Now talking in " + channel);
             // Auto-switch to the new channel
             m_activeChannel = channel;
             if (m_msgModel) {
                 m_msgModel->clear();
-                m_msgModel->addMessage("system", "Now talking in " + channel);
+                // Display scrollback + current history
+                const auto &msgs = m_history[key];
+                bool hasScrollback = false;
+                for (const auto &m : msgs) {
+                    if (!hasScrollback && m.text != "Now talking in " + channel) {
+                        m_msgModel->addMessage("system", "\u2500\u2500 Scrollback from " + channel + " \u2500\u2500");
+                        hasScrollback = true;
+                    }
+                    if (hasScrollback && m.text == "Now talking in " + channel
+                        && &m == &msgs.back()) {
+                        // This is the current "Now talking in" - insert end marker first
+                        m_msgModel->addMessage("system", "\u2500\u2500 End of scrollback \u2500\u2500");
+                    }
+                    m_msgModel->addMessage(m.type, m.text);
+                }
             }
             // Request channel modes so we can display them
             conn->sendRaw("MODE " + channel);

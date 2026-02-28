@@ -23,6 +23,10 @@
 #ifdef HAVE_LUA
 #include "LuaScriptEngine.h"
 #endif
+#ifdef HAVE_HUNSPELL
+#include "SpellChecker.h"
+#include "SpellHighlighter.h"
+#endif
 
 int main(int argc, char *argv[]) {
   QGuiApplication app(argc, argv);

@@ -14,8 +14,6 @@ set(CORE_SRC
     MessageModel.cpp
     ScriptManager.cpp
     ImageDownloader.cpp
-    SpellChecker.cpp
-    SpellHighlighter.cpp
 )
 
 set(CORE_HEADERS
@@ -32,14 +30,15 @@ set(CORE_HEADERS
     MessageModel.h
     ScriptManager.h
     ImageDownloader.h
-    SpellChecker.h
-    SpellHighlighter.h
 )
 
 include(FindPkgConfig)
 pkg_check_modules(HUNSPELL hunspell)
 if(NOT HUNSPELL_FOUND)
     message(WARNING "hunspell library not found; spell checking disabled.")
+else()
+    list(APPEND CORE_SRC SpellChecker.cpp SpellHighlighter.cpp)
+    list(APPEND CORE_HEADERS SpellChecker.h SpellHighlighter.h)
 endif()
 
 # Python scripting engine (optional, requires Python3 dev)

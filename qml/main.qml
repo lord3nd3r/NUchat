@@ -1606,6 +1606,9 @@ ApplicationWindow {
                 }
             }
         }
+        function onChannelAdded(serverName, channel) {
+            refreshChannelList()
+        }
         function onChannelParted(serverName, channel) {
             refreshChannelList()
         }

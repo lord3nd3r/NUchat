@@ -614,27 +614,39 @@ QString MessageModel::formatLine(const Message &msg) const {
   else if (msg.type == QLatin1String("error"))
     prefix = QStringLiteral("<font color=\"#f44747\">! </font>");
 
-  QString body = linkifyUrls(colorizeNicks(ircToHtml(msg.text)));
+  QString htmlBody = linkifyUrls(colorizeNicks(ircToHtml(msg.text)));
 
-  // Highlight messages that mention our nick with a subtle background
-  // Skip the <nick> prefix so our own messages don't trigger
+  // Highlight other people's chat messages that mention our nick
   bool isHighlight = false;
   if (m_highlightEnabled && !m_nickname.isEmpty() &&
       msg.type == QLatin1String("chat")) {
-    // Find end of "<nick> " prefix and only check body after it
+    // Extract sender nick from "<[+@~&%]nick> ..." format
+    int lt = msg.text.indexOf(QLatin1Char('<'));
     int gt = msg.text.indexOf(QLatin1Char('>'));
-    if (gt >= 0) {
-      QString body = msg.text.mid(gt + 1);
-      isHighlight = body.contains(m_nickname, Qt::CaseInsensitive);
+    if (lt >= 0 && gt > lt) {
+      QString senderRaw = msg.text.mid(lt + 1, gt - lt - 1);
+      // Strip mode prefixes (+, @, ~, &, %)
+      while (!senderRaw.isEmpty() &&
+             (senderRaw[0] == '+' || senderRaw[0] == '@' ||
+              senderRaw[0] == '~' || senderRaw[0] == '&' ||
+              senderRaw[0] == '%'))
+        senderRaw = senderRaw.mid(1);
+
+      // Only highlight if the sender is NOT us
+      if (senderRaw.compare(m_nickname, Qt::CaseInsensitive) != 0) {
+        // Check the body after the <nick> prefix for our nick
+        QString msgBody = msg.text.mid(gt + 1);
+        isHighlight = msgBody.contains(m_nickname, Qt::CaseInsensitive);
+      }
     }
   }
 
   if (isHighlight) {
     return QStringLiteral("<span style=\"background-color:#3a2a00;\">") + ts +
-           prefix + body + QStringLiteral("</span>");
+           prefix + htmlBody + QStringLiteral("</span>");
   }
 
-  return ts + prefix + body;
+  return ts + prefix + htmlBody;
 }
 
 QString MessageModel::allFormattedText() const {

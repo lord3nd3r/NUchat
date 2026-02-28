@@ -12,4 +12,5 @@ public:
     void addServer(const QString &name);
     void addChannel(const QString &serverName, const QString &channelName);
     bool hasChannel(const QString &serverName, const QString &channelName) const;
+    Q_INVOKABLE bool moveChannel(const QString &serverName, int fromIndex, int toIndex);
 };

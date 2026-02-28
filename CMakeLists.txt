@@ -12,12 +12,26 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network Concurrent QuickCo
 find_package(Qt6 COMPONENTS Quick)
 find_package(Python3 COMPONENTS Development)
 
+# Lua scripting (optional)
+include(FindPkgConfig)
+pkg_check_modules(LUA lua5.4)
+if(NOT LUA_FOUND)
+    pkg_check_modules(LUA lua54)
+endif()
+if(NOT LUA_FOUND)
+    pkg_check_modules(LUA lua)
+endif()
+
 if(NOT Qt6Quick_FOUND)
     message(WARNING "Qt6 Quick component not found; QML UI will not be available. Install Qt6 Quick (qt6-declarative) for full functionality.")
 endif()
 
 if(NOT Python3_FOUND)
     message(WARNING "Python3 development libraries not found; Python scripting will be disabled. Install python3-dev for HexChat script support.")
+endif()
+
+if(NOT LUA_FOUND)
+    message(WARNING "Lua development libraries not found; Lua scripting will be disabled. Install liblua5.4-dev for HexChat Lua script support.")
 endif()
 
 include(GNUInstallDirs)

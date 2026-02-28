@@ -38,6 +38,12 @@ if(Python3_FOUND)
     list(APPEND CORE_HEADERS PythonScriptEngine.h)
 endif()
 
+# Lua scripting engine (optional, requires Lua 5.4 dev)
+if(LUA_FOUND)
+    list(APPEND CORE_SRC LuaScriptEngine.cpp)
+    list(APPEND CORE_HEADERS LuaScriptEngine.h)
+endif()
+
 # include qml and theme resources
 set(nuchatcore_RESOURCE_FILES resources.qrc)
 qt6_add_resources(nuchatcore_resources ${nuchatcore_RESOURCE_FILES})
@@ -56,6 +62,12 @@ if(Python3_FOUND)
     target_include_directories(nuchatcore PRIVATE ${Python3_INCLUDE_DIRS})
     target_link_libraries(nuchatcore PRIVATE ${Python3_LIBRARIES})
     target_compile_definitions(nuchatcore PRIVATE HAVE_PYTHON=1)
+endif()
+
+if(LUA_FOUND)
+    target_include_directories(nuchatcore PRIVATE ${LUA_INCLUDE_DIRS})
+    target_link_libraries(nuchatcore PRIVATE ${LUA_LIBRARIES})
+    target_compile_definitions(nuchatcore PRIVATE HAVE_LUA=1)
 endif()
 
 target_compile_definitions(nuchatcore PRIVATE QT_DEPRECATED_WARNINGS)

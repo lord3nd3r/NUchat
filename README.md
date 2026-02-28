@@ -11,13 +11,16 @@ A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexCh
 ## Features
 
 - **Multi-server** — connect to multiple networks simultaneously
-- **SSL/TLS** on all connections with SASL authentication
+- **SSL/TLS** on all connections with **per-network SASL** (PLAIN/EXTERNAL) and **NickServ auto-identify**
 - **25 built-in themes** — HexChat Dark, Monokai, Dracula, Nord, Gruvbox, Catppuccin, and more
 - **mIRC color codes** — full rendering (foreground, background, bold, italic, underline, hex colors)
 - **Clickable URLs** with inline image previews
 - **Nick list** with multi-select (Ctrl+click, Shift+click) and mode buttons (Op, DeOp, Ban, Kick, Voice, DeVoice)
 - **Tab nick-completion** with cycling
-- **Channel logging** to `~/.config/NUchat/logs/`
+- **Input history** — Up/Down arrow keys recall previous messages
+- **Auto-focus input** — typing anywhere in the window goes to the input bar
+- **Scrollback** — loads last 200 lines from logs when rejoining a channel
+- **Channel logging** to `~/.config/NUchat/NUchat/logs/`
 - **60+ command aliases** — see [docs/COMMANDS.md](docs/COMMANDS.md)
 - **Services menus** — NickServ, ChanServ, OperServ, HostServ, MemoServ, BotServ
 - **Right-click context menus** on nicks and links
@@ -80,7 +83,7 @@ Uses GNUInstallDirs — installs binary, desktop file, icon, and plugin/script d
 | Path | Purpose |
 |------|---------|
 | `~/.config/NUchat/NUchat.conf` | Settings (theme, window geometry, networks, identity) |
-| `~/.config/NUchat/logs/` | Channel logs (per-network, per-channel) |
+| `~/.config/NUchat/NUchat/logs/` | Channel logs (per-network, per-channel) |
 | `~/.config/NUchat/scripts/` | Python scripts |
 | `~/.cache/NUchat/images/` | Cached inline image previews |
 
@@ -121,7 +124,7 @@ NUchat/
 │   ├── NetworkListDialog.qml  Network manager with drag-and-drop reorder
 │   └── ...                 14 dialog/component files
 ├── plugins/                C++ plugin directory
-├── scripts/                JavaScript/Python scripts
+├── scripts/                Python scripts
 ├── resources/              Icons, .desktop file, theme JSON
 ├── tests/                  Unit tests
 └── docs/                   Extended documentation
@@ -147,7 +150,8 @@ Place `.py` files in `~/.config/NUchat/scripts/`. Loaded automatically on startu
 - [ ] DCC file transfer (send/receive)
 - [ ] Ignore list (message filtering)
 - [ ] Auto-reconnect on disconnect
-- [ ] SASL handshake completion
+- [x] SASL handshake completion (PLAIN/EXTERNAL)
+- [x] Per-network NickServ auto-identify
 - [ ] Perform-on-connect commands
 
 ### Features

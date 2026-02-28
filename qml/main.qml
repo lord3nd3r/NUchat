@@ -145,6 +145,8 @@ ApplicationWindow {
     ListModel { id: channelListModel }
 
     function refreshChannelList() {
+        // Cancel any in-progress drag (delegate about to be destroyed)
+        if (serverTree.dragFromIndex >= 0) serverTree.cancelDrag()
         channelListModel.clear()
         var rc = treeModel.rowCount()
         for (var i = 0; i < rc; i++) {
@@ -601,6 +603,105 @@ ApplicationWindow {
                     currentIndex: -1
                     boundsBehavior: Flickable.StopAtBounds
 
+                    // ── Drag-and-drop state for channel reordering ──
+                    property int dragFromIndex: -1
+                    property int dropToIndex: -1
+
+                    function cancelDrag() {
+                        dragFromIndex = -1
+                        dropToIndex = -1
+                        sidebarDragProxy.visible = false
+                        sidebarDragOverlay.enabled = false
+                    }
+
+                    function finishDrag() {
+                        if (dragFromIndex >= 0 && dropToIndex >= 0 && dragFromIndex !== dropToIndex) {
+                            var range = channelRange(dragFromIndex)
+                            if (range.first >= 0) {
+                                var fromLocal = dragFromIndex - range.first
+                                var toLocal = dropToIndex - range.first
+                                if (fromLocal >= 0 && toLocal >= 0 && toLocal <= range.last - range.first) {
+                                    treeModel.moveChannel(range.serverName, fromLocal, toLocal)
+                                    refreshChannelList()
+                                    currentIndex = dropToIndex
+                                    sidebarClickAt(currentIndex)
+                                }
+                            }
+                        }
+                        cancelDrag()
+                    }
+
+                    // Floating drag proxy label
+                    Rectangle {
+                        id: sidebarDragProxy
+                        visible: false
+                        width: serverTree.width - 10
+                        height: 24
+                        radius: 3
+                        color: Qt.rgba(theme.selectedBg.r, theme.selectedBg.g, theme.selectedBg.b, 0.85)
+                        border.color: theme.highlight
+                        border.width: 1
+                        z: 100
+                        property string text: ""
+                        Text {
+                            anchors.centerIn: parent
+                            text: sidebarDragProxy.text
+                            color: theme.selectedText
+                            font.pixelSize: 12
+                        }
+                    }
+
+                    // ── Full-sidebar drag overlay (captures mouse during drag) ──
+                    MouseArea {
+                        id: sidebarDragOverlay
+                        anchors.fill: parent
+                        z: 50
+                        enabled: false
+                        cursorShape: Qt.ClosedHandCursor
+                        preventStealing: true
+
+                        onPositionChanged: function(mouse) {
+                            if (serverTree.dragFromIndex < 0) return
+                            sidebarDragProxy.y = mouse.y - 12
+                            var cy = mouse.y + serverTree.contentY
+                            var hoverIdx = serverTree.indexAtContentY(cy)
+                            if (hoverIdx >= 0) {
+                                var srcRange = serverTree.channelRange(serverTree.dragFromIndex)
+                                if (hoverIdx >= srcRange.first && hoverIdx <= srcRange.last
+                                    && channelListModel.get(hoverIdx).entryType === "channel") {
+                                    serverTree.dropToIndex = hoverIdx
+                                }
+                            }
+                        }
+                        onReleased: serverTree.finishDrag()
+                        onCanceled: serverTree.cancelDrag()
+                    }
+
+                    // Helper: find the flat-model index range of channels belonging to the same server as flatIndex
+                    function channelRange(flatIndex) {
+                        var serverIdx = -1
+                        for (var k = flatIndex; k >= 0; k--) {
+                            if (channelListModel.get(k).entryType === "server") { serverIdx = k; break }
+                        }
+                        if (serverIdx < 0) return { first: -1, last: -1, serverIdx: -1, serverName: "" }
+                        var first = serverIdx + 1
+                        var last = first
+                        while (last < channelListModel.count && channelListModel.get(last).entryType === "channel")
+                            last++
+                        return { first: first, last: last - 1, serverIdx: serverIdx, serverName: channelListModel.get(serverIdx).name }
+                    }
+
+                    // Compute flat-model index from a content Y coordinate (servers=30px, channels=26px)
+                    function indexAtContentY(cy) {
+                        var y = 0
+                        for (var i = 0; i < channelListModel.count; i++) {
+                            var h = (channelListModel.get(i).entryType === "server") ? 30 : 26
+                            if (cy >= y && cy < y + h) return i
+                            y += h
+                        }
+                        return -1
+                    }
+
                     delegate: Rectangle {
                         required property int index
                         required property string name
@@ -611,18 +712,66 @@ ApplicationWindow {
                         height: entryType === "server" ? 30 : 26
                         color: serverTree.currentIndex === index ? theme.selectedBg
                              : delegateMouse.containsMouse ? theme.hoverBg : "transparent"
+                        opacity: (serverTree.dragFromIndex === index) ? 0.4 : 1.0
+
+                        // ── Drop indicator line (channels only) ──
+                        Rectangle {
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.top: parent.top
+                            height: 2; color: theme.highlight; z: 10
+                            visible: serverTree.dropToIndex === index
+                                     && serverTree.dragFromIndex !== -1
+                                     && serverTree.dragFromIndex !== index
+                                     && entryType === "channel"
+                        }
 
                         Row {
                             anchors.left: parent.left
-                            anchors.leftMargin: entryType === "server" ? 8 : 22
+                            anchors.leftMargin: entryType === "server" ? 8 : 6
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 6
+                            spacing: 4
 
+                            // ── Drag handle (channels only) ──
                             Text {
+                                visible: entryType === "channel"
+                                text: "\u2807"
+                                color: "#666"
+                                font.pixelSize: 14
+                                width: 14
+                                verticalAlignment: Text.AlignVCenter
+
+                                MouseArea {
+                                    id: chDragArea
+                                    anchors.fill: parent
+                                    cursorShape: Qt.OpenHandCursor
+                                    enabled: entryType === "channel"
+
+                                    onPressed: function(mouse) {
+                                        serverTree.dragFromIndex = index
+                                        serverTree.currentIndex = index
+                                        sidebarDragProxy.text = name
+                                        var delegateRect = chDragArea.parent.parent.parent
+                                        sidebarDragProxy.y = delegateRect.mapToItem(serverTree, 0, 0).y
+                                        sidebarDragProxy.visible = true
+                                        sidebarDragOverlay.enabled = true
+                                    }
+                                }
+                            }
+
+                            // Icon/bullet (server caret or channel dot)
+                            Text {
+                                visible: entryType === "server"
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: entryType === "server" ? "\u25BE" : "\u2022"
-                                color: entryType === "server" ? theme.textMuted : theme.nickVoice
-                                font.pixelSize: entryType === "server" ? 10 : 10
+                                text: "\u25BE"
+                                color: theme.textMuted
+                                font.pixelSize: 10
+                            }
+                            Text {
+                                visible: entryType === "channel"
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "\u2022"
+                                color: theme.nickVoice
+                                font.pixelSize: 10
                             }
 
                             Text {
@@ -655,6 +804,7 @@ ApplicationWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
+                            z: -1   // below the drag handle
                             onClicked: {
                                 serverTree.currentIndex = index
                                 if (entryType === "channel") {

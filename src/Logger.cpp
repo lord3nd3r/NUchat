@@ -80,6 +80,17 @@ QVector<Logger::LogEntry> Logger::loadScrollback(const QString &network,
                 entry.type = QStringLiteral("system");
             entry.text = rest;
         }
+        // Filter out noisy system messages from scrollback
+        if (entry.type == "system") {
+            const QString &t = entry.text;
+            if (t.startsWith("Now talking in ") ||
+                t.startsWith("Topic for ") ||
+                t.startsWith("*** Topic for ") ||
+                t.contains("Scrollback from ") ||
+                t.contains("End of scrollback") ||
+                t.startsWith("Connecting to "))
+                continue;
+        }
         result.append(entry);
     }
     return result;

@@ -39,3 +39,17 @@ bool ServerChannelModel::hasChannel(const QString &serverName, const QString &ch
     }
     return false;
 }
+
+bool ServerChannelModel::moveChannel(const QString &serverName, int fromIndex, int toIndex)
+{
+    QList<QStandardItem*> items = findItems(serverName);
+    if (items.isEmpty()) return false;
+    QStandardItem *serverItem = items.first();
+    int count = serverItem->rowCount();
+    if (fromIndex < 0 || fromIndex >= count || toIndex < 0 || toIndex >= count || fromIndex == toIndex)
+        return false;
+    QList<QStandardItem*> taken = serverItem->takeRow(fromIndex);
+    if (taken.isEmpty()) return false;
+    serverItem->insertRow(toIndex, taken);
+    return true;
+}

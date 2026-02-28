@@ -15,6 +15,9 @@
 #ifdef HAVE_PYTHON
 #include "PythonScriptEngine.h"
 #endif
+#ifdef HAVE_LUA
+#include "LuaScriptEngine.h"
+#endif
 
 IRCConnectionManager::IRCConnectionManager(QObject *parent)
     : QObject(parent)
@@ -148,6 +151,14 @@ void IRCConnectionManager::sendMessage(const QString &target, const QString &mes
             if (PythonScriptEngine::instance()) {
                 QStringList argParts = args.isEmpty() ? QStringList() : args.split(' ');
                 if (PythonScriptEngine::instance()->handleCommand(cmd, argParts))
+                    return;  // Script consumed the command
+            }
+#endif
+#ifdef HAVE_LUA
+            // Let Lua scripts intercept commands
+            if (LuaScriptEngine::instance()) {
+                QStringList argParts = args.isEmpty() ? QStringList() : args.split(' ');
+                if (LuaScriptEngine::instance()->handleCommand(cmd, argParts))
                     return;  // Script consumed the command
             }
 #endif
@@ -669,21 +680,20 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
             m_activeChannel = channel;
             if (m_msgModel) {
                 m_msgModel->clear();
-                // Display scrollback + current history
                 const auto &msgs = m_history[key];
-                bool hasScrollback = false;
-                for (const auto &m : msgs) {
-                    if (!hasScrollback && m.text != "Now talking in " + channel) {
-                        m_msgModel->addMessage("system", "\u2500\u2500 Scrollback from " + channel + " \u2500\u2500");
-                        hasScrollback = true;
-                    }
-                    if (hasScrollback && m.text == "Now talking in " + channel
-                        && &m == &msgs.back()) {
-                        // This is the current "Now talking in" - insert end marker first
-                        m_msgModel->addMessage("system", "\u2500\u2500 End of scrollback \u2500\u2500");
-                    }
-                    m_msgModel->addMessage(m.type, m.text);
+
+                // Find where scrollback ends (the last "Now talking in" is the live one we just appended)
+                int scrollbackEnd = msgs.size() - 1;  // last msg is our "Now talking in"
+                bool hasScrollback = scrollbackEnd > 0;
+
+                if (hasScrollback) {
+                    m_msgModel->addMessage("system", QString::fromUtf8("\u2500\u2500 Scrollback from %1 \u2500\u2500").arg(channel));
+                    for (int i = 0; i < scrollbackEnd; ++i)
+                        m_msgModel->addMessage(msgs[i].type, msgs[i].text);
+                    m_msgModel->addMessage("system", QString::fromUtf8("\u2500\u2500 End of scrollback \u2500\u2500"));
                 }
+                // Show the current "Now talking in" message
+                m_msgModel->addMessage(msgs.last().type, msgs.last().text);
             }
             // Request channel modes so we can display them
             conn->sendRaw("MODE " + channel);

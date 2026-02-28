@@ -20,6 +20,9 @@
 #ifdef HAVE_PYTHON
 #include "PythonScriptEngine.h"
 #endif
+#ifdef HAVE_LUA
+#include "LuaScriptEngine.h"
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -52,6 +55,9 @@ int main(int argc, char *argv[])
 #ifdef HAVE_PYTHON
     PythonScriptEngine *pyEngine = new PythonScriptEngine(&manager, &manager);
 #endif
+#ifdef HAVE_LUA
+    LuaScriptEngine *luaEngine = new LuaScriptEngine(&manager, &manager);
+#endif
 
     // Wire the manager to our models
     manager.setMessageModel(&msgModel);
@@ -74,6 +80,13 @@ int main(int argc, char *argv[])
     pyEngine->loadScripts(pyScriptsDir);
 #endif
 
+#ifdef HAVE_LUA
+    // Load Lua scripts from ~/.config/NUchat/scripts/
+    QString luaScriptsDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                            + "/NUchat/scripts";
+    luaEngine->loadScripts(luaScriptsDir);
+#endif
+
 #ifdef QT_QUICK_LIB
     engine.rootContext()->setContextProperty("ircManager", &manager);
     engine.rootContext()->setContextProperty("themeManager", &themeManager);
@@ -83,6 +96,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("pluginMgr", &pluginMgr);
 #ifdef HAVE_PYTHON
     engine.rootContext()->setContextProperty("pyEngine", pyEngine);
+#endif
+#ifdef HAVE_LUA
+    engine.rootContext()->setContextProperty("luaEngine", luaEngine);
 #endif
     engine.rootContext()->setContextProperty("appSettings", &appSettings);
     engine.rootContext()->setContextProperty("imgDownloader", ImageDownloader::instance());
@@ -100,6 +116,9 @@ int main(int argc, char *argv[])
             scriptMgr->handleMessage(conn, QString(), msg);
 #ifdef HAVE_PYTHON
             pyEngine->handleServerLine(conn, msg);
+#endif
+#ifdef HAVE_LUA
+            luaEngine->handleServerLine(conn, msg);
 #endif
         });
     });

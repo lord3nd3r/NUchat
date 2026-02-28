@@ -132,77 +132,89 @@ Dialog {
                         Rectangle {
                             anchors.left: parent.left; anchors.right: parent.right
                             anchors.top: parent.top
-                            height: 2; color: "#569cd6"
+                            height: 2; color: "#569cd6"; z: 10
                             visible: networkList.dropToIndex === delegateRoot.index && networkList.dragFromIndex !== -1 && networkList.dragFromIndex !== delegateRoot.index
                         }
 
+                        // Background + click handling (bottom layer)
                         Rectangle {
                             id: delegateBg
                             anchors.fill: parent
                             color: networkList.currentIndex === delegateRoot.index ? "#264f78"
-                                 : nwMouse.containsMouse ? "#333" : "transparent"
+                                 : rowMouse.containsMouse ? "#333" : "transparent"
                             opacity: (networkList.dragFromIndex === delegateRoot.index) ? 0.4 : 1.0
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                // Drag handle
-                                Text {
-                                    text: "⠿"
-                                    color: "#666"
-                                    font.pixelSize: 14
-                                    Layout.preferredWidth: 16
-                                    MouseArea {
-                                        id: dragArea
-                                        anchors.fill: parent
-                                        cursorShape: Qt.OpenHandCursor
-                                        drag.target: dragProxy
-                                        drag.axis: Drag.YAxis
-
-                                        property bool held: false
-
-                                        onPressed: function(mouse) {
-                                            held = true
-                                            networkList.dragFromIndex = delegateRoot.index
-                                            dragProxy.text = delegateRoot.network
-                                            dragProxy.y = delegateRoot.mapToItem(networkList, 0, 0).y
-                                            dragProxy.visible = true
-                                            cursorShape = Qt.ClosedHandCursor
-                                        }
-                                        onReleased: function(mouse) {
-                                            if (held && networkList.dragFromIndex >= 0 && networkList.dropToIndex >= 0
-                                                && networkList.dragFromIndex !== networkList.dropToIndex) {
-                                                networkModel.move(networkList.dragFromIndex, networkList.dropToIndex, 1)
-                                                networkList.currentIndex = networkList.dropToIndex
-                                                dlg.saveNetworks()
-                                            }
-                                            held = false
-                                            networkList.dragFromIndex = -1
-                                            networkList.dropToIndex = -1
-                                            dragProxy.visible = false
-                                            cursorShape = Qt.OpenHandCursor
-                                        }
-                                        onPositionChanged: function(mouse) {
-                                            if (!held) return
-                                            var posInList = dragArea.mapToItem(networkList, mouse.x, mouse.y)
-                                            var targetIdx = Math.floor(posInList.y / 28)
-                                            targetIdx = Math.max(0, Math.min(targetIdx, networkModel.count - 1))
-                                            networkList.dropToIndex = targetIdx
-                                        }
-                                    }
-                                }
-                                Text { text: delegateRoot.network; color: "#ddd"; font.pixelSize: 12; Layout.fillWidth: true }
-                                Text { text: delegateRoot.server + ":" + delegateRoot.port; color: "#888"; font.pixelSize: 11 }
-                                Text { text: delegateRoot.ssl ? "🔒" : ""; font.pixelSize: 11; Layout.preferredWidth: 16 }
-                            }
                         }
+
+                        // Click area covers the full row but sits below the drag handle
                         MouseArea {
-                            id: nwMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            // Don't intercept the drag handle
-                            propagateComposedEvents: true
+                            id: rowMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            z: 1
                             onClicked: networkList.currentIndex = delegateRoot.index
                             onDoubleClicked: { networkList.currentIndex = delegateRoot.index; connectBtn.clicked() }
+                        }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            z: 2
+
+                            // Drag handle — sits on top of rowMouse
+                            Text {
+                                text: "\u2807"
+                                color: "#888"
+                                font.pixelSize: 16
+                                Layout.preferredWidth: 18
+                                verticalAlignment: Text.AlignVCenter
+
+                                MouseArea {
+                                    id: dragArea
+                                    anchors.fill: parent
+                                    cursorShape: Qt.OpenHandCursor
+                                    preventStealing: true
+
+                                    property bool held: false
+                                    property real startY: 0
+
+                                    onPressed: function(mouse) {
+                                        held = true
+                                        startY = mouse.y
+                                        networkList.dragFromIndex = delegateRoot.index
+                                        networkList.currentIndex = delegateRoot.index
+                                        dragProxy.text = delegateRoot.network
+                                        dragProxy.y = delegateRoot.mapToItem(networkList, 0, 0).y
+                                        dragProxy.visible = true
+                                        cursorShape = Qt.ClosedHandCursor
+                                    }
+                                    onReleased: function(mouse) {
+                                        if (held && networkList.dragFromIndex >= 0 && networkList.dropToIndex >= 0
+                                            && networkList.dragFromIndex !== networkList.dropToIndex) {
+                                            networkModel.move(networkList.dragFromIndex, networkList.dropToIndex, 1)
+                                            networkList.currentIndex = networkList.dropToIndex
+                                            dlg.saveNetworks()
+                                        }
+                                        held = false
+                                        networkList.dragFromIndex = -1
+                                        networkList.dropToIndex = -1
+                                        dragProxy.visible = false
+                                        cursorShape = Qt.OpenHandCursor
+                                    }
+                                    onPositionChanged: function(mouse) {
+                                        if (!held) return
+                                        var posInList = dragArea.mapToItem(networkList, mouse.x, mouse.y)
+                                        dragProxy.y = posInList.y - 13
+                                        var targetIdx = Math.floor(posInList.y / 28)
+                                        targetIdx = Math.max(0, Math.min(targetIdx, networkModel.count - 1))
+                                        networkList.dropToIndex = targetIdx
+                                    }
+                                }
+                            }
+                            Text { text: delegateRoot.network; color: "#ddd"; font.pixelSize: 12; Layout.fillWidth: true }
+                            Text { text: delegateRoot.server + ":" + delegateRoot.port; color: "#888"; font.pixelSize: 11 }
+                            Text { text: delegateRoot.ssl ? "\uD83D\uDD12" : ""; font.pixelSize: 11; Layout.preferredWidth: 16 }
                         }
                     }
 

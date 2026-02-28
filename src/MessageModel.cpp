@@ -215,24 +215,21 @@ QString MessageModel::ircToHtml(const QString &text) {
 
   bool bold = false, italic = false, underline = false, strikethrough = false;
   QString fgColor, bgColor;
-  int openSpans = 0;
+  int openFonts = 0;
 
-  auto closeAllSpans = [&]() {
-    for (int s = 0; s < openSpans; s++)
-      result += "</span>";
-    openSpans = 0;
+  auto closeAllFonts = [&]() {
+    for (int s = 0; s < openFonts; s++)
+      result += "</font>";
+    openFonts = 0;
   };
 
-  auto openColorSpan = [&]() {
+  auto openColorFont = [&]() {
     if (fgColor.isEmpty() && bgColor.isEmpty())
       return;
-    result += "<span style=\"";
-    if (!fgColor.isEmpty())
-      result += "color:" + fgColor + ";";
-    if (!bgColor.isEmpty())
-      result += "background-color:" + bgColor + ";";
-    result += "\">";
-    openSpans++;
+    if (!fgColor.isEmpty()) {
+      result += "<font color=\"" + fgColor + "\">";
+      openFonts++;
+    }
   };
 
   int i = 0;
@@ -270,14 +267,14 @@ QString MessageModel::ircToHtml(const QString &text) {
       strikethrough = !strikethrough;
       i++;
     } else if (code == 0x16) { // Reverse — swap fg/bg
-      closeAllSpans();
+      closeAllFonts();
       std::swap(fgColor, bgColor);
       if (fgColor.isEmpty() && !bgColor.isEmpty())
         fgColor = "#000000";
-      openColorSpan();
+      openColorFont();
       i++;
     } else if (code == 0x0F) { // Reset
-      closeAllSpans();
+      closeAllFonts();
       if (bold) {
         result += "</b>";
         bold = false;
@@ -299,7 +296,7 @@ QString MessageModel::ircToHtml(const QString &text) {
       i++;
     } else if (code == 0x03) { // Color: \x03FG[,BG]
       i++;                     // skip \x03
-      closeAllSpans();
+      closeAllFonts();
 
       // Parse foreground color number (1-2 digits)
       int fg = -1, bg = -1;
@@ -333,10 +330,10 @@ QString MessageModel::ircToHtml(const QString &text) {
         fgColor.clear();
         bgColor.clear();
       }
-      openColorSpan();
+      openColorFont();
     } else if (code == 0x04) { // Hex color: \x04RRGGBB[,RRGGBB]
       i++;                     // skip \x04
-      closeAllSpans();
+      closeAllFonts();
       // Parse 6-char hex fg
       if (i + 5 < len) {
         bool ok;
@@ -358,7 +355,7 @@ QString MessageModel::ircToHtml(const QString &text) {
           }
         }
       }
-      openColorSpan();
+      openColorFont();
     } else if (code == 0x11) { // Monospace
       // Not widely used; skip the control char
       i++;
@@ -369,7 +366,7 @@ QString MessageModel::ircToHtml(const QString &text) {
   }
 
   // Close remaining tags
-  closeAllSpans();
+  closeAllFonts();
   if (bold)
     result += "</b>";
   if (italic)
@@ -430,8 +427,7 @@ QString MessageModel::linkifyUrls(const QString &html) {
 
     // For video URLs, add a label
     if (ImageDownloader::isVideoUrl(href)) {
-      result += QStringLiteral(
-          " <span style=\"color:#4fc3f7;\">&#9654; Video</span>");
+      result += QStringLiteral(" <font color=\"#4fc3f7\">&#9654; Video</font>");
     }
 
     lastPos = m.capturedStart(1) + url.length();
@@ -525,17 +521,28 @@ QString MessageModel::nickColor(const QString &nick) {
 // Also handles action lines: "* nick ..." at the start.
 QString MessageModel::colorizeNicks(const QString &html) {
   // Match: &lt;[prefix]nick&gt; — the < > are HTML-escaped by ircToHtml
+  // The nick part must NOT contain < or > (which would indicate we're
+  // spanning across HTML tags from mIRC color wrapping)
   static const QRegularExpression nickRe(
-      QStringLiteral("&lt;([~&amp;@%+]*)([^&]+?)&gt;"));
+      QStringLiteral("&lt;([~&amp;@%+]*)([^&<>]+?)&gt;"));
 
   QString result;
   result.reserve(html.size() + 256);
   int lastPos = 0;
-  bool firstMatch = true;
 
   auto it = nickRe.globalMatch(html);
   while (it.hasNext()) {
     auto m = it.next();
+
+    // Extra safety: if the matched region contains any HTML tags, skip it
+    QString matched = m.captured(0);
+    if (matched.contains(QLatin1Char('<')) ||
+        matched.contains(QLatin1Char('>'))) {
+      result += html.mid(lastPos, m.capturedEnd() - lastPos);
+      lastPos = m.capturedEnd();
+      continue;
+    }
+
     result += html.mid(lastPos, m.capturedStart() - lastPos);
 
     QString prefix = m.captured(1);
@@ -552,7 +559,6 @@ QString MessageModel::colorizeNicks(const QString &html) {
               QStringLiteral("&gt;");
 
     lastPos = m.capturedEnd();
-    firstMatch = false;
   }
   result += html.mid(lastPos);
 
@@ -591,20 +597,18 @@ QString MessageModel::formatLine(const Message &msg) {
   if (msg.type == QLatin1String("embed"))
     return msg.text;
 
-  QString ts = QStringLiteral("<span style=\"color:#888;\">[") +
+  QString ts = QStringLiteral("<font color=\"#888888\">[") +
                msg.timestamp.toString(QStringLiteral("hh:mm:ss")) +
-               QStringLiteral("]</span> ");
+               QStringLiteral("]</font> ");
   QString prefix;
   if (msg.type == QLatin1String("system"))
-    prefix = QStringLiteral("<span style=\"color:#888;\">*** </span>");
+    prefix = QStringLiteral("<font color=\"#888888\">*** </font>");
   else if (msg.type == QLatin1String("action"))
-    prefix = QStringLiteral("<span style=\"color:#ce9178;\">* </span>");
+    prefix = QStringLiteral("<font color=\"#ce9178\">* </font>");
   else if (msg.type == QLatin1String("error"))
-    prefix = QStringLiteral("<span style=\"color:#f44747;\">! </span>");
+    prefix = QStringLiteral("<font color=\"#f44747\">! </font>");
 
-  return QStringLiteral("<p style=\"margin:0;\">") + ts + prefix +
-         linkifyUrls(colorizeNicks(ircToHtml(msg.text))) +
-         QStringLiteral("</p>");
+  return ts + prefix + linkifyUrls(colorizeNicks(ircToHtml(msg.text)));
 }
 
 QString MessageModel::allFormattedText() const {

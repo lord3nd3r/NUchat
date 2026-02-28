@@ -1046,7 +1046,7 @@ ApplicationWindow {
                         width: parent.width - 16
                         x: 8
                         y: 1
-                        text: model.text ? msgModel.formatLineFromQml(model.text, model.type, model.timestamp) : ""
+                        text: model.formattedText || ""
                         textFormat: Text.RichText
                         wrapMode: Text.Wrap
                         color: theme.textPrimary

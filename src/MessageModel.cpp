@@ -26,6 +26,8 @@ QVariant MessageModel::data(const QModelIndex &index, int role) const {
     return msg.text;
   case TimestampRole:
     return msg.timestamp.toString(Qt::ISODate);
+  case FormattedTextRole:
+    return msg.formattedText;
   default:
     return {};
   }
@@ -36,6 +38,7 @@ QHash<int, QByteArray> MessageModel::roleNames() const {
   roles[TypeRole] = "type";
   roles[TextRole] = "text";
   roles[TimestampRole] = "timestamp";
+  roles[FormattedTextRole] = "formattedText";
   return roles;
 }
 
@@ -45,6 +48,7 @@ void MessageModel::addMessage(const QString &type, const QString &text) {
   msg.type = type;
   msg.text = text;
   msg.timestamp = QDateTime::currentDateTime();
+  msg.formattedText = formatLine(msg); // pre-render HTML once
   m_messages.append(msg);
   endInsertRows();
   emit messageAdded(formatLine(msg));

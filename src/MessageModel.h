@@ -9,12 +9,18 @@ class ImageDownloader;
 class MessageModel : public QAbstractListModel {
   Q_OBJECT
 public:
-  enum Roles { TypeRole = Qt::UserRole + 1, TextRole, TimestampRole };
+  enum Roles {
+    TypeRole = Qt::UserRole + 1,
+    TextRole,
+    TimestampRole,
+    FormattedTextRole
+  };
   Q_ENUM(Roles)
 
   struct Message {
-    QString text;
-    QString type; // "system", "chat", "action", "error", "embed"
+    QString text;          // raw IRC text
+    QString formattedText; // pre-rendered HTML for display
+    QString type;          // "system", "chat", "action", "error", "embed"
     QDateTime timestamp;
   };
 

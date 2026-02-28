@@ -1110,7 +1110,7 @@ ApplicationWindow {
                     anchors.margins: 4
                     spacing: 4
 
-                    TextField {
+                    TextArea {
                         id: messageInput
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -1122,18 +1122,67 @@ ApplicationWindow {
                         font.family: root.prefFontFamily
                         font.pixelSize: root.prefFontSize
                         enabled: currentChannel !== "" || currentServer !== ""
+                        wrapMode: TextEdit.NoWrap
                         background: Rectangle {
                             color: theme.inputBg
                             border.color: messageInput.activeFocus ? theme.inputBorderFocus : theme.inputBorder
                             border.width: 1
                             radius: 3
                         }
-                        onAccepted: sendMessage()
+                        
+                        Keys.onPressed: function(event) {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                if (event.modifiers === Qt.NoModifier || event.modifiers === Qt.KeypadModifier) {
+                                    event.accepted = true
+                                    sendMessage()
+                                }
+                            }
+                        }
+
+                        property var currentMisspelledWordInfo: null
+                        property var spellCheckerObj: null
 
                         TapHandler {
                             acceptedButtons: Qt.RightButton
-                            onTapped: {
+                            onTapped: function(eventPoint) {
+                                messageInput.currentMisspelledWordInfo = null;
+                                suggestionsInstantiator.model = [];
+                                
+                                if (messageInput.spellCheckerObj) {
+                                    var pos = messageInput.positionAt(eventPoint.position.x, eventPoint.position.y);
+                                    var txt = messageInput.text;
+                                    var start = pos;
+                                    while (start > 0 && txt.charAt(start - 1).match(/[a-zA-Z]/)) start--;
+                                    var end = pos;
+                                    while (end < txt.length && txt.charAt(end).match(/[a-zA-Z]/)) end++;
+                                    if (start < end) {
+                                        var word = txt.substring(start, end);
+                                        if (!messageInput.spellCheckerObj.isCorrect(word)) {
+                                            messageInput.currentMisspelledWordInfo = { start: start, end: end };
+                                            var sugs = messageInput.spellCheckerObj.suggestions(word);
+                                            sugs = sugs.slice(0, 5); // limit to 5 suggestions
+                                            if (sugs.length === 0) sugs = ["(No spelling suggestions)"];
+                                            suggestionsInstantiator.model = sugs;
+                                        }
+                                    }
+                                }
                                 inputContextMenu.popup()
+                            }
+                        }
+
+                        // Use a Loader to load SpellHighlighter conditionally
+                        Loader {
+                            active: appSettings.value("input/spellCheck", true) === true || appSettings.value("input/spellCheck", true) === "true"
+                            sourceComponent: Component {
+                                Item {
+                                    property var spellCheckFactory: Qt.createQmlObject('import QtQuick 2.15; import NUchat 1.0; SpellHighlighter { spellChecker: SpellChecker {} enabled: true }', messageInput, "SpellHighlighterLoader")
+                                    Component.onCompleted: {
+                                        if (spellCheckFactory) {
+                                            spellCheckFactory.textDocument = messageInput.textDocument
+                                            messageInput.spellCheckerObj = spellCheckFactory.spellChecker;
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -1143,6 +1192,27 @@ ApplicationWindow {
                             palette.text: theme.menuText
                             palette.highlight: theme.menuHighlight
                             palette.highlightedText: theme.menuHighlightText
+
+                            Instantiator {
+                                id: suggestionsInstantiator
+                                model: []
+                                delegate: MenuItem {
+                                    text: modelData
+                                    font.bold: true
+                                    enabled: modelData !== "(No spelling suggestions)"
+                                    onTriggered: {
+                                        var wordInfo = messageInput.currentMisspelledWordInfo;
+                                        if (wordInfo) {
+                                            messageInput.remove(wordInfo.start, wordInfo.end);
+                                            messageInput.insert(wordInfo.start, modelData);
+                                        }
+                                    }
+                                }
+                                onObjectAdded: function(index, object) { inputContextMenu.insertItem(index, object) }
+                                onObjectRemoved: function(index, object) { inputContextMenu.removeItem(object) }
+                            }
+
+                            MenuSeparator { visible: suggestionsInstantiator.model.length > 0 }
 
                             Action { text: "Cut"; enabled: messageInput.selectedText.length > 0; onTriggered: messageInput.cut() }
                             Action { text: "Copy"; enabled: messageInput.selectedText.length > 0; onTriggered: messageInput.copy() }

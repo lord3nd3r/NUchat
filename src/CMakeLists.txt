@@ -14,6 +14,8 @@ set(CORE_SRC
     MessageModel.cpp
     ScriptManager.cpp
     ImageDownloader.cpp
+    SpellChecker.cpp
+    SpellHighlighter.cpp
 )
 
 set(CORE_HEADERS
@@ -30,7 +32,15 @@ set(CORE_HEADERS
     MessageModel.h
     ScriptManager.h
     ImageDownloader.h
+    SpellChecker.h
+    SpellHighlighter.h
 )
+
+include(FindPkgConfig)
+pkg_check_modules(HUNSPELL hunspell)
+if(NOT HUNSPELL_FOUND)
+    message(WARNING "hunspell library not found; spell checking disabled.")
+endif()
 
 # Python scripting engine (optional, requires Python3 dev)
 if(Python3_FOUND)
@@ -57,6 +67,15 @@ target_link_libraries(nuchatcore PRIVATE
     Qt6::Gui
     Qt6::Widgets
 )
+
+if(HUNSPELL_FOUND)
+    target_include_directories(nuchatcore PRIVATE ${HUNSPELL_INCLUDE_DIRS})
+    target_link_libraries(nuchatcore PRIVATE ${HUNSPELL_LIBRARIES})
+    target_compile_definitions(nuchatcore PRIVATE HAVE_HUNSPELL=1)
+    if(Qt6Quick_FOUND)
+        target_link_libraries(nuchatcore PRIVATE Qt6::Quick)
+    endif()
+endif()
 
 if(Python3_FOUND)
     target_include_directories(nuchatcore PRIVATE ${Python3_INCLUDE_DIRS})

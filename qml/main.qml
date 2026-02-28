@@ -11,7 +11,14 @@ ApplicationWindow {
     height: appSettings.value("window/height", 650)
     x: appSettings.value("window/x", (Screen.width - width) / 2)
     y: appSettings.value("window/y", (Screen.height - height) / 2)
-    title: "NUchat"
+    title: {
+        if (currentChannel === "" || currentChannel === currentServer)
+            return "NUchat"
+        var t = "NUchat: " + currentChannel + " on " + currentServer
+        if (channelTopic)
+            t += " — " + channelTopic
+        return t
+    }
     color: theme.windowBg
 
     // ── Theme Manager ──

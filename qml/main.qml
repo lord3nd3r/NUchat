@@ -1131,6 +1131,8 @@ ApplicationWindow {
                         property string tabPrefix: ""
                         property int tabIndex: -1
                         property var tabMatches: []
+                        property int tabWordStart: -1
+                        property string tabInserted: ""
 
                         Keys.onTabPressed: function(event) {
                             event.accepted = true
@@ -1138,15 +1140,22 @@ ApplicationWindow {
                             var txt = messageInput.text
                             var curPos = messageInput.cursorPosition
 
-                            // Find the word being typed
-                            var before = txt.substring(0, curPos)
-                            var wordStart = before.lastIndexOf(' ') + 1
-                            var partial = before.substring(wordStart)
-                            if (partial === "") return
+                            var isCycling = false;
+                            if (messageInput.tabMatches.length > 0 && messageInput.tabWordStart >= 0 && messageInput.tabWordStart <= curPos) {
+                                var expectedText = txt.substring(messageInput.tabWordStart, curPos);
+                                if (expectedText === messageInput.tabInserted) {
+                                    isCycling = true;
+                                }
+                            }
 
-                            // If this is a new tab cycle, build match list
-                            if (messageInput.tabPrefix !== partial || messageInput.tabMatches.length === 0) {
+                            if (!isCycling) {
+                                var before = txt.substring(0, curPos)
+                                var wordStart = before.lastIndexOf(' ') + 1
+                                var partial = before.substring(wordStart)
+                                if (partial === "") return
+
                                 messageInput.tabPrefix = partial
+                                messageInput.tabWordStart = wordStart
                                 messageInput.tabIndex = 0
                                 var matches = []
                                 var lp = partial.toLowerCase()
@@ -1162,20 +1171,22 @@ ApplicationWindow {
 
                             if (messageInput.tabMatches.length === 0) return
                             var completion = messageInput.tabMatches[messageInput.tabIndex]
-                            var suffix = (wordStart === 0) ? ": " : " "
+                            var suffix = (messageInput.tabWordStart === 0) ? ": " : " "
+                            messageInput.tabInserted = completion + suffix
+                            
                             var after = txt.substring(curPos)
-                            messageInput.text = txt.substring(0, wordStart) + completion + suffix + after
-                            messageInput.cursorPosition = wordStart + completion.length + suffix.length
-                            // Update tabPrefix to the completed nick so next tab cycles
-                            messageInput.tabPrefix = completion
+                            messageInput.text = txt.substring(0, messageInput.tabWordStart) + messageInput.tabInserted + after
+                            messageInput.cursorPosition = messageInput.tabWordStart + messageInput.tabInserted.length
                         }
 
                         Keys.onPressed: function(event) {
                             // Reset tab completion on non-Tab keys
-                            if (event.key !== Qt.Key_Tab && event.key !== Qt.Key_Up && event.key !== Qt.Key_Down) {
+                            if (event.key !== Qt.Key_Tab && event.key !== Qt.Key_Up && event.key !== Qt.Key_Down && event.key !== Qt.Key_Shift) {
                                 messageInput.tabPrefix = ""
                                 messageInput.tabMatches = []
                                 messageInput.tabIndex = -1
+                                messageInput.tabWordStart = -1
+                                messageInput.tabInserted = ""
                             }
                             // Up arrow: browse history backwards
                             if (event.key === Qt.Key_Up) {

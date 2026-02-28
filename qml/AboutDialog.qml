@@ -21,7 +21,7 @@ Dialog {
             Layout.alignment: Qt.AlignHCenter
         }
         Text {
-            text: "Version 0.1.0-dev"
+            text: "Version " + appVersion
             color: "#aaa"; font.pixelSize: 13
             Layout.alignment: Qt.AlignHCenter
         }

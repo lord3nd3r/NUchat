@@ -3,6 +3,7 @@
 #include "MessageModel.h"
 #include "ServerChannelModel.h"
 #include "Logger.h"
+#include "Version.h"
 #include <QDebug>
 #include <QDateTime>
 #include <QSysInfo>
@@ -1245,7 +1246,7 @@ QString IRCConnectionManager::gatherSysInfo()
     parts << "Qt: " + QString::fromLatin1(qVersion());
 
     // NUchat version
-    parts << "NUchat 1.0.0";
+    parts << "NUchat " NUCHAT_VERSION;
 
     return "SysInfo: " + parts.join(" | ");
 }

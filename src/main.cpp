@@ -16,6 +16,7 @@
 #include "IrcConnection.h"
 #include "ImageDownloader.h"
 #include "Logger.h"
+#include "Version.h"
 #ifdef HAVE_PYTHON
 #include "PythonScriptEngine.h"
 #endif
@@ -25,7 +26,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setOrganizationName("NUchat");
     app.setApplicationName("NUchat");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion(NUCHAT_VERSION);
     app.setDesktopFileName("nuchat");
     app.setWindowIcon(QIcon(":/icons/nuchat.svg"));
 
@@ -85,6 +86,7 @@ int main(int argc, char *argv[])
 #endif
     engine.rootContext()->setContextProperty("appSettings", &appSettings);
     engine.rootContext()->setContextProperty("imgDownloader", ImageDownloader::instance());
+    engine.rootContext()->setContextProperty("appVersion", QString(NUCHAT_VERSION));
 #endif
 
     // load plugins from build/plugins (or install directory)

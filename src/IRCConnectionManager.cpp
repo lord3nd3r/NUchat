@@ -1186,9 +1186,9 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         // ── WHOIS replies (311–319, 330, 338, 378, 671) ──
         if (code == 311) {
           // RPL_WHOISUSER: <nick> <user> <host> * :<realname>
-          QString nick = params.value(1);
-          QString user = params.value(2);
-          QString host = params.value(3);
+          QString nick = params.value(0);
+          QString user = params.value(1);
+          QString host = params.value(2);
           QString text =
               "[WHOIS] " + nick + " (" + user + "@" + host + ") : " + trailing;
           if (m_msgModel)
@@ -1198,8 +1198,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                           "system", text);
         } else if (code == 312) {
           // RPL_WHOISSERVER: <nick> <server> :<server info>
-          QString nick = params.value(1);
-          QString server = params.value(2);
+          QString nick = params.value(0);
+          QString server = params.value(1);
           QString text = "[WHOIS] " + nick + " using server " + server + " (" +
                          trailing + ")";
           if (m_msgModel)
@@ -1209,7 +1209,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                           "system", text);
         } else if (code == 313) {
           // RPL_WHOISOPERATOR
-          QString nick = params.value(1);
+          QString nick = params.value(0);
           QString text = "[WHOIS] " + nick + " " + trailing;
           if (m_msgModel)
             m_msgModel->addMessage("system", text);
@@ -1218,8 +1218,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                           "system", text);
         } else if (code == 317) {
           // RPL_WHOISIDLE: <nick> <seconds> <signon> :seconds idle, signon time
-          QString nick = params.value(1);
-          int idleSecs = params.value(2).toInt();
+          QString nick = params.value(0);
+          int idleSecs = params.value(1).toInt();
           int d = idleSecs / 86400, h = (idleSecs % 86400) / 3600,
               m = (idleSecs % 3600) / 60, s = idleSecs % 60;
           QString idle;
@@ -1231,8 +1231,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             idle += QString::number(m) + "m ";
           idle += QString::number(s) + "s";
           QString signonTime;
-          if (params.size() > 3) {
-            qint64 ts = params.value(3).toLongLong();
+          if (params.size() > 2) {
+            qint64 ts = params.value(2).toLongLong();
             signonTime = QDateTime::fromSecsSinceEpoch(ts).toString(
                 "yyyy-MM-dd hh:mm:ss");
           }
@@ -1246,7 +1246,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                           "system", text);
         } else if (code == 318) {
           // RPL_ENDOFWHOIS
-          QString nick = params.value(1);
+          QString nick = params.value(0);
           QString text = "[WHOIS] End of WHOIS for " + nick;
           if (m_msgModel)
             m_msgModel->addMessage("system", text);
@@ -1255,7 +1255,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                           "system", text);
         } else if (code == 319) {
           // RPL_WHOISCHANNELS: <nick> :<channels>
-          QString nick = params.value(1);
+          QString nick = params.value(0);
           QString text = "[WHOIS] " + nick + " channels: " + trailing;
           if (m_msgModel)
             m_msgModel->addMessage("system", text);
@@ -1264,8 +1264,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                           "system", text);
         } else if (code == 330) {
           // RPL_WHOISACCOUNT: <nick> <account> :is logged in as
-          QString nick = params.value(1);
-          QString acct = params.value(2);
+          QString nick = params.value(0);
+          QString acct = params.value(1);
           QString text = "[WHOIS] " + nick + " " + trailing + " " + acct;
           if (m_msgModel)
             m_msgModel->addMessage("system", text);
@@ -1274,8 +1274,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                           "system", text);
         } else if (code == 338) {
           // RPL_WHOISACTUALLY: <nick> <ip> :actually using host
-          QString nick = params.value(1);
-          QString ip = params.value(2);
+          QString nick = params.value(0);
+          QString ip = params.value(1);
           QString text = "[WHOIS] " + nick + " actually using host " + ip;
           if (m_msgModel)
             m_msgModel->addMessage("system", text);
@@ -1284,7 +1284,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                           "system", text);
         } else if (code == 378) {
           // RPL_WHOISHOST: connecting from
-          QString nick = params.value(1);
+          QString nick = params.value(0);
           QString text = "[WHOIS] " + nick + " " + trailing;
           if (m_msgModel)
             m_msgModel->addMessage("system", text);
@@ -1293,7 +1293,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                           "system", text);
         } else if (code == 671) {
           // RPL_WHOISSECURE
-          QString nick = params.value(1);
+          QString nick = params.value(0);
           QString text = "[WHOIS] " + nick + " " + trailing;
           if (m_msgModel)
             m_msgModel->addMessage("system", text);

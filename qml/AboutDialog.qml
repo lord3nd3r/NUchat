@@ -40,7 +40,7 @@ Dialog {
             Layout.fillWidth: true
         }
         Text {
-            text: "Features: SASL authentication, SSL/TLS,\nmultiple server support, DCC transfers,\nplugin system, scriptable via JavaScript."
+            text: "Features: SASL authentication, SSL/TLS,\nmultiple server support, DCC transfers,\nplugin system, scriptable via Python."
             color: "#aaa"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
             Layout.fillWidth: true; wrapMode: Text.Wrap
         }

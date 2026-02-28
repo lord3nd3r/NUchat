@@ -21,10 +21,18 @@ ApplicationWindow {
             var saved = appSettings.value("ui/themeIndex", 0)
             if (saved >= 0 && saved < themes.length)
                 setTheme(saved)
+            updateNickDarkMode()
         }
         onCurrentThemeIndexChanged: {
             appSettings.setValue("ui/themeIndex", currentThemeIndex)
             appSettings.sync()
+            updateNickDarkMode()
+        }
+        function updateNickDarkMode() {
+            // Compute perceived brightness of chatBg (0-255 scale)
+            var c = chatBg
+            var lum = c.r * 0.299 + c.g * 0.587 + c.b * 0.114
+            msgModel.setDarkMode(lum < 0.5)
         }
     }
 

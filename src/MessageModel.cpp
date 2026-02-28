@@ -372,8 +372,8 @@ void MessageModel::onImageReady(const QString &url, const QString &localPath,
 }
 
 // ── Nick colorization ──
-// 16 distinct, readable nick colors for dark backgrounds (HexChat-style palette)
-static const char *nickColorPalette[] = {
+// 16 distinct nick colors – dark palette (bright on dark bg)
+static const char *nickPaletteDark[] = {
     "#c678dd",  // purple
     "#e06c75",  // red
     "#98c379",  // green
@@ -391,7 +391,32 @@ static const char *nickColorPalette[] = {
     "#69ff94",  // mint
     "#f1fa8c",  // light yellow
 };
+// 16 distinct nick colors – light palette (dark/saturated on light bg)
+static const char *nickPaletteLight[] = {
+    "#7b2fa0",  // purple
+    "#b5182e",  // red
+    "#3a7d1a",  // green
+    "#9e7c16",  // dark yellow
+    "#1a5fb4",  // blue
+    "#1a8a7d",  // teal
+    "#8b2d1a",  // dark red
+    "#a85600",  // orange
+    "#c4246e",  // pink
+    "#1d8348",  // forest green
+    "#0e6f87",  // dark cyan
+    "#6a3daa",  // dark lavender
+    "#b46a00",  // dark orange
+    "#cc2222",  // bright red
+    "#127a3a",  // dark mint
+    "#887a09",  // olive
+};
 static const int nickColorCount = 16;
+static bool s_darkMode = true;
+
+void MessageModel::setDarkMode(bool dark)
+{
+    s_darkMode = dark;
+}
 
 QString MessageModel::nickColor(const QString &nick)
 {
@@ -399,7 +424,8 @@ QString MessageModel::nickColor(const QString &nick)
     uint hash = 5381;
     for (const QChar &c : nick)
         hash = ((hash << 5) + hash) + c.toLower().unicode();
-    return QString::fromLatin1(nickColorPalette[hash % nickColorCount]);
+    const char **palette = s_darkMode ? nickPaletteDark : nickPaletteLight;
+    return QString::fromLatin1(palette[hash % nickColorCount]);
 }
 
 // Finds <nick> and <@nick> patterns in HTML-escaped text and wraps them

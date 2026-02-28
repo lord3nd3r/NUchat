@@ -28,6 +28,7 @@ public:
     Q_INVOKABLE void addMessage(const QString &type, const QString &text);
     Q_INVOKABLE void clear();
     Q_INVOKABLE QString allFormattedText() const;
+    Q_INVOKABLE void setDarkMode(bool dark);
     static QString ircToHtml(const QString &text);
 
 signals:

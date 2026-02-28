@@ -15,8 +15,11 @@ ApplicationWindow {
         if (currentChannel === "" || currentChannel === currentServer)
             return "NUchat"
         var t = "NUchat: " + currentChannel + " on " + currentServer
-        if (channelTopic)
-            t += " — " + channelTopic
+        if (channelTopic) {
+            // Strip HTML tags then IRC control codes (\x02 bold, \x03 color, \x0F reset, \x1D italic, \x1F underline, \x16 reverse)
+            var plain = channelTopic.replace(/<[^>]*>/g, '').replace(/[\x02\x03\x0F\x1D\x1F\x16](\d{1,2}(,\d{1,2})?)?/g, '')
+            if (plain.trim()) t += " \u2014 " + plain.trim()
+        }
         return t
     }
     color: theme.windowBg
@@ -58,7 +61,16 @@ ApplicationWindow {
     property string pendingAutoJoin: ""
     property string channelTopic: ircManager.channelTopic
     property var channelUsers: ircManager.channelUsers
-    property string selectedNick: ""  // currently selected nick from nick list
+    property var selectedNicks: []       // multi-select nick list (bare nicks, no prefix)
+    property int lastClickedNickIndex: -1  // for shift-click range select
+    property string selectedNick: selectedNicks.length > 0 ? selectedNicks[0] : ""  // compat: first selected
+
+    // Helper: run a command for each selected nick
+    function forEachSelectedNick(callback) {
+        for (var i = 0; i < selectedNicks.length; i++) callback(selectedNicks[i])
+    }
+    // Helper: strip prefix from nick entry
+    function bareNick(entry) { return entry.replace(/^[@%+~&]/, '') }
 
     // Helper: simulate sidebar click at index
     function sidebarClickAt(idx) {
@@ -234,17 +246,17 @@ ApplicationWindow {
             Action { text: "Save Buffer...";          onTriggered: msgModel.addMessage("system", "Buffer save not yet implemented") }
             MenuSeparator {}
             Action { text: "Invite User...";          onTriggered: inviteDialog.open() }
-            Action { text: "Op User";                 onTriggered: { if (currentChannel !== "" && selectedNick !== "") ircManager.sendRawCommand("MODE " + currentChannel + " +o " + selectedNick) } }
-            Action { text: "DeOp User";               onTriggered: { if (currentChannel !== "" && selectedNick !== "") ircManager.sendRawCommand("MODE " + currentChannel + " -o " + selectedNick) } }
-            Action { text: "Voice User";              onTriggered: { if (currentChannel !== "" && selectedNick !== "") ircManager.sendRawCommand("MODE " + currentChannel + " +v " + selectedNick) } }
-            Action { text: "DeVoice User";            onTriggered: { if (currentChannel !== "" && selectedNick !== "") ircManager.sendRawCommand("MODE " + currentChannel + " -v " + selectedNick) } }
-            Action { text: "Kick User...";            onTriggered: { if (currentChannel !== "" && selectedNick !== "") ircManager.sendRawCommand("KICK " + currentChannel + " " + selectedNick + " :Kicked") } }
-            Action { text: "Ban User...";             onTriggered: { if (currentChannel !== "" && selectedNick !== "") ircManager.sendRawCommand("MODE " + currentChannel + " +b " + selectedNick + "!*@*") } }
+            Action { text: "Op User";                 onTriggered: { if (currentChannel !== "") forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +o " + n) }) } }
+            Action { text: "DeOp User";               onTriggered: { if (currentChannel !== "") forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -o " + n) }) } }
+            Action { text: "Voice User";              onTriggered: { if (currentChannel !== "") forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +v " + n) }) } }
+            Action { text: "DeVoice User";            onTriggered: { if (currentChannel !== "") forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -v " + n) }) } }
+            Action { text: "Kick User...";            onTriggered: { if (currentChannel !== "") forEachSelectedNick(function(n) { ircManager.sendRawCommand("KICK " + currentChannel + " " + n + " :Kicked") }) } }
+            Action { text: "Ban User...";             onTriggered: { if (currentChannel !== "") forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*") }) } }
             Action { text: "Kick+Ban...";             onTriggered: {
-                    if (currentChannel !== "" && selectedNick !== "") {
-                        ircManager.sendRawCommand("MODE " + currentChannel + " +b " + selectedNick + "!*@*")
-                        ircManager.sendRawCommand("KICK " + currentChannel + " " + selectedNick + " :Banned")
-                    }
+                    if (currentChannel !== "") forEachSelectedNick(function(n) {
+                        ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*")
+                        ircManager.sendRawCommand("KICK " + currentChannel + " " + n + " :Banned")
+                    })
                 }
             }
             MenuSeparator {}
@@ -930,7 +942,9 @@ ApplicationWindow {
                         required property string modelData
                         width: nickList.width
                         height: 22
-                        color: nickMouse.containsMouse ? theme.hoverBg : "transparent"
+                        property string bareN: modelData.replace(/^[@%+~&]/, '')
+                        property bool isSelected: root.selectedNicks.indexOf(bareN) !== -1
+                        color: isSelected ? theme.highlight : (nickMouse.containsMouse ? theme.hoverBg : "transparent")
 
                         Text {
                             anchors.left: parent.left
@@ -959,21 +973,48 @@ ApplicationWindow {
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             onClicked: function(mouse) {
                                 if (mouse.button === Qt.LeftButton) {
-                                    var nick = modelData.replace(/^[@%+~&]/, '')
-                                    root.selectedNick = nick
+                                    var nick = bareN
+                                    var sel = root.selectedNicks.slice()
+                                    if (mouse.modifiers & Qt.ControlModifier) {
+                                        // Ctrl+click: toggle this nick
+                                        var idx = sel.indexOf(nick)
+                                        if (idx !== -1) sel.splice(idx, 1); else sel.push(nick)
+                                        root.selectedNicks = sel
+                                    } else if (mouse.modifiers & Qt.ShiftModifier) {
+                                        // Shift+click: range select from last clicked
+                                        var users = channelUsers || []
+                                        var from = root.lastClickedNickIndex
+                                        var to = index
+                                        if (from < 0) from = to
+                                        var lo = Math.min(from, to), hi = Math.max(from, to)
+                                        // keep existing selection from ctrl, add range
+                                        for (var r = lo; r <= hi; r++) {
+                                            var rn = root.bareNick(users[r])
+                                            if (sel.indexOf(rn) === -1) sel.push(rn)
+                                        }
+                                        root.selectedNicks = sel
+                                    } else {
+                                        // Plain click: select only this nick
+                                        root.selectedNicks = [nick]
+                                    }
+                                    root.lastClickedNickIndex = index
                                 }
                             }
                             onPressed: function(mouse) {
                                 if (mouse.button === Qt.RightButton) {
-                                    var nick = modelData.replace(/^[@%+~&]/, '')
-                                    root.selectedNick = nick
+                                    var nick = bareN
+                                    // If right-clicked nick isn't selected, select only it
+                                    if (root.selectedNicks.indexOf(nick) === -1)
+                                        root.selectedNicks = [nick]
+                                    root.lastClickedNickIndex = index
                                     nickContextMenu.targetNick = nick
                                     nickContextMenu.popup()
                                 }
                             }
                             onDoubleClicked: {
-                                var nick = modelData.replace(/^[@%+~&]/, '')
-                                root.selectedNick = nick
+                                var nick = bareN
+                                root.selectedNicks = [nick]
+                                root.lastClickedNickIndex = index
                                 messageInput.text = "/msg " + nick + " "
                                 messageInput.forceActiveFocus()
                             }
@@ -1008,16 +1049,16 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 24
                             text: modelData.label
-                            enabled: root.selectedNick !== "" && currentChannel.startsWith("#")
+                            enabled: root.selectedNicks.length > 0 && currentChannel.startsWith("#")
                             onClicked: {
-                                var nick = root.selectedNick
-                                if (!nick) return
-                                if (modelData.cmd === "kick")
-                                    ircManager.sendRawCommand("KICK " + currentChannel + " " + nick)
-                                else if (modelData.cmd === "ban")
-                                    ircManager.sendRawCommand("MODE " + currentChannel + " +b " + nick + "!*@*")
-                                else
-                                    ircManager.sendRawCommand("MODE " + currentChannel + " " + modelData.cmd + " " + nick)
+                                root.forEachSelectedNick(function(nick) {
+                                    if (modelData.cmd === "kick")
+                                        ircManager.sendRawCommand("KICK " + currentChannel + " " + nick)
+                                    else if (modelData.cmd === "ban")
+                                        ircManager.sendRawCommand("MODE " + currentChannel + " +b " + nick + "!*@*")
+                                    else
+                                        ircManager.sendRawCommand("MODE " + currentChannel + " " + modelData.cmd + " " + nick)
+                                })
                             }
                             background: Rectangle {
                                 color: parent.enabled ? (parent.down ? theme.buttonPressed : theme.buttonBg) : theme.buttonDisabled
@@ -1052,36 +1093,36 @@ ApplicationWindow {
         Action { text: "CTCP Time"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01TIME\x01") }
         Action { text: "CTCP Finger"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01FINGER\x01") }
         MenuSeparator {}
-        Action { text: "Op"; onTriggered: ircManager.sendRawCommand("MODE " + currentChannel + " +o " + nickContextMenu.targetNick) }
-        Action { text: "DeOp"; onTriggered: ircManager.sendRawCommand("MODE " + currentChannel + " -o " + nickContextMenu.targetNick) }
-        Action { text: "HalfOp"; onTriggered: ircManager.sendRawCommand("MODE " + currentChannel + " +h " + nickContextMenu.targetNick) }
-        Action { text: "DeHalfOp"; onTriggered: ircManager.sendRawCommand("MODE " + currentChannel + " -h " + nickContextMenu.targetNick) }
-        Action { text: "Voice"; onTriggered: ircManager.sendRawCommand("MODE " + currentChannel + " +v " + nickContextMenu.targetNick) }
-        Action { text: "DeVoice"; onTriggered: ircManager.sendRawCommand("MODE " + currentChannel + " -v " + nickContextMenu.targetNick) }
+        Action { text: "Op"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +o " + n) }) }
+        Action { text: "DeOp"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -o " + n) }) }
+        Action { text: "HalfOp"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +h " + n) }) }
+        Action { text: "DeHalfOp"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -h " + n) }) }
+        Action { text: "Voice"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +v " + n) }) }
+        Action { text: "DeVoice"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -v " + n) }) }
         MenuSeparator {}
         Action { text: "Invite..."; onTriggered: { inviteNickField.text = nickContextMenu.targetNick; inviteDialog.open() } }
-        Action { text: "Slap"; onTriggered: ircManager.sendMessage(currentChannel, "/me slaps " + nickContextMenu.targetNick + " around a bit with a large trout") }
+        Action { text: "Slap"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendMessage(currentChannel, "/me slaps " + n + " around a bit with a large trout") }) }
         MenuSeparator {}
-        Action { text: "Kick"; onTriggered: ircManager.sendRawCommand("KICK " + currentChannel + " " + nickContextMenu.targetNick) }
-        Action { text: "Ban"; onTriggered: ircManager.sendRawCommand("MODE " + currentChannel + " +b " + nickContextMenu.targetNick + "!*@*") }
-        Action { text: "Kick + Ban"; onTriggered: { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + nickContextMenu.targetNick + "!*@*"); ircManager.sendRawCommand("KICK " + currentChannel + " " + nickContextMenu.targetNick) } }
-        Action { text: "Ignore"; onTriggered: msgModel.addMessage("system", "Ignore list not yet implemented for " + nickContextMenu.targetNick) }
+        Action { text: "Kick"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
+        Action { text: "Ban"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*") }) }
+        Action { text: "Kick + Ban"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*"); ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
+        Action { text: "Ignore"; onTriggered: msgModel.addMessage("system", "Ignore list not yet implemented for " + selectedNicks.join(", ")) }
         MenuSeparator {}
 
         // ── ChanServ nick operations ──
         Menu {
             title: "ChanServ"
-            Action { text: "Op";      onTriggered: { if (currentChannel) ircManager.sendRawCommand("PRIVMSG ChanServ :OP " + currentChannel + " " + nickContextMenu.targetNick) } }
-            Action { text: "DeOp";    onTriggered: { if (currentChannel) ircManager.sendRawCommand("PRIVMSG ChanServ :DEOP " + currentChannel + " " + nickContextMenu.targetNick) } }
-            Action { text: "HalfOp";  onTriggered: { if (currentChannel) ircManager.sendRawCommand("PRIVMSG ChanServ :HALFOP " + currentChannel + " " + nickContextMenu.targetNick) } }
-            Action { text: "Voice";   onTriggered: { if (currentChannel) ircManager.sendRawCommand("PRIVMSG ChanServ :VOICE " + currentChannel + " " + nickContextMenu.targetNick) } }
-            Action { text: "DeVoice"; onTriggered: { if (currentChannel) ircManager.sendRawCommand("PRIVMSG ChanServ :DEVOICE " + currentChannel + " " + nickContextMenu.targetNick) } }
+            Action { text: "Op";      onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :OP " + currentChannel + " " + n) }) } }
+            Action { text: "DeOp";    onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :DEOP " + currentChannel + " " + n) }) } }
+            Action { text: "HalfOp";  onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :HALFOP " + currentChannel + " " + n) }) } }
+            Action { text: "Voice";   onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :VOICE " + currentChannel + " " + n) }) } }
+            Action { text: "DeVoice"; onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :DEVOICE " + currentChannel + " " + n) }) } }
             MenuSeparator {}
-            Action { text: "Kick";      onTriggered: { if (currentChannel) ircManager.sendRawCommand("PRIVMSG ChanServ :KICK " + currentChannel + " " + nickContextMenu.targetNick) } }
-            Action { text: "Ban";       onTriggered: { if (currentChannel) ircManager.sendRawCommand("PRIVMSG ChanServ :BAN " + currentChannel + " " + nickContextMenu.targetNick) } }
-            Action { text: "Unban";     onTriggered: { if (currentChannel) ircManager.sendRawCommand("PRIVMSG ChanServ :UNBAN " + currentChannel + " " + nickContextMenu.targetNick) } }
-            Action { text: "Kick+Ban";  onTriggered: { if (currentChannel) ircManager.sendRawCommand("PRIVMSG ChanServ :KICKBAN " + currentChannel + " " + nickContextMenu.targetNick) } }
-            Action { text: "Quiet";     onTriggered: { if (currentChannel) ircManager.sendRawCommand("PRIVMSG ChanServ :QUIET " + currentChannel + " " + nickContextMenu.targetNick) } }
+            Action { text: "Kick";      onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :KICK " + currentChannel + " " + n) }) } }
+            Action { text: "Ban";       onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :BAN " + currentChannel + " " + n) }) } }
+            Action { text: "Unban";     onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :UNBAN " + currentChannel + " " + n) }) } }
+            Action { text: "Kick+Ban";  onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :KICKBAN " + currentChannel + " " + n) }) } }
+            Action { text: "Quiet";     onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :QUIET " + currentChannel + " " + n) }) } }
         }
 
         // ── OperServ nick operations ──

@@ -73,6 +73,12 @@ ApplicationWindow {
     property bool prefShowTimestamps:  appSettings.value("ui/showTimestamps", true) === true || appSettings.value("ui/showTimestamps", true) === "true"
     property bool prefShowNickColors:  appSettings.value("ui/showNickColors", true) === true || appSettings.value("ui/showNickColors", true) === "true"
     property bool prefStripColors:     appSettings.value("ui/stripMircColors", false) === true || appSettings.value("ui/stripMircColors", false) === "true"
+    property string prefFontFamily: {
+        var idx = parseInt(appSettings.value("ui/fontFamilyIndex", 0)) || 0
+        var fonts = ["Monospace", "DejaVu Sans Mono", "Liberation Mono", "Courier New", "Consolas", "Fira Code"]
+        return fonts[idx] || "Monospace"
+    }
+    property int prefFontSize: parseInt(appSettings.value("ui/fontSize", 12)) || 12
 
     // Helper: run a command for each selected nick
     function forEachSelectedNick(callback) {
@@ -714,8 +720,8 @@ ApplicationWindow {
                     selectedTextColor: theme.highlightText
                     selectionColor: theme.highlight
                     color: theme.textPrimary
-                    font.family: "monospace"
-                    font.pixelSize: 12
+                    font.family: root.prefFontFamily
+                    font.pixelSize: root.prefFontSize
                     wrapMode: TextEdit.Wrap
                     textFormat: TextEdit.RichText
                     background: Rectangle { color: theme.chatBg }
@@ -814,8 +820,8 @@ ApplicationWindow {
                             : "Type /join #channel..."
                         placeholderTextColor: theme.placeholder
                         color: theme.textInput
-                        font.family: "monospace"
-                        font.pixelSize: 12
+                        font.family: root.prefFontFamily
+                        font.pixelSize: root.prefFontSize
                         enabled: currentChannel !== "" || currentServer !== ""
                         background: Rectangle {
                             color: theme.inputBg

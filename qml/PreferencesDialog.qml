@@ -16,8 +16,15 @@ Dialog {
         return v === true || v === "true"
     }
 
-    // Load saved settings when dialog opens
+    // helper: read an int setting
+    function intSetting(key, def) {
+        var v = appSettings.value(key, def)
+        return parseInt(v) || def
+    }
+
+    // Load ALL saved settings when dialog opens
     onOpened: {
+        // User Info (tab 4)
         prefNick.text  = appSettings.value("user/nickname", "NUchat_user")
         prefNick2.text = appSettings.value("user/nickname2", "NUchat_user2")
         prefNick3.text = appSettings.value("user/nickname3", "NUchat_user3")
@@ -27,20 +34,110 @@ Dialog {
         prefPartMsg.text   = appSettings.value("user/partMessage", "")
         prefAwayMsg.text   = appSettings.value("user/awayMessage", "I'm away")
 
-        // Interface
+        // Interface (tab 0)
         chkShowServerTree.checked   = boolSetting("ui/showServerTree", true)
         chkShowUserList.checked     = boolSetting("ui/showUserList", true)
         chkShowTopicBar.checked     = boolSetting("ui/showTopicBar", true)
         chkShowModeButtons.checked  = boolSetting("ui/showModeButtons", true)
-        // Colors
+        chkShowStatusBar.checked    = boolSetting("ui/showStatusBar", true)
+        chkTabsInBackground.checked = boolSetting("ui/tabsInBackground", false)
+        chkConfirmClose.checked     = boolSetting("ui/confirmClose", true)
+        chkMinToTray.checked        = boolSetting("ui/minimizeToTray", false)
+
+        // Colors (tab 1)
         chkStripColors.checked      = boolSetting("ui/stripMircColors", false)
         chkShowNickColors.checked   = boolSetting("ui/showNickColors", true)
-        // Text
+
+        // Text & Fonts (tab 2)
+        cboFontFamily.currentIndex  = intSetting("ui/fontFamilyIndex", 0)
+        spnFontSize.value           = intSetting("ui/fontSize", 12)
         chkShowTimestamps.checked   = boolSetting("ui/showTimestamps", true)
+        cboTimestampFmt.currentIndex = intSetting("ui/timestampFmtIndex", 0)
+        spnScrollback.value         = intSetting("ui/maxScrollback", 10000)
+        chkIndentWrap.checked       = boolSetting("ui/indentWrap", true)
+        chkHighlighting.checked     = boolSetting("ui/textHighlighting", true)
+        txtHighlightWords.text      = appSettings.value("ui/highlightWords", "")
+
+        // Input (tab 3)
+        chkSpellCheck.checked       = boolSetting("input/spellCheck", true)
+        chkTabCompletion.checked    = boolSetting("input/tabCompletion", true)
+        txtCompletionSuffix.text    = appSettings.value("input/completionSuffix", ":")
+        chkCompletionMenu.checked   = boolSetting("input/completionMenu", true)
+        chkHistoryPerChannel.checked = boolSetting("input/historyPerChannel", false)
+        spnMaxHistory.value         = intSetting("input/maxHistory", 100)
+
+        // Connection (tab 5)
+        chkAutoReconnect.checked    = boolSetting("conn/autoReconnect", true)
+        spnReconnectDelay.value     = intSetting("conn/reconnectDelay", 10)
+        spnMaxReconnect.value       = intSetting("conn/maxReconnectAttempts", 10)
+        chkAutoJoin.checked         = boolSetting("conn/autoJoin", true)
+        chkGlobalUserInfo.checked   = boolSetting("conn/globalUserInfo", true)
+        cboProxyType.currentIndex   = intSetting("conn/proxyTypeIndex", 0)
+        txtProxyHost.text           = appSettings.value("conn/proxyHost", "")
+        txtProxyPort.text           = appSettings.value("conn/proxyPort", "")
+        chkProxyAuth.checked        = boolSetting("conn/proxyAuth", false)
+
+        // SASL (tab 6)
+        cboAuthMethod.currentIndex  = intSetting("auth/methodIndex", 0)
+        txtNickServCmd.text         = appSettings.value("auth/nickservCmd", "/msg NickServ IDENTIFY %p")
+        txtCertFile.text            = appSettings.value("auth/certFile", "")
+        txtKeyFile.text             = appSettings.value("auth/keyFile", "")
+        chkAcceptInvalidSSL.checked = boolSetting("auth/acceptInvalidSSL", false)
+
+        // DCC (tab 7)
+        txtDccDownloadDir.text      = appSettings.value("dcc/downloadDir", "~/Downloads")
+        chkDccAutoAccept.checked    = boolSetting("dcc/autoAccept", false)
+        spnDccMaxSize.value         = intSetting("dcc/maxSize", 0)
+        cboDccIpMethod.currentIndex = intSetting("dcc/ipMethodIndex", 0)
+        txtDccManualIp.text         = appSettings.value("dcc/manualIp", "")
+        spnDccPortLow.value         = intSetting("dcc/portLow", 1024)
+        spnDccPortHigh.value        = intSetting("dcc/portHigh", 5000)
+
+        // Logging (tab 8)
+        chkEnableLogging.checked    = boolSetting("log/enable", true)
+        txtLogDir.text              = appSettings.value("log/directory", "~/.config/NUchat/logs")
+        cboLogFormat.currentIndex   = intSetting("log/formatIndex", 0)
+        chkLogTimestamps.checked    = boolSetting("log/timestamps", true)
+        chkLogPMs.checked           = boolSetting("log/privateMessages", true)
+        chkLogPerChannel.checked    = boolSetting("log/perChannel", true)
+
+        // Notifications (tab 9)
+        chkNotifyHighlight.checked  = boolSetting("notify/highlight", true)
+        chkNotifyPM.checked         = boolSetting("notify/privateMessage", true)
+        chkFlashTaskbar.checked     = boolSetting("notify/flashTaskbar", true)
+        chkTrayUnread.checked       = boolSetting("notify/trayUnread", true)
+        chkHighlightNick.checked    = boolSetting("notify/highlightNick", true)
+        spnNotifyTimeout.value      = intSetting("notify/timeout", 5000)
+
+        // Sounds (tab 10)
+        chkEnableSounds.checked     = boolSetting("sound/enable", true)
+        chkSoundHighlight.checked   = boolSetting("sound/highlight", true)
+        chkSoundPM.checked          = boolSetting("sound/privateMessage", true)
+        chkSoundConnect.checked     = boolSetting("sound/connection", false)
+        txtBeepCmd.text             = appSettings.value("sound/beepCommand", "")
+
+        // URL Handlers (tab 12)
+        chkClickableUrls.checked    = boolSetting("url/clickable", true)
+        chkUrlGrabber.checked       = boolSetting("url/autoGrab", true)
+        txtBrowserCmd.text          = appSettings.value("url/browserCmd", "xdg-open %s")
+
+        // Advanced (tab 16)
+        cboEncoding.currentIndex    = intSetting("adv/encodingIndex", 0)
+        chkIdentifyFirst.checked    = boolSetting("adv/identifyFirst", true)
+        chkIPv6.checked             = boolSetting("adv/ipv6", false)
+        chkCAP.checked              = boolSetting("adv/capNegotiation", true)
+        txtPerformCmds.text         = appSettings.value("adv/performCommands", "/mode %n +x")
+        chkShowRawIRC.checked       = boolSetting("adv/showRawIRC", false)
+        txtCmdChar.text             = appSettings.value("adv/cmdChar", "/")
+
+        // Plugin/Script dirs (tabs 14, 15)
+        txtPluginDir.text           = appSettings.value("plugin/directory", "~/.config/NUchat/plugins")
+        txtScriptDir.text           = appSettings.value("script/directory", "~/.config/NUchat/scripts")
     }
 
-    // Save user info
+    // Save all settings (called on OK)
     function saveSettings() {
+        // User info
         appSettings.setValue("user/nickname", prefNick.text)
         appSettings.setValue("user/nickname2", prefNick2.text)
         appSettings.setValue("user/nickname3", prefNick3.text)
@@ -49,8 +146,29 @@ Dialog {
         appSettings.setValue("user/quitMessage", prefQuitMsg.text)
         appSettings.setValue("user/partMessage", prefPartMsg.text)
         appSettings.setValue("user/awayMessage", prefAwayMsg.text)
+
+        // Text fields that only save on OK (not live)
+        appSettings.setValue("input/completionSuffix", txtCompletionSuffix.text)
+        appSettings.setValue("conn/proxyHost", txtProxyHost.text)
+        appSettings.setValue("conn/proxyPort", txtProxyPort.text)
+        appSettings.setValue("auth/nickservCmd", txtNickServCmd.text)
+        appSettings.setValue("auth/certFile", txtCertFile.text)
+        appSettings.setValue("auth/keyFile", txtKeyFile.text)
+        appSettings.setValue("dcc/downloadDir", txtDccDownloadDir.text)
+        appSettings.setValue("dcc/manualIp", txtDccManualIp.text)
+        appSettings.setValue("log/directory", txtLogDir.text)
+        appSettings.setValue("sound/beepCommand", txtBeepCmd.text)
+        appSettings.setValue("url/browserCmd", txtBrowserCmd.text)
+        appSettings.setValue("ui/highlightWords", txtHighlightWords.text)
+        appSettings.setValue("adv/performCommands", txtPerformCmds.text)
+        appSettings.setValue("adv/cmdChar", txtCmdChar.text)
+        appSettings.setValue("plugin/directory", txtPluginDir.text)
+        appSettings.setValue("script/directory", txtScriptDir.text)
         appSettings.sync()
     }
+
+    // helper: save a setting and sync immediately (for checkboxes, spinboxes, combos)
+    function saveSetting(key, val) { appSettings.setValue(key, val); appSettings.sync() }
 
     background: Rectangle { color: "#2b2b2b"; border.color: "#555"; border.width: 1; radius: 6 }
     header: Rectangle {
@@ -131,16 +249,20 @@ Dialog {
                     CheckBox { id: chkShowTopicBar; text: "Show topic bar"
                         onCheckedChanged: { appSettings.setValue("ui/showTopicBar", checked); appSettings.sync(); root.prefShowTopicBar = checked }
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Show status bar"; checked: true
+                    CheckBox { id: chkShowStatusBar; text: "Show status bar"
+                        onCheckedChanged: saveSetting("ui/showStatusBar", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     CheckBox { id: chkShowModeButtons; text: "Show mode buttons"
-                        onCheckedChanged: { appSettings.setValue("ui/showModeButtons", checked); appSettings.sync(); root.prefShowModeButtons = checked }
+                        onCheckedChanged: { saveSetting("ui/showModeButtons", checked); root.prefShowModeButtons = checked }
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Open new tabs in background"
+                    CheckBox { id: chkTabsInBackground; text: "Open new tabs in background"
+                        onCheckedChanged: saveSetting("ui/tabsInBackground", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Confirm on close when connected"; checked: true
+                    CheckBox { id: chkConfirmClose; text: "Confirm on close when connected"
+                        onCheckedChanged: saveSetting("ui/confirmClose", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Minimize to system tray"
+                    CheckBox { id: chkMinToTray; text: "Minimize to system tray"
+                        onCheckedChanged: saveSetting("ui/minimizeToTray", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                 }
             }
@@ -194,36 +316,52 @@ Dialog {
                         spacing: 8
                         Text { text: "Font family:"; color: "#ccc"; font.pixelSize: 12 }
                         ComboBox {
+                            id: cboFontFamily
                             model: ["Monospace", "DejaVu Sans Mono", "Liberation Mono", "Courier New", "Consolas", "Fira Code"]
                             Layout.preferredWidth: 200
+                            onCurrentIndexChanged: { saveSetting("ui/fontFamilyIndex", currentIndex); root.prefFontFamily = currentText }
                         }
                     }
                     RowLayout {
                         spacing: 8
                         Text { text: "Font size:"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { from: 8; to: 24; value: 12; Layout.preferredWidth: 100 }
+                        SpinBox {
+                            id: spnFontSize; from: 8; to: 24; value: 12; Layout.preferredWidth: 100
+                            onValueChanged: { saveSetting("ui/fontSize", value); root.prefFontSize = value }
+                        }
                     }
                     CheckBox { id: chkShowTimestamps; text: "Show timestamps"
-                        onCheckedChanged: { appSettings.setValue("ui/showTimestamps", checked); appSettings.sync(); root.prefShowTimestamps = checked }
+                        onCheckedChanged: { saveSetting("ui/showTimestamps", checked); root.prefShowTimestamps = checked }
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Timestamp format:"; color: "#ccc"; font.pixelSize: 12 }
-                        ComboBox { model: ["[HH:mm:ss]", "[HH:mm]", "[h:mm AP]", "HH:mm:ss"]; Layout.preferredWidth: 160 }
+                        ComboBox {
+                            id: cboTimestampFmt
+                            model: ["[HH:mm:ss]", "[HH:mm]", "[h:mm AP]", "HH:mm:ss"]
+                            Layout.preferredWidth: 160
+                            onCurrentIndexChanged: saveSetting("ui/timestampFmtIndex", currentIndex)
+                        }
                     }
                     RowLayout {
                         spacing: 8
                         Text { text: "Max scrollback lines:"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { from: 100; to: 100000; value: 10000; stepSize: 500; Layout.preferredWidth: 120 }
+                        SpinBox {
+                            id: spnScrollback; from: 100; to: 100000; value: 10000; stepSize: 500; Layout.preferredWidth: 120
+                            onValueChanged: saveSetting("ui/maxScrollback", value)
+                        }
                     }
-                    CheckBox { text: "Indent wrapped text"; checked: true
+                    CheckBox { id: chkIndentWrap; text: "Indent wrapped text"
+                        onCheckedChanged: saveSetting("ui/indentWrap", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Enable text highlighting"; checked: true
+                    CheckBox { id: chkHighlighting; text: "Enable text highlighting"
+                        onCheckedChanged: saveSetting("ui/textHighlighting", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Extra highlight words:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtHighlightWords
                             Layout.fillWidth: true; placeholderText: "comma-separated"; placeholderTextColor: "#666"
                             color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
@@ -241,26 +379,34 @@ Dialog {
                     anchors.margins: 16
 
                     Text { text: "Input"; color: "#ddd"; font.pixelSize: 16; font.bold: true }
-                    CheckBox { text: "Enable spell check"; checked: true
+                    CheckBox { id: chkSpellCheck; text: "Enable spell check"
+                        onCheckedChanged: saveSetting("input/spellCheck", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Nick completion with Tab"; checked: true
+                    CheckBox { id: chkTabCompletion; text: "Nick completion with Tab"
+                        onCheckedChanged: saveSetting("input/tabCompletion", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Nick completion suffix:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtCompletionSuffix
                             text: ":"; Layout.preferredWidth: 60; color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
                     }
-                    CheckBox { text: "Show nick completion menu"; checked: true
+                    CheckBox { id: chkCompletionMenu; text: "Show nick completion menu"
+                        onCheckedChanged: saveSetting("input/completionMenu", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Input history per channel"
+                    CheckBox { id: chkHistoryPerChannel; text: "Input history per channel"
+                        onCheckedChanged: saveSetting("input/historyPerChannel", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Max input history:"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { from: 10; to: 1000; value: 100; Layout.preferredWidth: 100 }
+                        SpinBox {
+                            id: spnMaxHistory; from: 10; to: 1000; value: 100; Layout.preferredWidth: 100
+                            onValueChanged: saveSetting("input/maxHistory", value)
+                        }
                     }
                 }
             }
@@ -316,44 +462,53 @@ Dialog {
                     anchors.margins: 16
 
                     Text { text: "Connection"; color: "#ddd"; font.pixelSize: 16; font.bold: true }
-                    CheckBox { text: "Auto-reconnect on disconnect"; checked: true
+                    CheckBox { id: chkAutoReconnect; text: "Auto-reconnect on disconnect"
+                        onCheckedChanged: saveSetting("conn/autoReconnect", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Reconnect delay (seconds):"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { from: 1; to: 300; value: 10; Layout.preferredWidth: 100 }
+                        SpinBox { id: spnReconnectDelay; from: 1; to: 300; value: 10; Layout.preferredWidth: 100
+                            onValueChanged: saveSetting("conn/reconnectDelay", value) }
                     }
                     RowLayout {
                         spacing: 8
                         Text { text: "Max reconnect attempts:"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { from: 0; to: 100; value: 10; Layout.preferredWidth: 100 }
+                        SpinBox { id: spnMaxReconnect; from: 0; to: 100; value: 10; Layout.preferredWidth: 100
+                            onValueChanged: saveSetting("conn/maxReconnectAttempts", value) }
                     }
-                    CheckBox { text: "Auto-join channels on connect"; checked: true
+                    CheckBox { id: chkAutoJoin; text: "Auto-join channels on connect"
+                        onCheckedChanged: saveSetting("conn/autoJoin", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Use global user info for all servers"; checked: true
+                    CheckBox { id: chkGlobalUserInfo; text: "Use global user info for all servers"
+                        onCheckedChanged: saveSetting("conn/globalUserInfo", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     Text { text: "Proxy:"; color: "#ccc"; font.pixelSize: 13; font.bold: true }
                     RowLayout {
                         spacing: 8
                         Text { text: "Type:"; color: "#ccc"; font.pixelSize: 12 }
-                        ComboBox { model: ["None", "SOCKS4", "SOCKS5", "HTTP CONNECT"]; Layout.preferredWidth: 160 }
+                        ComboBox { id: cboProxyType; model: ["None", "SOCKS4", "SOCKS5", "HTTP CONNECT"]; Layout.preferredWidth: 160
+                            onCurrentIndexChanged: saveSetting("conn/proxyTypeIndex", currentIndex) }
                     }
                     RowLayout {
                         spacing: 8
                         Text { text: "Host:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtProxyHost
                             Layout.fillWidth: true; placeholderText: "proxy.example.com"; placeholderTextColor: "#666"
                             color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
                         Text { text: "Port:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtProxyPort
                             Layout.preferredWidth: 60; placeholderText: "1080"; placeholderTextColor: "#666"
                             color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
                     }
-                    CheckBox { text: "Proxy requires authentication"
+                    CheckBox { id: chkProxyAuth; text: "Proxy requires authentication"
+                        onCheckedChanged: saveSetting("conn/proxyAuth", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                 }
             }
@@ -372,10 +527,12 @@ Dialog {
                         spacing: 8
                         Text { text: "Method:"; color: "#ccc"; font.pixelSize: 12 }
                         ComboBox {
+                            id: cboAuthMethod
                             model: ["None", "SASL PLAIN", "SASL EXTERNAL (cert)", "SASL SCRAM-SHA-256",
                                     "SASL ECDSA-NIST256P", "NickServ (/msg)", "NickServ (/nickserv)",
                                     "Server Password", "CERTFP (client cert)"]
                             Layout.preferredWidth: 260
+                            onCurrentIndexChanged: saveSetting("auth/methodIndex", currentIndex)
                         }
                     }
                     Text { text: "NickServ:"; color: "#ccc"; font.pixelSize: 13; font.bold: true }
@@ -383,6 +540,7 @@ Dialog {
                         columns: 2; columnSpacing: 10; rowSpacing: 6; Layout.fillWidth: true
                         Text { text: "NickServ command:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtNickServCmd
                             text: "/msg NickServ IDENTIFY %p"; Layout.fillWidth: true
                             color: "#ddd"; font.family: "monospace"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
@@ -395,6 +553,7 @@ Dialog {
                         RowLayout {
                             Layout.fillWidth: true; spacing: 6
                             TextField {
+                                id: txtCertFile
                                 Layout.fillWidth: true; placeholderText: "/path/to/client.pem"; placeholderTextColor: "#666"
                                 color: "#ddd"; font.pixelSize: 12
                                 background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
@@ -409,6 +568,7 @@ Dialog {
                         RowLayout {
                             Layout.fillWidth: true; spacing: 6
                             TextField {
+                                id: txtKeyFile
                                 Layout.fillWidth: true; placeholderText: "/path/to/client.key"; placeholderTextColor: "#666"
                                 color: "#ddd"; font.pixelSize: 12
                                 background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
@@ -420,7 +580,8 @@ Dialog {
                             }
                         }
                     }
-                    CheckBox { text: "Accept invalid SSL certificates"
+                    CheckBox { id: chkAcceptInvalidSSL; text: "Accept invalid SSL certificates"
+                        onCheckedChanged: saveSetting("auth/acceptInvalidSSL", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                 }
             }
@@ -438,6 +599,7 @@ Dialog {
                         spacing: 8
                         Text { text: "Download folder:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtDccDownloadDir
                             Layout.fillWidth: true; text: "~/Downloads"; color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
@@ -447,23 +609,27 @@ Dialog {
                             contentItem: Text { text: "Browse"; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                         }
                     }
-                    CheckBox { text: "Auto-accept DCC sends"
+                    CheckBox { id: chkDccAutoAccept; text: "Auto-accept DCC sends"
+                        onCheckedChanged: saveSetting("dcc/autoAccept", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Max file size (MB, 0=unlimited):"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { from: 0; to: 10000; value: 0; Layout.preferredWidth: 120 }
+                        SpinBox { id: spnDccMaxSize; from: 0; to: 10000; value: 0; Layout.preferredWidth: 120
+                            onValueChanged: saveSetting("dcc/maxSize", value) }
                     }
                     Text { text: "DCC IP:"; color: "#ccc"; font.pixelSize: 13; font.bold: true }
                     RowLayout {
                         spacing: 8
                         Text { text: "IP method:"; color: "#ccc"; font.pixelSize: 12 }
-                        ComboBox { model: ["Auto-detect", "Get from server (DCC)", "Specify manually"]; Layout.preferredWidth: 200 }
+                        ComboBox { id: cboDccIpMethod; model: ["Auto-detect", "Get from server (DCC)", "Specify manually"]; Layout.preferredWidth: 200
+                            onCurrentIndexChanged: saveSetting("dcc/ipMethodIndex", currentIndex) }
                     }
                     RowLayout {
                         spacing: 8
                         Text { text: "Manual IP:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtDccManualIp
                             Layout.fillWidth: true; placeholderText: "0.0.0.0"; placeholderTextColor: "#666"
                             color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
@@ -472,9 +638,11 @@ Dialog {
                     RowLayout {
                         spacing: 8
                         Text { text: "Port range:"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { from: 1024; to: 65535; value: 1024; Layout.preferredWidth: 100 }
+                        SpinBox { id: spnDccPortLow; from: 1024; to: 65535; value: 1024; Layout.preferredWidth: 100
+                            onValueChanged: saveSetting("dcc/portLow", value) }
                         Text { text: "to"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { from: 1024; to: 65535; value: 5000; Layout.preferredWidth: 100 }
+                        SpinBox { id: spnDccPortHigh; from: 1024; to: 65535; value: 5000; Layout.preferredWidth: 100
+                            onValueChanged: saveSetting("dcc/portHigh", value) }
                     }
                 }
             }
@@ -488,12 +656,14 @@ Dialog {
                     anchors.margins: 16
 
                     Text { text: "Logging"; color: "#ddd"; font.pixelSize: 16; font.bold: true }
-                    CheckBox { text: "Enable chat logging"; checked: true
+                    CheckBox { id: chkEnableLogging; text: "Enable chat logging"
+                        onCheckedChanged: saveSetting("log/enable", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Log directory:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtLogDir
                             Layout.fillWidth: true; text: "~/.config/NUchat/logs"; color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
@@ -506,13 +676,17 @@ Dialog {
                     RowLayout {
                         spacing: 8
                         Text { text: "Log format:"; color: "#ccc"; font.pixelSize: 12 }
-                        ComboBox { model: ["Plain text", "HTML", "JSON"]; Layout.preferredWidth: 160 }
+                        ComboBox { id: cboLogFormat; model: ["Plain text", "HTML", "JSON"]; Layout.preferredWidth: 160
+                            onCurrentIndexChanged: saveSetting("log/formatIndex", currentIndex) }
                     }
-                    CheckBox { text: "Log timestamps"; checked: true
+                    CheckBox { id: chkLogTimestamps; text: "Log timestamps"
+                        onCheckedChanged: saveSetting("log/timestamps", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Log private messages"; checked: true
+                    CheckBox { id: chkLogPMs; text: "Log private messages"
+                        onCheckedChanged: saveSetting("log/privateMessages", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Create separate log per channel"; checked: true
+                    CheckBox { id: chkLogPerChannel; text: "Create separate log per channel"
+                        onCheckedChanged: saveSetting("log/perChannel", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                 }
             }
@@ -526,20 +700,26 @@ Dialog {
                     anchors.margins: 16
 
                     Text { text: "Notifications"; color: "#ddd"; font.pixelSize: 16; font.bold: true }
-                    CheckBox { text: "Desktop notifications on highlight"; checked: true
+                    CheckBox { id: chkNotifyHighlight; text: "Desktop notifications on highlight"
+                        onCheckedChanged: saveSetting("notify/highlight", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Desktop notifications on private message"; checked: true
+                    CheckBox { id: chkNotifyPM; text: "Desktop notifications on private message"
+                        onCheckedChanged: saveSetting("notify/privateMessage", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Flash taskbar on activity"; checked: true
+                    CheckBox { id: chkFlashTaskbar; text: "Flash taskbar on activity"
+                        onCheckedChanged: saveSetting("notify/flashTaskbar", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Show unread count in tray icon"; checked: true
+                    CheckBox { id: chkTrayUnread; text: "Show unread count in tray icon"
+                        onCheckedChanged: saveSetting("notify/trayUnread", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Highlight on nick mention"; checked: true
+                    CheckBox { id: chkHighlightNick; text: "Highlight on nick mention"
+                        onCheckedChanged: saveSetting("notify/highlightNick", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Notification timeout (ms):"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { from: 0; to: 30000; value: 5000; stepSize: 500; Layout.preferredWidth: 120 }
+                        SpinBox { id: spnNotifyTimeout; from: 0; to: 30000; value: 5000; stepSize: 500; Layout.preferredWidth: 120
+                            onValueChanged: saveSetting("notify/timeout", value) }
                     }
                 }
             }
@@ -553,18 +733,23 @@ Dialog {
                     anchors.margins: 16
 
                     Text { text: "Sounds"; color: "#ddd"; font.pixelSize: 16; font.bold: true }
-                    CheckBox { text: "Enable sounds"; checked: true
+                    CheckBox { id: chkEnableSounds; text: "Enable sounds"
+                        onCheckedChanged: saveSetting("sound/enable", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Play sound on highlight"; checked: true
+                    CheckBox { id: chkSoundHighlight; text: "Play sound on highlight"
+                        onCheckedChanged: saveSetting("sound/highlight", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Play sound on private message"; checked: true
+                    CheckBox { id: chkSoundPM; text: "Play sound on private message"
+                        onCheckedChanged: saveSetting("sound/privateMessage", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Play sound on connection"
+                    CheckBox { id: chkSoundConnect; text: "Play sound on connection"
+                        onCheckedChanged: saveSetting("sound/connection", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Beep command:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtBeepCmd
                             Layout.fillWidth: true; placeholderText: "aplay /path/to/sound.wav"; placeholderTextColor: "#666"
                             color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
@@ -634,14 +819,17 @@ Dialog {
                     anchors.margins: 16
 
                     Text { text: "URL Handlers"; color: "#ddd"; font.pixelSize: 16; font.bold: true }
-                    CheckBox { text: "Make URLs clickable"; checked: true
+                    CheckBox { id: chkClickableUrls; text: "Make URLs clickable"
+                        onCheckedChanged: saveSetting("url/clickable", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Auto-grab URLs to URL Grabber"; checked: true
+                    CheckBox { id: chkUrlGrabber; text: "Auto-grab URLs to URL Grabber"
+                        onCheckedChanged: saveSetting("url/grabber", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Browser command:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtBrowserCmd
                             Layout.fillWidth: true; text: "xdg-open %s"
                             color: "#ddd"; font.family: "monospace"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
@@ -738,6 +926,7 @@ Dialog {
                         spacing: 8
                         Text { text: "Plugin directory:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtPluginDir
                             Layout.fillWidth: true; text: "~/.config/NUchat/plugins"; color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
@@ -781,6 +970,7 @@ Dialog {
                         spacing: 8
                         Text { text: "Script directory:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtScriptDir
                             Layout.fillWidth: true; text: "~/.config/NUchat/scripts"; color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
@@ -801,33 +991,40 @@ Dialog {
                         spacing: 8
                         Text { text: "Encoding:"; color: "#ccc"; font.pixelSize: 12 }
                         ComboBox {
+                            id: cboEncoding
                             model: ["UTF-8", "ISO-8859-1 (Latin-1)", "ISO-8859-15", "Windows-1252",
                                     "KOI8-R", "Shift_JIS", "EUC-JP", "GB2312", "Big5"]
                             Layout.preferredWidth: 220
+                            onCurrentIndexChanged: saveSetting("adv/encodingIndex", currentIndex)
                         }
                     }
-                    CheckBox { text: "Identify to services before joining channels"; checked: true
+                    CheckBox { id: chkIdentifyFirst; text: "Identify to services before joining channels"
+                        onCheckedChanged: saveSetting("adv/identifyFirst", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Enable IPv6"
+                    CheckBox { id: chkIPv6; text: "Enable IPv6"
+                        onCheckedChanged: saveSetting("adv/ipv6", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Enable CAP negotiation"; checked: true
+                    CheckBox { id: chkCAP; text: "Enable CAP negotiation"
+                        onCheckedChanged: saveSetting("adv/cap", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     Text { text: "Perform on connect:"; color: "#ccc"; font.pixelSize: 12 }
                     Rectangle {
                         Layout.fillWidth: true; height: 80; color: "#333"; border.color: "#555"; radius: 2
                         TextEdit {
+                            id: txtPerformCmds
                             anchors.fill: parent; anchors.margins: 6
                             color: "#ddd"; font.family: "monospace"; font.pixelSize: 12
-                            text: "/mode %n +x\n/msg NickServ IDENTIFY password"
                             wrapMode: Text.Wrap
                         }
                     }
-                    CheckBox { text: "Show raw IRC in server tab"
+                    CheckBox { id: chkShowRawIRC; text: "Show raw IRC in server tab"
+                        onCheckedChanged: saveSetting("adv/showRaw", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
                         Text { text: "Command character:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
+                            id: txtCmdChar
                             text: "/"; Layout.preferredWidth: 40; color: "#ddd"; font.pixelSize: 12
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }

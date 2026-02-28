@@ -121,6 +121,7 @@ Dialog {
         // URL Handlers (tab 12)
         chkClickableUrls.checked    = boolSetting("url/clickable", true)
         chkUrlGrabber.checked       = boolSetting("url/autoGrab", true)
+        chkShowInlineImages.checked = boolSetting("ui/showInlineImages", true)
         txtBrowserCmd.text          = appSettings.value("url/browserCmd", "xdg-open %s")
 
         // Advanced (tab 16)
@@ -847,6 +848,9 @@ Dialog {
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     CheckBox { id: chkUrlGrabber; text: "Auto-grab URLs to URL Grabber"
                         onCheckedChanged: saveSetting("url/grabber", checked)
+                        contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
+                    CheckBox { id: chkShowInlineImages; text: "Show inline images from links"
+                        onCheckedChanged: saveSetting("ui/showInlineImages", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8

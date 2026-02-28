@@ -1,6 +1,7 @@
 #include "MessageModel.h"
 #include "ImageDownloader.h"
 #include <QRegularExpression>
+#include <QSettings>
 #include <QUrl>
 
 MessageModel::MessageModel(QObject *parent) : QAbstractListModel(parent) {
@@ -48,8 +49,11 @@ void MessageModel::addMessage(const QString &type, const QString &text) {
   endInsertRows();
   emit messageAdded(formatLine(msg));
 
-  // Auto-download images for chat/action messages
-  if (type == QLatin1String("chat") || type == QLatin1String("action")) {
+  // Auto-download images for chat/action messages if enabled in preferences
+  bool showInlineImages =
+      QSettings().value(QStringLiteral("ui/showInlineImages"), true).toBool();
+  if (showInlineImages &&
+      (type == QLatin1String("chat") || type == QLatin1String("action"))) {
     static const QRegularExpression urlRe(QStringLiteral(
         "(https?://[^\\s\\x02\\x03\\x04\\x0F\\x16\\x1D\\x1E\\x1F]+)"));
     auto it = urlRe.globalMatch(text);

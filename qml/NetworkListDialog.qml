@@ -113,7 +113,13 @@ Dialog {
                         ListElement { network: "freenode (legacy)"; server: "chat.freenode.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
                     }
                     currentIndex: 0
-                    delegate: Rectangle {
+
+                    // ── Drag-and-drop state ──
+                    property int dragFromIndex: -1
+                    property int dropToIndex: -1
+
+                    delegate: Item {
+                        id: delegateRoot
                         required property int index
                         required property string network
                         required property string server
@@ -121,22 +127,98 @@ Dialog {
                         required property bool ssl
                         width: networkList.width
                         height: 28
-                        color: networkList.currentIndex === index ? "#264f78"
-                             : nwMouse.containsMouse ? "#333" : "transparent"
 
-                        RowLayout {
+                        // Drop indicator line
+                        Rectangle {
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.top: parent.top
+                            height: 2; color: "#569cd6"
+                            visible: networkList.dropToIndex === delegateRoot.index && networkList.dragFromIndex !== -1 && networkList.dragFromIndex !== delegateRoot.index
+                        }
+
+                        Rectangle {
+                            id: delegateBg
                             anchors.fill: parent
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 10
-                            Text { text: network; color: "#ddd"; font.pixelSize: 12; Layout.fillWidth: true }
-                            Text { text: server + ":" + port; color: "#888"; font.pixelSize: 11 }
-                            Text { text: ssl ? "🔒" : ""; font.pixelSize: 11; Layout.preferredWidth: 16 }
+                            color: networkList.currentIndex === delegateRoot.index ? "#264f78"
+                                 : nwMouse.containsMouse ? "#333" : "transparent"
+                            opacity: (networkList.dragFromIndex === delegateRoot.index) ? 0.4 : 1.0
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                // Drag handle
+                                Text {
+                                    text: "⠿"
+                                    color: "#666"
+                                    font.pixelSize: 14
+                                    Layout.preferredWidth: 16
+                                    MouseArea {
+                                        id: dragArea
+                                        anchors.fill: parent
+                                        cursorShape: Qt.OpenHandCursor
+                                        drag.target: dragProxy
+                                        drag.axis: Drag.YAxis
+
+                                        property bool held: false
+
+                                        onPressed: function(mouse) {
+                                            held = true
+                                            networkList.dragFromIndex = delegateRoot.index
+                                            dragProxy.text = delegateRoot.network
+                                            dragProxy.y = delegateRoot.mapToItem(networkList, 0, 0).y
+                                            dragProxy.visible = true
+                                            cursorShape = Qt.ClosedHandCursor
+                                        }
+                                        onReleased: function(mouse) {
+                                            if (held && networkList.dragFromIndex >= 0 && networkList.dropToIndex >= 0
+                                                && networkList.dragFromIndex !== networkList.dropToIndex) {
+                                                networkModel.move(networkList.dragFromIndex, networkList.dropToIndex, 1)
+                                                networkList.currentIndex = networkList.dropToIndex
+                                                dlg.saveNetworks()
+                                            }
+                                            held = false
+                                            networkList.dragFromIndex = -1
+                                            networkList.dropToIndex = -1
+                                            dragProxy.visible = false
+                                            cursorShape = Qt.OpenHandCursor
+                                        }
+                                        onPositionChanged: function(mouse) {
+                                            if (!held) return
+                                            var posInList = dragArea.mapToItem(networkList, mouse.x, mouse.y)
+                                            var targetIdx = Math.floor(posInList.y / 28)
+                                            targetIdx = Math.max(0, Math.min(targetIdx, networkModel.count - 1))
+                                            networkList.dropToIndex = targetIdx
+                                        }
+                                    }
+                                }
+                                Text { text: delegateRoot.network; color: "#ddd"; font.pixelSize: 12; Layout.fillWidth: true }
+                                Text { text: delegateRoot.server + ":" + delegateRoot.port; color: "#888"; font.pixelSize: 11 }
+                                Text { text: delegateRoot.ssl ? "🔒" : ""; font.pixelSize: 11; Layout.preferredWidth: 16 }
+                            }
                         }
                         MouseArea {
                             id: nwMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            onClicked: networkList.currentIndex = index
-                            onDoubleClicked: { networkList.currentIndex = index; connectBtn.clicked() }
+                            // Don't intercept the drag handle
+                            propagateComposedEvents: true
+                            onClicked: networkList.currentIndex = delegateRoot.index
+                            onDoubleClicked: { networkList.currentIndex = delegateRoot.index; connectBtn.clicked() }
                         }
+                    }
+
+                    // Floating drag proxy
+                    Rectangle {
+                        id: dragProxy
+                        visible: false
+                        width: networkList.width - 8
+                        height: 26
+                        x: 4
+                        color: "#264f78"
+                        radius: 3
+                        opacity: 0.85
+                        z: 100
+                        property string text: ""
+                        Text { anchors.centerIn: parent; text: dragProxy.text; color: "#fff"; font.pixelSize: 12; font.bold: true }
                     }
                 }
             }

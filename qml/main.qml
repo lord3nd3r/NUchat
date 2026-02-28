@@ -912,35 +912,43 @@ ApplicationWindow {
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
 
                             onClicked: function(mouse) {
-                                serverTree.currentIndex = index
-                                if (entryType === "channel") {
-                                    // Find the server this channel belongs to
-                                    var srv = ""
-                                    for (var k = index - 1; k >= 0; k--) {
-                                        if (channelListModel.get(k).entryType === "server") {
-                                            srv = channelListModel.get(k).name
-                                            break
+                                if (mouse.button === Qt.RightButton) {
+                                    if (entryType === "channel") {
+                                        // Find the server this channel belongs to
+                                        var srv = ""
+                                        for (var k = index - 1; k >= 0; k--) {
+                                            if (channelListModel.get(k).entryType === "server") {
+                                                srv = channelListModel.get(k).name
+                                                break
+                                            }
                                         }
-                                    }
-                                    root.currentServer = srv
-                                    root.currentChannel = name
-                                    ircManager.switchToChannel(srv, name)
-                                    root.channelTopic = ircManager.channelTopic
-                                    root.channelUsers = ircManager.channelUsers
-
-                                    if (mouse.button === Qt.RightButton) {
                                         treeChannelMenu.targetServer = srv
                                         treeChannelMenu.targetChannel = name
                                         treeChannelMenu.popup()
-                                    }
-                                } else {
-                                    root.currentServer = name
-                                    root.currentChannel = ""
-                                    ircManager.switchToChannel(name, name)
-
-                                    if (mouse.button === Qt.RightButton) {
+                                    } else {
                                         treeServerMenu.targetServer = name
                                         treeServerMenu.popup()
+                                    }
+                                } else {
+                                    // Left click logic
+                                    serverTree.currentIndex = index
+                                    if (entryType === "channel") {
+                                        var srvLeft = ""
+                                        for (var l = index - 1; l >= 0; l--) {
+                                            if (channelListModel.get(l).entryType === "server") {
+                                                srvLeft = channelListModel.get(l).name
+                                                break
+                                            }
+                                        }
+                                        root.currentServer = srvLeft
+                                        root.currentChannel = name
+                                        ircManager.switchToChannel(srvLeft, name)
+                                        root.channelTopic = ircManager.channelTopic
+                                        root.channelUsers = ircManager.channelUsers
+                                    } else {
+                                        root.currentServer = name
+                                        root.currentChannel = ""
+                                        ircManager.switchToChannel(name, name)
                                     }
                                 }
                             }

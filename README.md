@@ -8,6 +8,12 @@ A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexCh
 
 ---
 
+## Screenshot
+
+![NUchat Screenshot](docs/screenshot.png)
+
+---
+
 ## Features
 
 - **Multi-server** — connect to multiple networks simultaneously

@@ -522,7 +522,7 @@ Dialog {
                     anchors.margins: 16
 
                     Text { text: "SASL / Authentication"; color: "#ddd"; font.pixelSize: 16; font.bold: true }
-                    Text { text: "Default authentication method for new networks:"; color: "#aaa"; font.pixelSize: 12 }
+                    Text { text: "Authentication is configured per-network in the Network List.\nSettings below are defaults for new networks."; color: "#aaa"; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     RowLayout {
                         spacing: 8
                         Text { text: "Method:"; color: "#ccc"; font.pixelSize: 12 }

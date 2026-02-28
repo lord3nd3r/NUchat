@@ -32,7 +32,12 @@ public:
                                       const QString &nick = "NUchat_user",
                                       const QString &user = "nuchat",
                                       const QString &realname = "NUchat User",
-                                      const QString &password = QString());
+                                      const QString &password = QString(),
+                                      const QString &saslMethod = QString(),
+                                      const QString &saslUser = QString(),
+                                      const QString &saslPass = QString(),
+                                      const QString &nickServCmd = QString(),
+                                      const QString &nickServPass = QString());
     Q_INVOKABLE void disconnectFromServer(const QString &host);
     Q_INVOKABLE void disconnectAll();
 

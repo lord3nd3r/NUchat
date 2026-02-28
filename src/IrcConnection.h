@@ -27,6 +27,11 @@ public:
     void setUser(const QString &user, const QString &realname);
     void setPassword(const QString &pass);
 
+    // Per-network authentication
+    void setSaslAuth(const QString &method, const QString &user, const QString &pass);
+    void setNickServCmd(const QString &cmd);   // e.g. "/msg NickServ IDENTIFY %p" (%p=password)
+    void setNickServPass(const QString &pass);
+
     QString serverHost() const { return m_host; }
     bool isConnected() const { return m_registered; }
 
@@ -84,6 +89,16 @@ private:
     QString m_password;
     bool m_registered;
     QByteArray m_readBuffer;
+
+    // SASL authentication state
+    QString m_saslMethod;   // "None", "PLAIN", "EXTERNAL"
+    QString m_saslUser;
+    QString m_saslPass;
+    bool m_saslInProgress = false;
+
+    // NickServ auto-identify
+    QString m_nickServCmd;  // e.g. "/msg NickServ IDENTIFY %p"
+    QString m_nickServPass;
 
     // Channels we've joined — tracks names lists
     QMap<QString, QStringList> m_channelNames;

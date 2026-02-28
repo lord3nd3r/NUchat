@@ -34,6 +34,11 @@ Dialog {
             Layout.fillWidth: true; wrapMode: Text.Wrap
         }
         Text {
+            text: "Written by Kristopher Craig"
+            color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter
+            Layout.fillWidth: true
+        }
+        Text {
             text: "Features: SASL authentication, SSL/TLS,\nmultiple server support, DCC transfers,\nplugin system, scriptable via JavaScript."
             color: "#aaa"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
             Layout.fillWidth: true; wrapMode: Text.Wrap
@@ -42,7 +47,7 @@ Dialog {
         Item { Layout.fillHeight: true }
 
         Text {
-            text: "© 2026 NUchat Contributors"
+            text: "© 2026 Kristopher Craig"
             color: "#888"; font.pixelSize: 11
             Layout.alignment: Qt.AlignHCenter
         }

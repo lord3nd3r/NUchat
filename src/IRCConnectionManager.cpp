@@ -48,15 +48,31 @@ void IRCConnectionManager::connectToServer(const QString &host, int port,
                                             const QString &nick,
                                             const QString &user,
                                             const QString &realname,
-                                            const QString &password)
+                                            const QString &password,
+                                            const QString &saslMethod,
+                                            const QString &saslUser,
+                                            const QString &saslPass,
+                                            const QString &nickServCmd,
+                                            const QString &nickServPass)
 {
-    qDebug() << "[Manager] connectToServer called:" << host << port << ssl << nick;
+    qDebug() << "[Manager] connectToServer called:" << host << port << ssl << nick
+             << "sasl:" << saslMethod << "nickserv:" << (!nickServPass.isEmpty());
 
     auto *conn = new IrcConnection(this);
     conn->setNickname(nick);
     conn->setUser(user, realname);
     if (!password.isEmpty())
         conn->setPassword(password);
+
+    // Per-network SASL
+    if (!saslMethod.isEmpty() && saslMethod != "None")
+        conn->setSaslAuth(saslMethod, saslUser, saslPass);
+
+    // Per-network NickServ auto-identify
+    if (!nickServPass.isEmpty()) {
+        conn->setNickServCmd(nickServCmd);
+        conn->setNickServPass(nickServPass);
+    }
 
     m_connections.append(conn);
     m_connToName[conn] = host;

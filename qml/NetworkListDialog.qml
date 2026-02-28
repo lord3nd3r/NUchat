@@ -26,6 +26,7 @@ Dialog {
             arr.push({
                 network: item.network, server: item.server, port: item.port, ssl: item.ssl,
                 saslMethod: item.saslMethod, saslUser: item.saslUser, saslPass: item.saslPass,
+                nickServCmd: item.nickServCmd, nickServPass: item.nickServPass,
                 useGlobalNick: item.useGlobalNick, customNick: item.customNick,
                 customUser: item.customUser, customReal: item.customReal,
                 serverPass: item.serverPass, isZnc: item.isZnc,
@@ -48,6 +49,7 @@ Dialog {
                 networkModel.append({
                     network: n.network || "", server: n.server || "", port: n.port || 6667, ssl: !!n.ssl,
                     saslMethod: n.saslMethod || "None", saslUser: n.saslUser || "", saslPass: n.saslPass || "",
+                    nickServCmd: n.nickServCmd || "", nickServPass: n.nickServPass || "",
                     useGlobalNick: n.useGlobalNick !== false, customNick: n.customNick || "",
                     customUser: n.customUser || "", customReal: n.customReal || "",
                     serverPass: n.serverPass || "", isZnc: !!n.isZnc,
@@ -101,16 +103,16 @@ Dialog {
                     clip: true
                     model: ListModel {
                         id: networkModel
-                        ListElement { network: "Libera.Chat"; server: "irc.libera.chat"; port: 6697; ssl: true; saslMethod: "PLAIN"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
-                        ListElement { network: "OFTC"; server: "irc.oftc.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
-                        ListElement { network: "EFnet"; server: "irc.efnet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
-                        ListElement { network: "DALnet"; server: "irc.dal.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
-                        ListElement { network: "Undernet"; server: "irc.undernet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
-                        ListElement { network: "Rizon"; server: "irc.rizon.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
-                        ListElement { network: "IRCnet"; server: "open.ircnet.net"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
-                        ListElement { network: "QuakeNet"; server: "irc.quakenet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
-                        ListElement { network: "Snoonet"; server: "irc.snoonet.org"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
-                        ListElement { network: "freenode (legacy)"; server: "chat.freenode.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
+                        ListElement { network: "Libera.Chat"; server: "irc.libera.chat"; port: 6697; ssl: true; saslMethod: "PLAIN"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
+                        ListElement { network: "OFTC"; server: "irc.oftc.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
+                        ListElement { network: "EFnet"; server: "irc.efnet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
+                        ListElement { network: "DALnet"; server: "irc.dal.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
+                        ListElement { network: "Undernet"; server: "irc.undernet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
+                        ListElement { network: "Rizon"; server: "irc.rizon.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
+                        ListElement { network: "IRCnet"; server: "open.ircnet.net"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
+                        ListElement { network: "QuakeNet"; server: "irc.quakenet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
+                        ListElement { network: "Snoonet"; server: "irc.snoonet.org"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
+                        ListElement { network: "freenode (legacy)"; server: "chat.freenode.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: "" }
                     }
                     currentIndex: 0
 
@@ -320,6 +322,25 @@ Dialog {
                     background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                 }
 
+                // ── NickServ auto-identify ──
+                Rectangle { Layout.columnSpan: 4; Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#404040"; Layout.topMargin: 4; Layout.bottomMargin: 2 }
+                Text { text: "NickServ:"; color: "#ccc"; font.pixelSize: 12 }
+                TextField {
+                    id: editNickServPass; Layout.fillWidth: true; Layout.columnSpan: 3
+                    text: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).nickServPass : ""
+                    echoMode: TextInput.Password; placeholderText: "NickServ password (optional)"; placeholderTextColor: "#666"
+                    color: "#ddd"; font.pixelSize: 12
+                    background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                }
+                Text { text: "NS Command:"; color: "#ccc"; font.pixelSize: 12; visible: editNickServPass.text !== "" }
+                TextField {
+                    id: editNickServCmd; Layout.fillWidth: true; Layout.columnSpan: 3; visible: editNickServPass.text !== ""
+                    text: networkList.currentIndex >= 0 ? networkModel.get(networkList.currentIndex).nickServCmd : ""
+                    placeholderText: "/msg NickServ IDENTIFY %p"; placeholderTextColor: "#666"
+                    color: "#ddd"; font.family: "monospace"; font.pixelSize: 12
+                    background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                }
+
                 // ── ZNC Bouncer ──
                 Rectangle { Layout.columnSpan: 4; Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#404040"; Layout.topMargin: 4; Layout.bottomMargin: 2 }
 
@@ -412,7 +433,7 @@ Dialog {
             Button {
                 text: "Add Network"
                 onClicked: {
-                    networkModel.append({network: "New Network", server: "irc.example.com", port: 6697, ssl: true, saslMethod: "None", saslUser: "", saslPass: "", useGlobalNick: true, customNick: "", customUser: "", customReal: "", serverPass: "", isZnc: false, zncUser: "", zncPass: "", zncNetwork: ""})
+                    networkModel.append({network: "New Network", server: "irc.example.com", port: 6697, ssl: true, saslMethod: "None", saslUser: "", saslPass: "", nickServCmd: "", nickServPass: "", useGlobalNick: true, customNick: "", customUser: "", customReal: "", serverPass: "", isZnc: false, zncUser: "", zncPass: "", zncNetwork: ""})
                     networkList.currentIndex = networkModel.count - 1
                     dlg.saveNetworks()
                 }
@@ -440,6 +461,8 @@ Dialog {
                         networkModel.setProperty(i, "saslMethod", editSasl.currentText)
                         networkModel.setProperty(i, "saslUser", editSaslUser.text)
                         networkModel.setProperty(i, "saslPass", editSaslPass.text)
+                        networkModel.setProperty(i, "nickServCmd", editNickServCmd.text)
+                        networkModel.setProperty(i, "nickServPass", editNickServPass.text)
                         networkModel.setProperty(i, "isZnc", editIsZnc.checked)
                         networkModel.setProperty(i, "zncUser", editZncUser.text)
                         networkModel.setProperty(i, "zncPass", editZncPass.text)
@@ -499,7 +522,12 @@ Dialog {
                             useNick,
                             useUser,
                             useReal,
-                            serverPassword
+                            serverPassword,
+                            nw.saslMethod,
+                            nw.saslUser,
+                            nw.saslPass,
+                            nw.nickServCmd,
+                            nw.nickServPass
                         )
                         root.refreshChannelList()
                         dlg.close()

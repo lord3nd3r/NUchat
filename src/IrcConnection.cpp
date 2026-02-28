@@ -84,6 +84,23 @@ void IrcConnection::setPassword(const QString &pass)
     m_password = pass;
 }
 
+void IrcConnection::setSaslAuth(const QString &method, const QString &user, const QString &pass)
+{
+    m_saslMethod = method;
+    m_saslUser = user;
+    m_saslPass = pass;
+}
+
+void IrcConnection::setNickServCmd(const QString &cmd)
+{
+    m_nickServCmd = cmd;
+}
+
+void IrcConnection::setNickServPass(const QString &pass)
+{
+    m_nickServPass = pass;
+}
+
 void IrcConnection::joinChannel(const QString &channel, const QString &key)
 {
     if (key.isEmpty())
@@ -196,7 +213,7 @@ void IrcConnection::onSslErrors(const QList<QSslError> &errors)
 
 void IrcConnection::sendRegistration()
 {
-    // CAP negotiation (request multi-prefix for proper nick prefixes)
+    // CAP negotiation — request sasl if configured
     sendRaw("CAP LS 302");
 
     if (!m_password.isEmpty())
@@ -256,12 +273,55 @@ void IrcConnection::processLine(const QString &line)
         // params: [nick] [subcommand] ... [trailing]
         QString sub = (params.size() >= 2) ? params[1].toUpper() : "";
         if (sub == "LS") {
-            // End CAP negotiation — we don't request anything fancy for now
-            sendRaw("CAP END");
+            // Check if server supports sasl and we want it
+            QString capList = params.last();
+            bool serverHasSasl = capList.contains("sasl", Qt::CaseInsensitive);
+            bool wantSasl = !m_saslMethod.isEmpty() && m_saslMethod != "None";
+
+            if (serverHasSasl && wantSasl) {
+                m_saslInProgress = true;
+                sendRaw("CAP REQ :sasl");
+                qDebug() << "[IRC] Requesting SASL capability";
+            } else {
+                sendRaw("CAP END");
+            }
         } else if (sub == "ACK") {
-            sendRaw("CAP END");
+            QString acked = params.last();
+            if (acked.contains("sasl", Qt::CaseInsensitive)) {
+                // Start SASL authentication
+                if (m_saslMethod == "PLAIN") {
+                    sendRaw("AUTHENTICATE PLAIN");
+                } else if (m_saslMethod == "EXTERNAL") {
+                    sendRaw("AUTHENTICATE EXTERNAL");
+                } else {
+                    // Unsupported method, just end
+                    qDebug() << "[IRC] Unsupported SASL method:" << m_saslMethod;
+                    m_saslInProgress = false;
+                    sendRaw("CAP END");
+                }
+            } else {
+                sendRaw("CAP END");
+            }
         } else if (sub == "NAK") {
+            m_saslInProgress = false;
             sendRaw("CAP END");
+        }
+        return;
+    }
+
+    // AUTHENTICATE challenge
+    if (command == "AUTHENTICATE") {
+        if (params.size() >= 1 && params[0] == "+") {
+            if (m_saslMethod == "PLAIN") {
+                // SASL PLAIN: base64(authzid \0 authcid \0 password)
+                QString authStr = m_saslUser + QChar('\0') + m_saslUser + QChar('\0') + m_saslPass;
+                QByteArray encoded = authStr.toUtf8().toBase64();
+                sendRaw("AUTHENTICATE " + QString::fromLatin1(encoded));
+                qDebug() << "[IRC] Sent SASL PLAIN credentials for" << m_saslUser;
+            } else if (m_saslMethod == "EXTERNAL") {
+                sendRaw("AUTHENTICATE +");
+                qDebug() << "[IRC] Sent SASL EXTERNAL (empty)";
+            }
         }
         return;
     }
@@ -281,6 +341,7 @@ void IrcConnection::processLine(const QString &line)
         // RPL_WELCOME (001) — registration complete
         if (numeric == 1) {
             m_registered = true;
+            m_saslInProgress = false;
             // Update our nick from the server's response (params[0] is our actual nick)
             if (!params.isEmpty()) {
                 QString actualNick = params.first();
@@ -292,6 +353,43 @@ void IrcConnection::processLine(const QString &line)
             emit registered();
             emit connectionStateChanged(true);
             qDebug() << "[IRC] Registered as" << m_nickname << "on" << m_host;
+
+            // Auto-identify via NickServ if configured
+            if (!m_nickServPass.isEmpty()) {
+                QString cmd = m_nickServCmd;
+                if (cmd.isEmpty())
+                    cmd = "/msg NickServ IDENTIFY %p";
+                cmd.replace("%p", m_nickServPass);
+                cmd.replace("%n", m_nickname);
+                // Parse and send the command
+                if (cmd.startsWith("/msg ", Qt::CaseInsensitive)) {
+                    QString rest = cmd.mid(5).trimmed();
+                    QString target = rest.section(' ', 0, 0);
+                    QString msg = rest.section(' ', 1);
+                    if (!target.isEmpty() && !msg.isEmpty())
+                        sendMessage(target, msg);
+                } else if (cmd.startsWith("/nickserv ", Qt::CaseInsensitive)) {
+                    QString msg = cmd.mid(10).trimmed();
+                    if (!msg.isEmpty())
+                        sendMessage("NickServ", msg);
+                } else if (cmd.startsWith("/")) {
+                    sendRaw(cmd.mid(1));
+                }
+                qDebug() << "[IRC] Sent NickServ auto-identify for" << m_nickname;
+            }
+        }
+        // RPL_SASLSUCCESS (903)
+        else if (numeric == 903) {
+            m_saslInProgress = false;
+            qDebug() << "[IRC] SASL authentication successful";
+            sendRaw("CAP END");
+        }
+        // ERR_SASLFAIL (904), ERR_SASLTOOLONG (905), ERR_SASLABORTED (906), ERR_SASLALREADY (907)
+        else if (numeric == 904 || numeric == 905 || numeric == 906 || numeric == 907) {
+            m_saslInProgress = false;
+            qDebug() << "[IRC] SASL authentication failed (" << numeric << ")";
+            emit errorOccurred("SASL authentication failed (" + QString::number(numeric) + "): " + numTrailing);
+            sendRaw("CAP END");
         }
         // RPL_TOPIC (332)
         else if (numeric == 332 && numParams.size() >= 2) {

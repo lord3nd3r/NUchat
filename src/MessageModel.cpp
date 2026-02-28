@@ -118,12 +118,10 @@ static QString mircColor(int idx) {
   return QString();
 }
 
-// Strip literal HTML tags from incoming IRC text, but preserve IRC-style
-// <nick> patterns.  A "real" HTML tag either:
-//   - is a closing tag  (starts with /)
-//   - has attributes    (contains whitespace after the tag name)
-//   - matches a known HTML element name
-// IRC nicks never contain whitespace or slashes, so they are safe.
+// Strip literal HTML tags from incoming IRC text, but only real HTML tags.
+// IRC messages use <nick> patterns which must not be removed.
+// A "real" HTML tag has attributes (contains a space/slash) or matches a
+// known HTML element name.
 static const QSet<QString> s_htmlTagNames = {
     "a",          "b",        "i",     "u",      "s",      "em",      "strong",
     "span",       "div",      "p",     "br",     "hr",     "img",     "font",
@@ -135,6 +133,24 @@ static const QSet<QString> s_htmlTagNames = {
     "option",     "textarea", "nav",   "header", "footer", "section", "article",
     "aside",      "main"};
 
+static bool isHtmlTag(const QString &tagContent) {
+  if (tagContent.isEmpty())
+    return false;
+  // Closing tag: </tagname>
+  QString inner = tagContent;
+  if (inner.startsWith('/'))
+    inner = inner.mid(1);
+  // Get the tag name (up to first space or end)
+  int spacePos = inner.indexOf(' ');
+  QString tagName = (spacePos >= 0) ? inner.left(spacePos) : inner;
+  tagName = tagName.toLower();
+  // If it has attributes (space present) it's definitely HTML
+  if (spacePos >= 0)
+    return true;
+  // If it matches a known HTML element name, it's HTML
+  return s_htmlTagNames.contains(tagName);
+}
+
 static QString stripHtmlTags(const QString &text) {
   if (!text.contains(QLatin1Char('<')))
     return text;
@@ -142,54 +158,29 @@ static QString stripHtmlTags(const QString &text) {
   QString result;
   result.reserve(text.size());
   int i = 0;
-  const int len = text.size();
+  int len = text.size();
   while (i < len) {
-    if (text[i] != QLatin1Char('<')) {
-      result += text[i++];
-      continue;
-    }
-    // Find matching >
-    int end = text.indexOf(QLatin1Char('>'), i + 1);
-    if (end < 0) {
-      // No closing >, keep rest as-is
-      result += text.mid(i);
-      break;
-    }
-    const QString inner = text.mid(i + 1, end - i - 1).trimmed();
-    // Empty tag — keep
-    if (inner.isEmpty()) {
-      result += text[i++];
-      continue;
-    }
-    // Closing tag </foo>
-    if (inner[0] == QLatin1Char('/')) {
-      i = end + 1; // strip it
-      continue;
-    }
-    // Self-closing tag <foo/> or <foo .../>
-    if (inner.endsWith(QLatin1Char('/'))) {
-      i = end + 1;
-      continue;
-    }
-    // Tag with attributes: contains whitespace after the first word
-    int spaceIdx = -1;
-    for (int k = 0; k < inner.size(); ++k) {
-      if (inner[k].isSpace()) {
-        spaceIdx = k;
+    if (text[i] == '<') {
+      // Find the closing >
+      int end = text.indexOf('>', i + 1);
+      if (end < 0) {
+        // No closing >, keep everything as-is
+        result += text.mid(i);
         break;
       }
+      QString tagContent = text.mid(i + 1, end - i - 1).trimmed();
+      if (isHtmlTag(tagContent)) {
+        // Skip this tag entirely
+        i = end + 1;
+      } else {
+        // Not an HTML tag (e.g. IRC nick like <blondie>) — keep it
+        result += text[i];
+        i++;
+      }
+    } else {
+      result += text[i];
+      i++;
     }
-    if (spaceIdx >= 0) {
-      i = end + 1; // has attributes → strip
-      continue;
-    }
-    // Check against known HTML element names (case-insensitive)
-    if (s_htmlTagNames.contains(inner.toLower())) {
-      i = end + 1;
-      continue;
-    }
-    // Doesn't look like HTML (e.g. IRC nick <blondie>) — keep the < and advance
-    result += text[i++];
   }
   return result;
 }
@@ -595,7 +586,9 @@ QString MessageModel::formatLine(const Message &msg) {
   else if (msg.type == QLatin1String("error"))
     prefix = QStringLiteral("<span style=\"color:#f44747;\">! </span>");
 
-  return ts + prefix + linkifyUrls(colorizeNicks(ircToHtml(msg.text)));
+  return QStringLiteral("<p style=\"margin:0;\">") + ts + prefix +
+         linkifyUrls(colorizeNicks(ircToHtml(msg.text))) +
+         QStringLiteral("</p>");
 }
 
 QString MessageModel::allFormattedText() const {

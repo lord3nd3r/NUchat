@@ -575,12 +575,16 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
         [this, conn](const QString &prefix, const QString &target, const QString &message) {
         QString srv = serverNameFor(conn);
         QString nick = prefix.contains('!') ? prefix.section('!', 0, 0) : prefix;
-        Q_UNUSED(target);
-        // Show notices in the active channel or server tab
-        QString show = m_activeChannel.isEmpty() ? srv : m_activeChannel;
         QString text = "-" + nick + "- " + message;
-        appendToChannel(srv, show, "system", text);
-        if (m_msgModel && m_activeServer == srv) {
+        // Route to the target channel if it's a channel, otherwise to the server tab
+        QString dest;
+        if (target.startsWith('#') || target.startsWith('&')) {
+            dest = target;
+        } else {
+            dest = srv;
+        }
+        appendToChannel(srv, dest, "system", text);
+        if (m_msgModel && m_activeServer == srv && m_activeChannel == dest) {
             m_msgModel->addMessage("system", text);
         }
     });
@@ -708,13 +712,11 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
         [this, conn](const QString &oldNick, const QString &newNick) {
         QString srv = serverNameFor(conn);
         QString text = oldNick + " is now known as " + newNick;
-        if (m_msgModel && m_activeServer == srv) {
-            m_msgModel->addMessage("system", text);
-        }
         if (oldNick == conn->nickname() || newNick == conn->nickname()) {
             emit currentNickChanged(conn->nickname());
         }
         // Update nick in all channel user lists on this server
+        // and show the nick-change message only in channels where the user is present
         bool emitUpdate = false;
         for (auto it = m_users.begin(); it != m_users.end(); ++it) {
             if (it.key().server != srv) continue;
@@ -729,8 +731,11 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
                 }
                 if (bare.compare(oldNick, Qt::CaseInsensitive) == 0) {
                     users[i] = prefix + newNick;
-                    if (m_activeServer == srv && m_activeChannel == it.key().channel)
+                    appendToChannel(srv, it.key().channel, "system", text);
+                    if (m_activeServer == srv && m_activeChannel == it.key().channel) {
                         emitUpdate = true;
+                        if (m_msgModel) m_msgModel->addMessage("system", text);
+                    }
                     break;
                 }
             }
@@ -761,8 +766,9 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
         QString text = nick + " sets mode " + modeStr;
         if (!params.isEmpty()) text += " " + params.join(" ");
         text += " on " + target;
-        appendToChannel(srv, target.startsWith('#') ? target : srv, "system", text);
-        if (m_msgModel && m_activeServer == srv) {
+        QString dest = target.startsWith('#') ? target : srv;
+        appendToChannel(srv, dest, "system", text);
+        if (m_msgModel && m_activeServer == srv && m_activeChannel == dest) {
             m_msgModel->addMessage("system", text);
         }
 
@@ -849,20 +855,24 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
     // CTCP
     connect(conn, &IrcConnection::ctcpReceived, this,
         [this, conn](const QString &prefix, const QString &target, const QString &command, const QString &args) {
-        Q_UNUSED(target);
         QString srv = serverNameFor(conn);
         QString nick = prefix.contains('!') ? prefix.section('!', 0, 0) : prefix;
+        // Determine the proper destination channel
+        QString channel = target;
+        if (target == conn->nickname()) {
+            channel = nick;  // PM
+        }
         QString text;
         if (command == "ACTION") {
             text = "* " + nick + " " + args;
-            QString ch = m_activeChannel.isEmpty() ? srv : m_activeChannel;
-            appendToChannel(srv, ch, "action", text);
-            if (m_msgModel && m_activeServer == srv && m_activeChannel == ch) {
+            appendToChannel(srv, channel, "action", text);
+            if (m_msgModel && m_activeServer == srv && m_activeChannel == channel) {
                 m_msgModel->addMessage("action", text);
             }
         } else {
             text = "CTCP " + command + " from " + nick + (args.isEmpty() ? "" : ": " + args);
-            if (m_msgModel && m_activeServer == srv)
+            appendToChannel(srv, srv, "system", text);
+            if (m_msgModel && m_activeServer == srv && m_activeChannel == srv)
                 m_msgModel->addMessage("system", text);
         }
     });
@@ -983,12 +993,20 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
                     m_msgModel->addMessage("system", trailing);
             }
         }
-        // Error numerics
+        // Error numerics — route to the relevant channel if mentioned in params, else server tab
         if (code >= 400 && code < 600) {
             QString text = "[" + QString::number(code) + "] " + trailing;
-            if (m_msgModel)
+            // Some error numerics mention a channel in params (e.g. 404 #channel :Cannot send)
+            QString dest = srv;
+            for (int pi = 1; pi < params.size(); pi++) {
+                if (params[pi].startsWith('#') || params[pi].startsWith('&')) {
+                    dest = params[pi];
+                    break;
+                }
+            }
+            appendToChannel(srv, dest, "error", text);
+            if (m_msgModel && m_activeServer == srv && m_activeChannel == dest)
                 m_msgModel->addMessage("error", text);
-            appendToChannel(srv, m_activeChannel.isEmpty() ? srv : m_activeChannel, "error", text);
         }
     });
 }

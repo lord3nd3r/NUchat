@@ -6,13 +6,14 @@ Dialog {
     id: dlg
     title: "About NUchat"
     width: 400
-    height: 360
+    height: contentColumn.implicitHeight + 80
     modal: true
     anchors.centerIn: parent
 
     background: Rectangle { color: "#2b2b2b"; border.color: "#555"; border.width: 1; radius: 6 }
 
     ColumnLayout {
+        id: contentColumn
         anchors.fill: parent; anchors.margins: 20; spacing: 12
 
         Text {
@@ -43,8 +44,6 @@ Dialog {
             color: "#aaa"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
             Layout.fillWidth: true; wrapMode: Text.Wrap
         }
-
-        Item { Layout.fillHeight: true }
 
         Text {
             text: "© 2026 Kristopher Craig"

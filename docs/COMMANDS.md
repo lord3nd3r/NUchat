@@ -109,3 +109,15 @@ All commands are case-insensitive and prefixed with `/`. Unknown commands are fo
 |---------|---------|-------------|
 | `/IGNORE` | | Add to ignore list |
 | `/UNIGNORE` | | Remove from ignore list |
+
+## Formatting Shortcuts (mIRC)
+
+These keyboard shortcuts insert mIRC control characters into the message input:
+
+| Shortcut | Code | Effect |
+|----------|------|--------|
+| `Ctrl+K` | `\x03` | Color — follow with number (e.g. `Ctrl+K 4` for red) |
+| `Ctrl+B` | `\x02` | Bold |
+| `Ctrl+U` | `\x1F` | Underline |
+| `Ctrl+I` | `\x1D` | Italic |
+| `Ctrl+O` | `\x0F` | Reset all formatting |

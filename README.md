@@ -19,7 +19,7 @@ A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexCh
 - **Multi-server** — connect to multiple networks simultaneously
 - **SSL/TLS** on all connections with **per-network SASL** (PLAIN/EXTERNAL) and **NickServ auto-identify**
 - **25 built-in themes** — HexChat Dark, Monokai, Dracula, Nord, Gruvbox, Catppuccin, and more
-- **mIRC color codes** — full rendering (foreground, background, bold, italic, underline, hex colors)
+- **mIRC color codes** — full rendering (foreground, background, bold, italic, underline, hex colors) and input shortcuts (`Ctrl+K` color, `Ctrl+B` bold, `Ctrl+U` underline, `Ctrl+I` italic, `Ctrl+O` reset)
 - **Clickable URLs** with inline image previews
 - **Nick list** with multi-select (Ctrl+click, Shift+click) and mode buttons (Op, DeOp, Ban, Kick, Voice, DeVoice)
 - **Tab nick-completion** with cycling
@@ -163,7 +163,7 @@ Place `.py` files in `~/.config/NUchat/scripts/`. Loaded automatically on startu
 - [x] Perform-on-connect commands
 
 ### Features
-- [ ] Spell checking
+- [x] Spell checking
 - [x] Away log
 - [x] URL Grabber
 - [x] Configurable keyboard shortcuts

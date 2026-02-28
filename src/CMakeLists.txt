@@ -71,7 +71,7 @@ target_link_libraries(nuchatcore PRIVATE
 if(HUNSPELL_FOUND)
     target_include_directories(nuchatcore PRIVATE ${HUNSPELL_INCLUDE_DIRS})
     target_link_libraries(nuchatcore PRIVATE ${HUNSPELL_LIBRARIES})
-    target_compile_definitions(nuchatcore PRIVATE HAVE_HUNSPELL=1)
+    target_compile_definitions(nuchatcore PUBLIC HAVE_HUNSPELL=1)
     if(Qt6Quick_FOUND)
         target_link_libraries(nuchatcore PRIVATE Qt6::Quick)
     endif()

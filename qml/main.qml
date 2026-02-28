@@ -1129,15 +1129,6 @@ ApplicationWindow {
                             border.width: 1
                             radius: 3
                         }
-                        
-                        Keys.onPressed: function(event) {
-                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                                if (event.modifiers === Qt.NoModifier || event.modifiers === Qt.KeypadModifier) {
-                                    event.accepted = true
-                                    sendMessage()
-                                }
-                            }
-                        }
 
                         property var currentMisspelledWordInfo: null
                         property var spellCheckerObj: null
@@ -1275,6 +1266,14 @@ ApplicationWindow {
                         }
 
                         Keys.onPressed: function(event) {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                if (event.modifiers === Qt.NoModifier || event.modifiers === Qt.KeypadModifier) {
+                                    event.accepted = true
+                                    sendMessage()
+                                    return
+                                }
+                            }
+
                             // Reset tab completion on non-Tab keys
                             if (event.key !== Qt.Key_Tab && event.key !== Qt.Key_Up && event.key !== Qt.Key_Down && event.key !== Qt.Key_Shift) {
                                 messageInput.tabPrefix = ""

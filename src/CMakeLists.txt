@@ -63,16 +63,16 @@ target_compile_definitions(nuchatcore PRIVATE QT_DEPRECATED_WARNINGS)
 target_include_directories(nuchatcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # main executable
-add_executable(NUchat main.cpp)
+add_executable(nuchat main.cpp)
 
 # include resources directly in the library so they are available
 set(nuchatcore_RESOURCE_FILES resources.qrc)
 
-target_link_libraries(NUchat PRIVATE nuchatcore Qt6::Gui Qt6::Widgets Qt6::QuickControls2)
+target_link_libraries(nuchat PRIVATE nuchatcore Qt6::Gui Qt6::Widgets Qt6::QuickControls2)
 
 if(Qt6Quick_FOUND)
-    target_link_libraries(NUchat PRIVATE Qt6::Quick)
+    target_link_libraries(nuchat PRIVATE Qt6::Quick)
 endif()
 
 # Install the binary
-install(TARGETS NUchat RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS nuchat RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

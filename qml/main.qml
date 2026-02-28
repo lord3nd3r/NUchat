@@ -125,7 +125,7 @@ ApplicationWindow {
         onActivated: networkListDialog.open()
     }
     Shortcut {
-        sequence: appSettings.value("shortcut/nickChange", "Ctrl+K")
+        sequence: appSettings.value("shortcut/nickChange", "Ctrl+Shift+K")
         onActivated: nickChangeDialog.open()
     }
     Shortcut {
@@ -140,7 +140,7 @@ ApplicationWindow {
         onActivated: scriptsDialog.open()
     }
     Shortcut {
-        sequence: appSettings.value("shortcut/urlGrabber", "Ctrl+U")
+        sequence: appSettings.value("shortcut/urlGrabber", "Ctrl+Shift+U")
         onActivated: urlGrabberDialog.open()
     }
 
@@ -645,10 +645,10 @@ ApplicationWindow {
                         s("shortcut/search","Ctrl+F") + ": Search",
                         s("shortcut/preferences","Ctrl+P") + ": Preferences",
                         s("shortcut/networkList","Ctrl+Shift+N") + ": Network List",
-                        s("shortcut/nickChange","Ctrl+K") + ": Change Nick",
+                        s("shortcut/nickChange","Ctrl+Shift+K") + ": Change Nick",
                         s("shortcut/away","Ctrl+Shift+A") + ": Toggle Away",
                         s("shortcut/scripts","Ctrl+Shift+S") + ": Scripts",
-                        s("shortcut/urlGrabber","Ctrl+U") + ": URL Grabber"
+                        s("shortcut/urlGrabber","Ctrl+Shift+U") + ": URL Grabber"
                     ]
                     msgModel.addMessage("system", "Keyboard Shortcuts:  " + lines.join("  |  "))
                 }
@@ -1269,6 +1269,23 @@ ApplicationWindow {
                         }
 
                         Keys.onPressed: function(event) {
+                            // mIRC formatting control codes
+                            if (event.modifiers & Qt.ControlModifier) {
+                                var ctrl = ""
+                                if (event.key === Qt.Key_K) ctrl = "\x03"      // Color
+                                else if (event.key === Qt.Key_B) ctrl = "\x02" // Bold
+                                else if (event.key === Qt.Key_U) ctrl = "\x1F" // Underline
+                                else if (event.key === Qt.Key_I) ctrl = "\x1D" // Italic
+                                else if (event.key === Qt.Key_O) ctrl = "\x0F" // Reset
+                                if (ctrl !== "") {
+                                    event.accepted = true
+                                    var pos = messageInput.cursorPosition
+                                    messageInput.text = messageInput.text.substring(0, pos) + ctrl + messageInput.text.substring(pos)
+                                    messageInput.cursorPosition = pos + 1
+                                    return
+                                }
+                            }
+
                             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                                 if (event.modifiers === Qt.NoModifier || event.modifiers === Qt.KeypadModifier) {
                                     event.accepted = true

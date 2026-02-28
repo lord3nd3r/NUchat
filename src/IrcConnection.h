@@ -4,6 +4,7 @@
 #include <QStringList>
 #include <QMap>
 #include <QtNetwork/QSslSocket>
+#include <QtNetwork/QNetworkProxy>
 
 class IrcConnection : public QObject
 {
@@ -31,6 +32,11 @@ public:
     void setSaslAuth(const QString &method, const QString &user, const QString &pass);
     void setNickServCmd(const QString &cmd);   // e.g. "/msg NickServ IDENTIFY %p" (%p=password)
     void setNickServPass(const QString &pass);
+
+    // Proxy configuration
+    void setProxy(QNetworkProxy::ProxyType type,
+                  const QString &host = QString(), quint16 port = 0,
+                  const QString &user = QString(), const QString &password = QString());
 
     QString serverHost() const { return m_host; }
     bool isConnected() const { return m_registered; }

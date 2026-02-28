@@ -3,6 +3,7 @@
 #include "MessageModel.h"
 #include "ServerChannelModel.h"
 #include "Logger.h"
+#include "Settings.h"
 #include "Version.h"
 #include <QDebug>
 #include <QDateTime>
@@ -11,6 +12,8 @@
 #include <QFile>
 #include <QTextStream>
 #include <QRegularExpression>
+#include <QTimer>
+#include <QNetworkProxy>
 #include <algorithm>
 #ifdef HAVE_PYTHON
 #include "PythonScriptEngine.h"
@@ -44,6 +47,17 @@ void IRCConnectionManager::setServerChannelModel(ServerChannelModel *model)
 void IRCConnectionManager::setLogger(Logger *logger)
 {
     m_logger = logger;
+}
+
+void IRCConnectionManager::setSettings(Settings *settings)
+{
+    m_settings = settings;
+    // Load ignore list from settings
+    if (m_settings) {
+        QVariant stored = m_settings->value("ignore/list");
+        if (stored.isValid())
+            m_ignoreList = stored.toStringList();
+    }
 }
 
 void IRCConnectionManager::connectToServer(const QString &host, int port,
@@ -88,6 +102,25 @@ void IRCConnectionManager::connectToServer(const QString &host, int port,
     wireConnection(conn);
     emit clientAdded(conn);
 
+    // Store connection params for auto-reconnect
+    ReconnectInfo ri;
+    ri.host = host;
+    ri.port = port;
+    ri.ssl = ssl;
+    ri.nick = nick;
+    ri.user = user;
+    ri.realname = realname;
+    ri.password = password;
+    ri.saslMethod = saslMethod;
+    ri.saslUser = saslUser;
+    ri.saslPass = saslPass;
+    ri.nickServCmd = nickServCmd;
+    ri.nickServPass = nickServPass;
+    ri.attempts = 0;
+    ri.timer = nullptr;
+    m_reconnectInfo[host] = ri;
+    m_userDisconnect = false;
+
     // Set as active server
     m_activeServer = host;
     m_activeChannel = host;  // server tab
@@ -99,11 +132,20 @@ void IRCConnectionManager::connectToServer(const QString &host, int port,
     }
     appendToChannel(host, host, "system", "Connecting to " + host + ":" + QString::number(port) + "...");
 
+    applyProxySettings(conn);
     conn->connectToServer(host, static_cast<quint16>(port), ssl);
 }
 
 void IRCConnectionManager::disconnectFromServer(const QString &host)
 {
+    m_userDisconnect = true;
+    // Cancel any pending reconnect timer
+    if (m_reconnectInfo.contains(host) && m_reconnectInfo[host].timer) {
+        m_reconnectInfo[host].timer->stop();
+        m_reconnectInfo[host].timer->deleteLater();
+        m_reconnectInfo[host].timer = nullptr;
+        m_reconnectInfo[host].attempts = 0;
+    }
     if (auto *conn = connectionForServer(host)) {
         conn->disconnectFromServer();
     }
@@ -111,6 +153,7 @@ void IRCConnectionManager::disconnectFromServer(const QString &host)
 
 void IRCConnectionManager::disconnectAll()
 {
+    m_userDisconnect = true;
     for (auto *c : m_connections)
         c->disconnectFromServer();
 }
@@ -196,12 +239,23 @@ void IRCConnectionManager::sendMessage(const QString &target, const QString &mes
                     m_msgModel->addMessage("action", text);
                 appendToChannel(m_activeServer, target, "action", text);
             } else if (cmd == "QUIT" || cmd == "DISCONNECT" || cmd == "BYE") {
+                m_userDisconnect = true;
                 conn->disconnectFromServer(args.isEmpty() ? "NUchat" : args);
             } else if (cmd == "AWAY") {
-                if (args.isEmpty()) conn->setBack();
-                else conn->setAway(args);
+                if (args.isEmpty()) {
+                    conn->setBack();
+                    m_isAway = false;
+                    emit awayStateChanged(false);
+                } else {
+                    conn->setAway(args);
+                    m_isAway = true;
+                    m_awayLog.clear();  // Clear previous away log
+                    emit awayStateChanged(true);
+                }
             } else if (cmd == "BACK") {
                 conn->setBack();
+                m_isAway = false;
+                emit awayStateChanged(false);
             } else if (cmd == "WHOIS" || cmd == "W" || cmd == "WI") {
                 conn->whois(args.trimmed());
             } else if (cmd == "RAW" || cmd == "QUOTE") {
@@ -357,11 +411,27 @@ void IRCConnectionManager::sendMessage(const QString &target, const QString &mes
             } else if (cmd == "LIST") {
                 conn->sendRaw("LIST" + (args.isEmpty() ? "" : " " + args));
             } else if (cmd == "IGNORE") {
-                if (m_msgModel)
-                    m_msgModel->addMessage("system", "Ignore list: not yet implemented");
+                if (args.trimmed().isEmpty()) {
+                    // Show current ignore list
+                    if (m_ignoreList.isEmpty()) {
+                        if (m_msgModel) m_msgModel->addMessage("system", "Ignore list is empty");
+                    } else {
+                        if (m_msgModel) m_msgModel->addMessage("system", "Ignore list (" + QString::number(m_ignoreList.size()) + " entries):");
+                        for (const auto &mask : m_ignoreList) {
+                            if (m_msgModel) m_msgModel->addMessage("system", "  " + mask);
+                        }
+                    }
+                } else {
+                    addIgnore(args.trimmed());
+                    if (m_msgModel) m_msgModel->addMessage("system", "Added to ignore list: " + args.trimmed());
+                }
             } else if (cmd == "UNIGNORE") {
-                if (m_msgModel)
-                    m_msgModel->addMessage("system", "Ignore list: not yet implemented");
+                if (args.trimmed().isEmpty()) {
+                    if (m_msgModel) m_msgModel->addMessage("system", "Usage: /UNIGNORE <nick!user@host>");
+                } else {
+                    removeIgnore(args.trimmed());
+                    if (m_msgModel) m_msgModel->addMessage("system", "Removed from ignore list: " + args.trimmed());
+                }
             }
             // ── System info ──
             else if (cmd == "SYSINFO") {
@@ -564,6 +634,17 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
         }
         emit serverRegistered(srv);
         emit currentNickChanged(conn->nickname());
+
+        // Cancel any pending reconnect timer for this server
+        if (m_reconnectInfo.contains(srv) && m_reconnectInfo[srv].timer) {
+            m_reconnectInfo[srv].timer->stop();
+            m_reconnectInfo[srv].timer->deleteLater();
+            m_reconnectInfo[srv].timer = nullptr;
+            m_reconnectInfo[srv].attempts = 0;
+        }
+
+        // ── Execute perform-on-connect commands ──
+        executePerformCommands(srv);
     });
 
     // Disconnected
@@ -574,6 +655,12 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
         if (m_msgModel && m_activeServer == srv) {
             m_msgModel->addMessage("system", msg);
         }
+
+        // ── Auto-reconnect ──
+        if (!m_userDisconnect) {
+            attemptReconnect(srv);
+        }
+        m_userDisconnect = false;
     });
 
     // Error
@@ -589,6 +676,10 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
         [this, conn](const QString &prefix, const QString &target, const QString &message) {
         QString srv = serverNameFor(conn);
         QString nick = prefix.contains('!') ? prefix.section('!', 0, 0) : prefix;
+
+        // ── Ignore list filtering ──
+        if (isIgnored(prefix) || isIgnored(nick)) return;
+
         QString channel = target;
         // If target is our nick, it's a PM — use sender's nick as channel
         if (target == conn->nickname()) {
@@ -631,6 +722,10 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
         [this, conn](const QString &prefix, const QString &target, const QString &message) {
         QString srv = serverNameFor(conn);
         QString nick = prefix.contains('!') ? prefix.section('!', 0, 0) : prefix;
+
+        // ── Ignore list filtering ──
+        if (isIgnored(prefix) || isIgnored(nick)) return;
+
         QString text = "-" + nick + "- " + message;
         // Route to the target channel if it's a channel, to query if one exists, otherwise server tab
         QString dest;
@@ -947,6 +1042,10 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
         [this, conn](const QString &prefix, const QString &target, const QString &command, const QString &args) {
         QString srv = serverNameFor(conn);
         QString nick = prefix.contains('!') ? prefix.section('!', 0, 0) : prefix;
+
+        // ── Ignore list filtering ──
+        if (isIgnored(prefix) || isIgnored(nick)) return;
+
         // Determine the proper destination channel
         QString channel = target;
         if (target == conn->nickname()) {
@@ -1092,6 +1191,29 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn)
             appendToChannel(srv, m_activeChannel.isEmpty() ? srv : m_activeChannel, "system", text);
         }
 
+        // RPL_UNAWAY (305) and RPL_NOWAWAY (306) — track away state
+        else if (code == 305) {
+            // You are no longer marked as being away
+            m_isAway = false;
+            emit awayStateChanged(false);
+            QString text = trailing.isEmpty() ? "You are no longer marked as being away" : trailing;
+            appendToChannel(srv, m_activeChannel.isEmpty() ? srv : m_activeChannel, "system", text);
+            if (m_msgModel) m_msgModel->addMessage("system", text);
+            // Show away log summary if there were messages
+            if (!m_awayLog.isEmpty()) {
+                if (m_msgModel) m_msgModel->addMessage("system",
+                    "You have " + QString::number(m_awayLog.size()) + " message(s) in your away log. Use View > Away Log to see them.");
+            }
+        } else if (code == 306) {
+            // You have been marked as being away
+            m_isAway = true;
+            m_awayLog.clear();
+            emit awayStateChanged(true);
+            QString text = trailing.isEmpty() ? "You have been marked as being away" : trailing;
+            appendToChannel(srv, m_activeChannel.isEmpty() ? srv : m_activeChannel, "system", text);
+            if (m_msgModel) m_msgModel->addMessage("system", text);
+        }
+
         // Show MOTD lines (372, 375, 376) and other informational numerics
         else if ((code >= 372 && code <= 376) || code == 2 || code == 3 || code == 4 ||
             code == 5 || code == 251 || code == 252 || code == 253 || code == 254 ||
@@ -1162,6 +1284,32 @@ void IRCConnectionManager::appendToChannel(const QString &server, const QString 
         }
         if (changed)
             emit unreadStateChanged();
+    }
+
+    // ── URL Grabber — extract URLs from chat/action messages ──
+    if (type == "chat" || type == "action") {
+        // Extract the nick from the message text
+        QString urlNick;
+        if (type == "chat" && text.startsWith('<')) {
+            urlNick = text.section('>', 0, 0).mid(1);
+            // Strip mode prefix from nick
+            while (!urlNick.isEmpty() && QString("~&@%+").contains(urlNick[0]))
+                urlNick = urlNick.mid(1);
+        } else if (type == "action" && text.startsWith("* ")) {
+            urlNick = text.section(' ', 1, 1);
+        }
+        extractUrls(text, urlNick, channel);
+
+        // ── Away log — capture messages while away ──
+        if (m_isAway) {
+            AwayLogEntry entry;
+            entry.timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
+            entry.nick = urlNick;
+            entry.channel = channel;
+            entry.message = text;
+            m_awayLog.append(entry);
+            emit awayLogUpdated();
+        }
     }
 }
 
@@ -1336,4 +1484,320 @@ IrcConnection *IRCConnectionManager::connectionForServer(const QString &name) co
             return it.key();
     }
     return nullptr;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Ignore List
+// ═══════════════════════════════════════════════════════════════════
+
+void IRCConnectionManager::addIgnore(const QString &mask)
+{
+    QString normalized = mask;
+    // If it's just a nick (no ! or @), convert to nick!*@*
+    if (!normalized.contains('!') && !normalized.contains('@'))
+        normalized = normalized + "!*@*";
+    if (!m_ignoreList.contains(normalized, Qt::CaseInsensitive)) {
+        m_ignoreList.append(normalized);
+        if (m_settings) {
+            m_settings->setValue("ignore/list", m_ignoreList);
+            m_settings->sync();
+        }
+        emit ignoreListChanged();
+    }
+}
+
+void IRCConnectionManager::removeIgnore(const QString &mask)
+{
+    QString normalized = mask;
+    if (!normalized.contains('!') && !normalized.contains('@'))
+        normalized = normalized + "!*@*";
+    // Case-insensitive removal
+    for (int i = m_ignoreList.size() - 1; i >= 0; --i) {
+        if (m_ignoreList[i].compare(normalized, Qt::CaseInsensitive) == 0) {
+            m_ignoreList.removeAt(i);
+        }
+    }
+    if (m_settings) {
+        m_settings->setValue("ignore/list", m_ignoreList);
+        m_settings->sync();
+    }
+    emit ignoreListChanged();
+}
+
+QStringList IRCConnectionManager::ignoreList() const
+{
+    return m_ignoreList;
+}
+
+void IRCConnectionManager::clearIgnoreList()
+{
+    m_ignoreList.clear();
+    if (m_settings) {
+        m_settings->setValue("ignore/list", m_ignoreList);
+        m_settings->sync();
+    }
+    emit ignoreListChanged();
+}
+
+bool IRCConnectionManager::isIgnored(const QString &nickOrMask) const
+{
+    if (m_ignoreList.isEmpty()) return false;
+
+    for (const QString &pattern : m_ignoreList) {
+        // Convert the ignore mask pattern to a regex: * → .*, ? → .
+        QString regex = QRegularExpression::escape(pattern);
+        regex.replace("\\*", ".*").replace("\\?", ".");
+        QRegularExpression re("^" + regex + "$", QRegularExpression::CaseInsensitiveOption);
+        if (re.match(nickOrMask).hasMatch())
+            return true;
+        // Also try matching just the nick part if the input is a full prefix
+        if (nickOrMask.contains('!')) {
+            QString nick = nickOrMask.section('!', 0, 0);
+            // Check if the pattern is a simple nick!*@* pattern
+            QString patternNick = pattern.section('!', 0, 0);
+            if (!patternNick.contains('*') && !patternNick.contains('?')) {
+                if (nick.compare(patternNick, Qt::CaseInsensitive) == 0)
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Auto-Reconnect
+// ═══════════════════════════════════════════════════════════════════
+
+void IRCConnectionManager::attemptReconnect(const QString &host)
+{
+    if (!m_settings) return;
+
+    bool autoReconnect = m_settings->value("conn/autoReconnect", true).toBool();
+    if (!autoReconnect) return;
+
+    if (!m_reconnectInfo.contains(host)) return;
+
+    ReconnectInfo &ri = m_reconnectInfo[host];
+    int maxAttempts = m_settings->value("conn/maxReconnectAttempts", 10).toInt();
+    int delay = m_settings->value("conn/reconnectDelay", 10).toInt();
+
+    if (maxAttempts > 0 && ri.attempts >= maxAttempts) {
+        QString msg = "Auto-reconnect: max attempts (" + QString::number(maxAttempts) + ") reached for " + host;
+        appendToChannel(host, host, "system", msg);
+        if (m_msgModel && m_activeServer == host)
+            m_msgModel->addMessage("system", msg);
+        return;
+    }
+
+    ri.attempts++;
+    QString msg = "Auto-reconnect: attempting to reconnect to " + host +
+                  " in " + QString::number(delay) + "s (attempt " +
+                  QString::number(ri.attempts) + "/" +
+                  (maxAttempts > 0 ? QString::number(maxAttempts) : "∞") + ")";
+    appendToChannel(host, host, "system", msg);
+    if (m_msgModel && m_activeServer == host)
+        m_msgModel->addMessage("system", msg);
+
+    // Clean up old connection
+    IrcConnection *oldConn = connectionForServer(host);
+    if (oldConn) {
+        m_connections.removeOne(oldConn);
+        m_connToName.remove(oldConn);
+        oldConn->deleteLater();
+    }
+
+    // Set up a timer
+    if (ri.timer) {
+        ri.timer->stop();
+        ri.timer->deleteLater();
+    }
+    ri.timer = new QTimer(this);
+    ri.timer->setSingleShot(true);
+    connect(ri.timer, &QTimer::timeout, this, [this, host]() {
+        if (!m_reconnectInfo.contains(host)) return;
+        ReconnectInfo &info = m_reconnectInfo[host];
+        info.timer->deleteLater();
+        info.timer = nullptr;
+
+        // Create new connection with stored params
+        auto *conn = new IrcConnection(this);
+        conn->setNickname(info.nick);
+        conn->setUser(info.user, info.realname);
+        if (!info.password.isEmpty())
+            conn->setPassword(info.password);
+        if (!info.saslMethod.isEmpty() && info.saslMethod != "None")
+            conn->setSaslAuth(info.saslMethod, info.saslUser, info.saslPass);
+        if (!info.nickServPass.isEmpty()) {
+            conn->setNickServCmd(info.nickServCmd);
+            conn->setNickServPass(info.nickServPass);
+        }
+
+        m_connections.append(conn);
+        m_connToName[conn] = host;
+
+        wireConnection(conn);
+        emit clientAdded(conn);
+
+        m_activeServer = host;
+        m_activeChannel = host;
+
+        QString reconnMsg = "Reconnecting to " + host + ":" + QString::number(info.port) + "...";
+        appendToChannel(host, host, "system", reconnMsg);
+        if (m_msgModel) m_msgModel->addMessage("system", reconnMsg);
+
+        applyProxySettings(conn);
+        conn->connectToServer(host, static_cast<quint16>(info.port), info.ssl);
+    });
+    ri.timer->start(delay * 1000);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Perform-on-Connect
+// ═══════════════════════════════════════════════════════════════════
+
+void IRCConnectionManager::executePerformCommands(const QString &server)
+{
+    if (!m_settings) return;
+
+    QString performText = m_settings->value("adv/performCommands", "").toString().trimmed();
+    if (performText.isEmpty()) return;
+
+    IrcConnection *conn = connectionForServer(server);
+    if (!conn) return;
+
+    QStringList commands = performText.split('\n', Qt::SkipEmptyParts);
+    for (QString cmd : commands) {
+        cmd = cmd.trimmed();
+        if (cmd.isEmpty()) continue;
+
+        // Replace variables: %n = nick, %s = server
+        cmd.replace("%n", conn->nickname());
+        cmd.replace("%s", server);
+
+        if (cmd.startsWith('/')) {
+            // Execute as a command through the command dispatcher
+            // Temporarily set active server so sendMessage routes correctly
+            QString prevServer = m_activeServer;
+            QString prevChannel = m_activeChannel;
+            m_activeServer = server;
+            m_activeChannel = server;
+            sendMessage(server, cmd);
+            m_activeServer = prevServer;
+            m_activeChannel = prevChannel;
+        } else {
+            // Send raw
+            conn->sendRaw(cmd);
+        }
+    }
+
+    qDebug() << "[Manager] Executed" << commands.size() << "perform commands for" << server;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  URL Grabber
+// ═══════════════════════════════════════════════════════════════════
+
+void IRCConnectionManager::extractUrls(const QString &text, const QString &nick, const QString &channel)
+{
+    // Check if URL grabbing is enabled
+    if (m_settings && !m_settings->value("url/autoGrab", true).toBool())
+        return;
+
+    static QRegularExpression urlRe(
+        R"((https?://[^\s<>"'\)\]]+))",
+        QRegularExpression::CaseInsensitiveOption
+    );
+
+    auto it = urlRe.globalMatch(text);
+    while (it.hasNext()) {
+        auto match = it.next();
+        GrabbedUrl entry;
+        entry.url = match.captured(1);
+        entry.nick = nick;
+        entry.channel = channel;
+        entry.timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
+        m_grabbedUrls.append(entry);
+        emit urlGrabbed(entry.url, nick, channel);
+    }
+}
+
+QVariantList IRCConnectionManager::grabbedUrls() const
+{
+    QVariantList result;
+    for (const auto &u : m_grabbedUrls) {
+        QVariantMap m;
+        m["url"] = u.url;
+        m["nick"] = u.nick;
+        m["channel"] = u.channel;
+        m["timestamp"] = u.timestamp;
+        result.append(m);
+    }
+    return result;
+}
+
+void IRCConnectionManager::clearGrabbedUrls()
+{
+    m_grabbedUrls.clear();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Away Log
+// ═══════════════════════════════════════════════════════════════════
+
+QVariantList IRCConnectionManager::awayLog() const
+{
+    QVariantList result;
+    for (const auto &e : m_awayLog) {
+        QVariantMap m;
+        m["timestamp"] = e.timestamp;
+        m["nick"] = e.nick;
+        m["channel"] = e.channel;
+        m["message"] = e.message;
+        result.append(m);
+    }
+    return result;
+}
+
+void IRCConnectionManager::clearAwayLog()
+{
+    m_awayLog.clear();
+    emit awayLogUpdated();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Proxy Support
+// ═══════════════════════════════════════════════════════════════════
+
+void IRCConnectionManager::applyProxySettings(IrcConnection *conn)
+{
+    if (!m_settings || !conn) return;
+
+    int typeIdx = m_settings->value("conn/proxyTypeIndex", 0).toInt();
+    if (typeIdx <= 0) {
+        conn->setProxy(QNetworkProxy::NoProxy);
+        return;
+    }
+
+    QString host = m_settings->value("conn/proxyHost", "").toString().trimmed();
+    int port = m_settings->value("conn/proxyPort", 1080).toInt();
+
+    if (host.isEmpty()) return;
+
+    QNetworkProxy::ProxyType proxyType = QNetworkProxy::NoProxy;
+    switch (typeIdx) {
+        case 1: proxyType = QNetworkProxy::Socks5Proxy; break;  // SOCKS4 not in Qt, fallback to SOCKS5
+        case 2: proxyType = QNetworkProxy::Socks5Proxy; break;  // SOCKS5
+        case 3: proxyType = QNetworkProxy::HttpProxy; break;  // HTTP CONNECT
+        default: return;
+    }
+
+    // Authentication (user/pass from settings if proxy auth is enabled)
+    bool useAuth = m_settings->value("conn/proxyAuth", false).toBool();
+    QString user, pass;
+    if (useAuth) {
+        user = m_settings->value("conn/proxyUser", "").toString();
+        pass = m_settings->value("conn/proxyPass", "").toString();
+    }
+
+    conn->setProxy(proxyType, host, static_cast<quint16>(port), user, pass);
 }

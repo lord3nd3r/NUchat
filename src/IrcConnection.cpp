@@ -101,6 +101,19 @@ void IrcConnection::setNickServPass(const QString &pass)
     m_nickServPass = pass;
 }
 
+void IrcConnection::setProxy(QNetworkProxy::ProxyType type,
+                              const QString &host, quint16 port,
+                              const QString &user, const QString &password)
+{
+    if (type == QNetworkProxy::NoProxy) {
+        m_socket->setProxy(QNetworkProxy::NoProxy);
+    } else {
+        QNetworkProxy proxy(type, host, port, user, password);
+        m_socket->setProxy(proxy);
+    }
+    qDebug() << "[IRC] Proxy set:" << static_cast<int>(type) << host << port;
+}
+
 void IrcConnection::joinChannel(const QString &channel, const QString &key)
 {
     if (key.isEmpty())

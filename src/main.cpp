@@ -63,6 +63,7 @@ int main(int argc, char *argv[])
     manager.setMessageModel(&msgModel);
     manager.setServerChannelModel(&treeModel);
     manager.setLogger(&logger);
+    manager.setSettings(&appSettings);
 
 #ifdef QT_QUICK_LIB
     QQmlApplicationEngine engine;

@@ -103,6 +103,8 @@ HexChat Dark (default), Monokai, Solarized Dark/Light, Dracula, Nord, Gruvbox Da
 |----------|----------|
 | [Commands](docs/COMMANDS.md) | All 60+ IRC commands and aliases |
 | [Menus & Dialogs](docs/MENUS.md) | Menu bar reference, right-click menus, and dialog descriptions |
+| [Scripting API](docs/SCRIPTING.md) | Python and Lua scripting reference (HexChat-compatible) |
+| [Plugin API](docs/PLUGINS.md) | C++ plugin interface and build instructions |
 
 ---
 
@@ -148,24 +150,24 @@ Place `.py` files in `~/.config/NUchat/scripts/`. Loaded automatically on startu
 
 ### High Priority
 - [ ] DCC file transfer (send/receive)
-- [ ] Ignore list (message filtering)
-- [ ] Auto-reconnect on disconnect
+- [x] Ignore list (message filtering)
+- [x] Auto-reconnect on disconnect
 - [x] SASL handshake completion (PLAIN/EXTERNAL)
 - [x] Per-network NickServ auto-identify
-- [ ] Perform-on-connect commands
+- [x] Perform-on-connect commands
 
 ### Features
 - [ ] Spell checking
-- [ ] Away log
-- [ ] URL Grabber
-- [ ] Configurable keyboard shortcuts
+- [x] Away log
+- [x] URL Grabber
+- [x] Configurable keyboard shortcuts
 - [ ] Detach/attach tabs
-- [ ] Proxy support (SOCKS4/5, HTTP CONNECT)
+- [x] Proxy support (SOCKS4/5, HTTP CONNECT)
 
 ### Packaging
 - [ ] CI/CD pipeline (GitHub Actions)
 - [ ] AppImage / Flatpak / .deb packaging
-- [ ] Plugin & scripting API documentation
+- [x] Plugin & scripting API documentation
 
 ---
 

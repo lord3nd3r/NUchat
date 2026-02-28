@@ -61,6 +61,89 @@ ApplicationWindow {
         if (active && messageInput) messageInput.forceActiveFocus()
     }
 
+    // ═══ Configurable Keyboard Shortcuts ═══
+    // Shortcuts are stored in appSettings; defaults match HexChat conventions.
+    // Users can override them in Preferences > Shortcuts (settings keys: shortcut/*).
+
+    Shortcut {
+        sequence: appSettings.value("shortcut/closeTab", "Ctrl+W")
+        onActivated: {
+            if (currentChannel !== "" && currentChannel.startsWith("#"))
+                ircManager.partChannel(currentChannel, "")
+        }
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/prevTab", "Ctrl+PgUp")
+        onActivated: {
+            if (serverTree.currentIndex > 0) {
+                serverTree.currentIndex--
+                sidebarClickAt(serverTree.currentIndex)
+            }
+        }
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/nextTab", "Ctrl+PgDown")
+        onActivated: {
+            if (serverTree.currentIndex < channelListModel.count - 1) {
+                serverTree.currentIndex++
+                sidebarClickAt(serverTree.currentIndex)
+            }
+        }
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/joinChannel", "Ctrl+J")
+        onActivated: joinChannelDialog.open()
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/quickConnect", "Ctrl+N")
+        onActivated: quickConnectDialog.open()
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/disconnect", "Ctrl+D")
+        onActivated: {
+            if (currentServer) ircManager.disconnectFromServer(currentServer)
+        }
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/channelList", "Ctrl+L")
+        onActivated: channelListDialog.open()
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/rawLog", "Ctrl+R")
+        onActivated: rawLogDialog.open()
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/search", "Ctrl+F")
+        onActivated: searchDialog.open()
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/preferences", "Ctrl+P")
+        onActivated: preferencesDialog.open()
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/networkList", "Ctrl+Shift+N")
+        onActivated: networkListDialog.open()
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/nickChange", "Ctrl+K")
+        onActivated: nickChangeDialog.open()
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/away", "Ctrl+Shift+A")
+        onActivated: {
+            if (ircManager.isAway) ircManager.sendRawCommand("BACK")
+            else ircManager.sendRawCommand("AWAY " + (appSettings.value("user/awayMessage", "Away") || "Away"))
+        }
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/scripts", "Ctrl+Shift+S")
+        onActivated: scriptsDialog.open()
+    }
+    Shortcut {
+        sequence: appSettings.value("shortcut/urlGrabber", "Ctrl+U")
+        onActivated: urlGrabberDialog.open()
+    }
+
     // ── Forward keypresses to input when typing anywhere in the window ──
     Item {
         focus: true
@@ -251,7 +334,7 @@ ApplicationWindow {
             Action { text: "Raw Log...";              onTriggered: rawLogDialog.open() }
             MenuSeparator {}
             Action { text: "Plugins and Scripts...";  onTriggered: scriptsDialog.open() }
-            Action { text: "Away Log";               onTriggered: msgModel.addMessage("system", "Away log not yet implemented") }
+            Action { text: "Away Log";               onTriggered: awayLogDialog.open() }
             MenuSeparator {}
             Action { text: "Search Text...";          onTriggered: searchDialog.open() }
             Action { text: "Fullscreen";              onTriggered: { root.visibility = (root.visibility === Window.FullScreen) ? Window.Windowed : Window.FullScreen } }
@@ -330,9 +413,9 @@ ApplicationWindow {
             Action { text: "Direct Chat (DCC)";      onTriggered: dccDialog.open() }
             Action { text: "Send File (DCC)...";      onTriggered: dccDialog.open() }
             MenuSeparator {}
-            Action { text: "Ignore User";             onTriggered: { if (selectedNick !== "") msgModel.addMessage("system", "Ignore list not yet implemented") } }
-            Action { text: "Unignore User";           onTriggered: { if (selectedNick !== "") msgModel.addMessage("system", "Ignore list not yet implemented") } }
-            Action { text: "Ignore List...";          onTriggered: msgModel.addMessage("system", "Ignore list not yet implemented") }
+            Action { text: "Ignore User";             onTriggered: { if (selectedNick !== "") { ircManager.addIgnore(selectedNick); msgModel.addMessage("system", "Now ignoring: " + selectedNick) } } }
+            Action { text: "Unignore User";           onTriggered: { if (selectedNick !== "") { ircManager.removeIgnore(selectedNick); msgModel.addMessage("system", "No longer ignoring: " + selectedNick) } } }
+            Action { text: "Ignore List...";          onTriggered: ignoreListDialog.open() }
             MenuSeparator {}
             Action { text: "Notify List...";          onTriggered: msgModel.addMessage("system", "Notify list not yet implemented") }
         }
@@ -548,7 +631,28 @@ ApplicationWindow {
         Menu {
             title: "Help"
             Action { text: "Documentation";           onTriggered: Qt.openUrlExternally("https://github.com/lord3nd3r/NUchat") }
-            Action { text: "Keyboard Shortcuts";     onTriggered: msgModel.addMessage("system", "Ctrl+Enter: Send | Ctrl+W: Close Tab | Ctrl+PgUp/PgDn: Switch Tabs") }
+            Action { text: "Keyboard Shortcuts";     onTriggered: {
+                    var s = function(key, def) { return appSettings.value(key, def) || def }
+                    var lines = [
+                        s("shortcut/closeTab","Ctrl+W") + ": Close Tab",
+                        s("shortcut/prevTab","Ctrl+PgUp") + ": Previous Tab",
+                        s("shortcut/nextTab","Ctrl+PgDown") + ": Next Tab",
+                        s("shortcut/joinChannel","Ctrl+J") + ": Join Channel",
+                        s("shortcut/quickConnect","Ctrl+N") + ": Quick Connect",
+                        s("shortcut/disconnect","Ctrl+D") + ": Disconnect",
+                        s("shortcut/channelList","Ctrl+L") + ": Channel List",
+                        s("shortcut/rawLog","Ctrl+R") + ": Raw Log",
+                        s("shortcut/search","Ctrl+F") + ": Search",
+                        s("shortcut/preferences","Ctrl+P") + ": Preferences",
+                        s("shortcut/networkList","Ctrl+Shift+N") + ": Network List",
+                        s("shortcut/nickChange","Ctrl+K") + ": Change Nick",
+                        s("shortcut/away","Ctrl+Shift+A") + ": Toggle Away",
+                        s("shortcut/scripts","Ctrl+Shift+S") + ": Scripts",
+                        s("shortcut/urlGrabber","Ctrl+U") + ": URL Grabber"
+                    ]
+                    msgModel.addMessage("system", "Keyboard Shortcuts:  " + lines.join("  |  "))
+                }
+            }
             Action { text: "Report a Bug";            onTriggered: Qt.openUrlExternally("https://github.com/lord3nd3r/NUchat/issues") }
             MenuSeparator {}
             Action { text: "Check for Updates";       onTriggered: Qt.openUrlExternally("https://github.com/lord3nd3r/NUchat/releases") }
@@ -1340,7 +1444,7 @@ ApplicationWindow {
         Action { text: "Kick"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
         Action { text: "Ban"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*") }) }
         Action { text: "Kick + Ban"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*"); ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
-        Action { text: "Ignore"; onTriggered: msgModel.addMessage("system", "Ignore list not yet implemented for " + selectedNicks.join(", ")) }
+        Action { text: "Ignore"; onTriggered: forEachSelectedNick(function(n) { ircManager.addIgnore(n); msgModel.addMessage("system", "Now ignoring: " + n) }) }
         MenuSeparator {}
 
         // ── ChanServ nick operations ──
@@ -1485,6 +1589,8 @@ ApplicationWindow {
     DccDialog           { id: dccDialog }
     RawLogDialog        { id: rawLogDialog }
     UrlGrabberDialog    { id: urlGrabberDialog }
+    AwayLogDialog       { id: awayLogDialog }
+    IgnoreListDialog    { id: ignoreListDialog }
     SearchDialog        { id: searchDialog }
     BanListDialog       { id: banListDialog }
     ChannelModeDialog   { id: channelModeDialog }

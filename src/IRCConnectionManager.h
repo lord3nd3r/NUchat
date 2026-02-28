@@ -5,11 +5,13 @@
 #include <QMap>
 #include <QSet>
 #include <QStringList>
+#include <QTimer>
 
 class IrcConnection;
 class MessageModel;
 class ServerChannelModel;
 class Logger;
+class Settings;
 
 class IRCConnectionManager : public QObject
 {
@@ -17,6 +19,7 @@ class IRCConnectionManager : public QObject
     Q_PROPERTY(QString currentNick READ currentNick NOTIFY currentNickChanged)
     Q_PROPERTY(QString channelTopic READ channelTopic NOTIFY channelTopicChanged)
     Q_PROPERTY(QStringList channelUsers READ channelUsers NOTIFY channelUsersChanged)
+    Q_PROPERTY(bool isAway READ isAway NOTIFY awayStateChanged)
 
 public:
     explicit IRCConnectionManager(QObject *parent = nullptr);
@@ -25,6 +28,7 @@ public:
     void setMessageModel(MessageModel *model);
     void setServerChannelModel(ServerChannelModel *model);
     void setLogger(Logger *logger);
+    void setSettings(Settings *settings);
 
     // Connect to a server  (called from C++ or QML)
     Q_INVOKABLE void connectToServer(const QString &host, int port = 6697,
@@ -63,6 +67,21 @@ public:
     Q_INVOKABLE bool hasHighlight(const QString &server, const QString &channel) const;
     Q_INVOKABLE void clearUnread(const QString &server, const QString &channel);
 
+    // ── Ignore list ──
+    Q_INVOKABLE void addIgnore(const QString &mask);
+    Q_INVOKABLE void removeIgnore(const QString &mask);
+    Q_INVOKABLE QStringList ignoreList() const;
+    Q_INVOKABLE void clearIgnoreList();
+
+    // ── Away log ──
+    Q_INVOKABLE QVariantList awayLog() const;
+    Q_INVOKABLE void clearAwayLog();
+    bool isAway() const { return m_isAway; }
+
+    // ── URL Grabber ──
+    Q_INVOKABLE QVariantList grabbedUrls() const;
+    Q_INVOKABLE void clearGrabbedUrls();
+
     IrcConnection *activeConnection() const;
     QString currentNick() const;
     QString channelTopic() const;
@@ -97,6 +116,10 @@ signals:
     void channelUsersChanged(const QStringList &users);
     void rawLineReceived(const QString &direction, const QString &line);
     void unreadStateChanged();
+    void ignoreListChanged();
+    void awayStateChanged(bool away);
+    void awayLogUpdated();
+    void urlGrabbed(const QString &url, const QString &nick, const QString &channel);
 
 private:
     void wireConnection(IrcConnection *conn);
@@ -105,12 +128,18 @@ private:
     QString serverNameFor(IrcConnection *conn) const;
     IrcConnection *connectionForServer(const QString &name) const;
     static QString gatherSysInfo();
+    bool isIgnored(const QString &nickOrMask) const;
+    void extractUrls(const QString &text, const QString &nick, const QString &channel);
+    void executePerformCommands(const QString &server);
+    void attemptReconnect(const QString &host);
+    void applyProxySettings(IrcConnection *conn);
 
     QVector<IrcConnection*> m_connections;
     QMap<IrcConnection*, QString> m_connToName;  // conn -> display name (host)
     MessageModel *m_msgModel = nullptr;
     ServerChannelModel *m_treeModel = nullptr;
     Logger *m_logger = nullptr;
+    Settings *m_settings = nullptr;
 
     QString m_activeServer;
     QString m_activeChannel;
@@ -126,4 +155,46 @@ private:
     QSet<QString> m_unread;       // "server\nchannel" keys with new messages
     QSet<QString> m_highlighted;  // "server\nchannel" keys with nick mentions
     QString unreadKey(const QString &server, const QString &channel) const { return server + "\n" + channel; }
+
+    // ── Ignore list ──
+    QStringList m_ignoreList;                  // nick!user@host masks (wildcards supported)
+
+    // ── Auto-reconnect state ──
+    struct ReconnectInfo {
+        QString host;
+        int port;
+        bool ssl;
+        QString nick;
+        QString user;
+        QString realname;
+        QString password;
+        QString saslMethod;
+        QString saslUser;
+        QString saslPass;
+        QString nickServCmd;
+        QString nickServPass;
+        int attempts = 0;
+        QTimer *timer = nullptr;
+    };
+    QMap<QString, ReconnectInfo> m_reconnectInfo;  // host -> reconnect params
+    bool m_userDisconnect = false;                  // true if user typed /quit
+
+    // ── Away log ──
+    bool m_isAway = false;
+    struct AwayLogEntry {
+        QString timestamp;
+        QString nick;
+        QString channel;
+        QString message;
+    };
+    QVector<AwayLogEntry> m_awayLog;
+
+    // ── URL Grabber ──
+    struct GrabbedUrl {
+        QString url;
+        QString nick;
+        QString channel;
+        QString timestamp;
+    };
+    QVector<GrabbedUrl> m_grabbedUrls;
 };

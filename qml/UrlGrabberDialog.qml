@@ -17,6 +17,8 @@ Dialog {
         Text { anchors.centerIn: parent; text: "URL Grabber"; color: "#ddd"; font.pixelSize: 14; font.bold: true }
     }
 
+    onOpened: urlList.refreshUrls()
+
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 12; spacing: 8
 
@@ -36,9 +38,15 @@ Dialog {
             clip: true; boundsBehavior: Flickable.StopAtBounds
             model: ListModel {
                 id: urlModel
-                ListElement { url: "https://linux.org"; nick: "alice"; channel: "#linux" }
-                ListElement { url: "https://doc.rust-lang.org/book"; nick: "bob"; channel: "#programming" }
-                ListElement { url: "https://github.com/NUchat/NUchat"; nick: "charlie"; channel: "#nuchat" }
+            }
+            // Load grabbed URLs when dialog opens
+            Component.onCompleted: refreshUrls()
+            function refreshUrls() {
+                urlModel.clear()
+                var urls = ircManager.grabbedUrls()
+                for (var i = 0; i < urls.length; i++) {
+                    urlModel.append({url: urls[i].url, nick: urls[i].nick, channel: urls[i].channel})
+                }
             }
             delegate: Rectangle {
                 required property int index
@@ -74,7 +82,7 @@ Dialog {
             }
             Button {
                 text: "Clear"
-                onClicked: urlModel.clear()
+                onClicked: { ircManager.clearGrabbedUrls(); urlModel.clear() }
                 background: Rectangle { color: parent.down ? "#555" : "#444"; radius: 3 }
                 contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
             }

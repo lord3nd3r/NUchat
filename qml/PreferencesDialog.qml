@@ -76,6 +76,8 @@ Dialog {
         txtProxyHost.text           = appSettings.value("conn/proxyHost", "")
         txtProxyPort.text           = appSettings.value("conn/proxyPort", "")
         chkProxyAuth.checked        = boolSetting("conn/proxyAuth", false)
+        txtProxyUser.text           = appSettings.value("conn/proxyUser", "")
+        txtProxyPass.text           = appSettings.value("conn/proxyPass", "")
 
         // SASL (tab 6)
         cboAuthMethod.currentIndex  = intSetting("auth/methodIndex", 0)
@@ -151,6 +153,8 @@ Dialog {
         appSettings.setValue("input/completionSuffix", txtCompletionSuffix.text)
         appSettings.setValue("conn/proxyHost", txtProxyHost.text)
         appSettings.setValue("conn/proxyPort", txtProxyPort.text)
+        appSettings.setValue("conn/proxyUser", txtProxyUser.text)
+        appSettings.setValue("conn/proxyPass", txtProxyPass.text)
         appSettings.setValue("auth/nickservCmd", txtNickServCmd.text)
         appSettings.setValue("auth/certFile", txtCertFile.text)
         appSettings.setValue("auth/keyFile", txtKeyFile.text)
@@ -204,6 +208,7 @@ Dialog {
                     ListElement { name: "Plugins" }
                     ListElement { name: "Scripts" }
                     ListElement { name: "Advanced" }
+                    ListElement { name: "Shortcuts" }
                 }
                 delegate: Rectangle {
                     required property int index
@@ -510,6 +515,24 @@ Dialog {
                     CheckBox { id: chkProxyAuth; text: "Proxy requires authentication"
                         onCheckedChanged: saveSetting("conn/proxyAuth", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
+                    RowLayout {
+                        spacing: 8
+                        visible: chkProxyAuth.checked
+                        Text { text: "User:"; color: "#ccc"; font.pixelSize: 12 }
+                        TextField {
+                            id: txtProxyUser
+                            Layout.fillWidth: true; placeholderText: "username"; placeholderTextColor: "#666"
+                            color: "#ddd"; font.pixelSize: 12
+                            background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                        }
+                        Text { text: "Pass:"; color: "#ccc"; font.pixelSize: 12 }
+                        TextField {
+                            id: txtProxyPass
+                            Layout.fillWidth: true; placeholderText: "password"; placeholderTextColor: "#666"
+                            color: "#ddd"; font.pixelSize: 12; echoMode: TextInput.Password
+                            background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                        }
+                    }
                 }
             }
 
@@ -1029,6 +1052,59 @@ Dialog {
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
                     }
+                }
+            }
+
+            // 17 — Shortcuts
+            ScrollView {
+                clip: true
+                ColumnLayout {
+                    width: parent.width; spacing: 8
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                    anchors.margins: 16
+
+                    Text { text: "Keyboard Shortcuts"; color: "#ddd"; font.pixelSize: 16; font.bold: true }
+                    Text { text: "Customize key bindings. Clear a field to disable a shortcut.\nUse Qt key sequence format (e.g. Ctrl+Shift+K)."; color: "#aaa"; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true }
+
+                    component ShortcutRow: RowLayout {
+                        property string label
+                        property string settingKey
+                        property string defaultSeq
+                        spacing: 8
+                        Text { text: label; color: "#ccc"; font.pixelSize: 12; Layout.preferredWidth: 150 }
+                        TextField {
+                            id: seqField
+                            Layout.fillWidth: true; color: "#ddd"; font.pixelSize: 12; placeholderText: defaultSeq; placeholderTextColor: "#666"
+                            background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                            text: appSettings.value(settingKey, defaultSeq) || defaultSeq
+                        }
+                        Button {
+                            text: "Reset"
+                            onClicked: seqField.text = defaultSeq
+                            background: Rectangle { color: parent.down ? "#555" : "#444"; radius: 3 }
+                            contentItem: Text { text: "Reset"; color: "#ccc"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                        }
+                        Connections {
+                            target: seqField
+                            function onTextEdited() { appSettings.setValue(settingKey, seqField.text); appSettings.sync() }
+                        }
+                    }
+
+                    ShortcutRow { label: "Close Tab";      settingKey: "shortcut/closeTab";     defaultSeq: "Ctrl+W" }
+                    ShortcutRow { label: "Previous Tab";    settingKey: "shortcut/prevTab";      defaultSeq: "Ctrl+PgUp" }
+                    ShortcutRow { label: "Next Tab";        settingKey: "shortcut/nextTab";      defaultSeq: "Ctrl+PgDown" }
+                    ShortcutRow { label: "Join Channel";    settingKey: "shortcut/joinChannel";  defaultSeq: "Ctrl+J" }
+                    ShortcutRow { label: "Quick Connect";   settingKey: "shortcut/quickConnect"; defaultSeq: "Ctrl+N" }
+                    ShortcutRow { label: "Disconnect";      settingKey: "shortcut/disconnect";   defaultSeq: "Ctrl+D" }
+                    ShortcutRow { label: "Channel List";    settingKey: "shortcut/channelList";  defaultSeq: "Ctrl+L" }
+                    ShortcutRow { label: "Raw Log";         settingKey: "shortcut/rawLog";       defaultSeq: "Ctrl+R" }
+                    ShortcutRow { label: "Search";          settingKey: "shortcut/search";       defaultSeq: "Ctrl+F" }
+                    ShortcutRow { label: "Preferences";     settingKey: "shortcut/preferences";  defaultSeq: "Ctrl+P" }
+                    ShortcutRow { label: "Network List";    settingKey: "shortcut/networkList";  defaultSeq: "Ctrl+Shift+N" }
+                    ShortcutRow { label: "Change Nick";     settingKey: "shortcut/nickChange";   defaultSeq: "Ctrl+K" }
+                    ShortcutRow { label: "Toggle Away";     settingKey: "shortcut/away";         defaultSeq: "Ctrl+Shift+A" }
+                    ShortcutRow { label: "Scripts";         settingKey: "shortcut/scripts";      defaultSeq: "Ctrl+Shift+S" }
+                    ShortcutRow { label: "URL Grabber";     settingKey: "shortcut/urlGrabber";   defaultSeq: "Ctrl+U" }
                 }
             }
         }

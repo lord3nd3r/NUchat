@@ -10,16 +10,33 @@ Dialog {
     modal: true
     anchors.centerIn: parent
 
-    // Load saved user info when dialog opens
+    // helper: read a bool setting (QSettings returns strings after restart)
+    function boolSetting(key, def) {
+        var v = appSettings.value(key, def)
+        return v === true || v === "true"
+    }
+
+    // Load saved settings when dialog opens
     onOpened: {
-        prefNick.text = appSettings.value("user/nickname", "NUchat_user")
+        prefNick.text  = appSettings.value("user/nickname", "NUchat_user")
         prefNick2.text = appSettings.value("user/nickname2", "NUchat_user2")
         prefNick3.text = appSettings.value("user/nickname3", "NUchat_user3")
-        prefUsername.text = appSettings.value("user/username", "nuchat")
-        prefRealname.text = appSettings.value("user/realname", "NUchat User")
-        prefQuitMsg.text = appSettings.value("user/quitMessage", "Leaving (NUchat)")
-        prefPartMsg.text = appSettings.value("user/partMessage", "")
-        prefAwayMsg.text = appSettings.value("user/awayMessage", "I'm away")
+        prefUsername.text  = appSettings.value("user/username", "nuchat")
+        prefRealname.text  = appSettings.value("user/realname", "NUchat User")
+        prefQuitMsg.text   = appSettings.value("user/quitMessage", "Leaving (NUchat)")
+        prefPartMsg.text   = appSettings.value("user/partMessage", "")
+        prefAwayMsg.text   = appSettings.value("user/awayMessage", "I'm away")
+
+        // Interface
+        chkShowServerTree.checked   = boolSetting("ui/showServerTree", true)
+        chkShowUserList.checked     = boolSetting("ui/showUserList", true)
+        chkShowTopicBar.checked     = boolSetting("ui/showTopicBar", true)
+        chkShowModeButtons.checked  = boolSetting("ui/showModeButtons", true)
+        // Colors
+        chkStripColors.checked      = boolSetting("ui/stripMircColors", false)
+        chkShowNickColors.checked   = boolSetting("ui/showNickColors", true)
+        // Text
+        chkShowTimestamps.checked   = boolSetting("ui/showTimestamps", true)
     }
 
     // Save user info
@@ -105,15 +122,19 @@ Dialog {
                     anchors.margins: 16
 
                     Text { text: "Interface"; color: "#ddd"; font.pixelSize: 16; font.bold: true }
-                    CheckBox { text: "Show server tree"; checked: true
+                    CheckBox { id: chkShowServerTree; text: "Show server tree"
+                        onCheckedChanged: { appSettings.setValue("ui/showServerTree", checked); appSettings.sync(); root.prefShowServerTree = checked }
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Show user list in channels"; checked: true
+                    CheckBox { id: chkShowUserList; text: "Show user list in channels"
+                        onCheckedChanged: { appSettings.setValue("ui/showUserList", checked); appSettings.sync(); root.prefShowUserList = checked }
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Show topic bar"; checked: true
+                    CheckBox { id: chkShowTopicBar; text: "Show topic bar"
+                        onCheckedChanged: { appSettings.setValue("ui/showTopicBar", checked); appSettings.sync(); root.prefShowTopicBar = checked }
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     CheckBox { text: "Show status bar"; checked: true
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Show mode buttons"
+                    CheckBox { id: chkShowModeButtons; text: "Show mode buttons"
+                        onCheckedChanged: { appSettings.setValue("ui/showModeButtons", checked); appSettings.sync(); root.prefShowModeButtons = checked }
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     CheckBox { text: "Open new tabs in background"
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
@@ -151,9 +172,11 @@ Dialog {
                             delegate: Rectangle { width: 24; height: 24; color: modelData; border.color: "#666"; radius: 2 }
                         }
                     }
-                    CheckBox { text: "Strip mIRC colors from messages"
+                    CheckBox { id: chkStripColors; text: "Strip mIRC colors from messages"
+                        onCheckedChanged: { appSettings.setValue("ui/stripMircColors", checked); appSettings.sync(); root.prefStripColors = checked }
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { text: "Show nick colors"; checked: true
+                    CheckBox { id: chkShowNickColors; text: "Show nick colors"
+                        onCheckedChanged: { appSettings.setValue("ui/showNickColors", checked); appSettings.sync(); root.prefShowNickColors = checked }
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                 }
             }
@@ -180,7 +203,8 @@ Dialog {
                         Text { text: "Font size:"; color: "#ccc"; font.pixelSize: 12 }
                         SpinBox { from: 8; to: 24; value: 12; Layout.preferredWidth: 100 }
                     }
-                    CheckBox { text: "Show timestamps"; checked: true
+                    CheckBox { id: chkShowTimestamps; text: "Show timestamps"
+                        onCheckedChanged: { appSettings.setValue("ui/showTimestamps", checked); appSettings.sync(); root.prefShowTimestamps = checked }
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8

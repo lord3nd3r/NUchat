@@ -65,6 +65,15 @@ ApplicationWindow {
     property int lastClickedNickIndex: -1  // for shift-click range select
     property string selectedNick: selectedNicks.length > 0 ? selectedNicks[0] : ""  // compat: first selected
 
+    // ── Preference-driven UI visibility ──
+    property bool prefShowServerTree:  appSettings.value("ui/showServerTree", true) === true || appSettings.value("ui/showServerTree", true) === "true"
+    property bool prefShowUserList:    appSettings.value("ui/showUserList", true) === true || appSettings.value("ui/showUserList", true) === "true"
+    property bool prefShowTopicBar:    appSettings.value("ui/showTopicBar", true) === true || appSettings.value("ui/showTopicBar", true) === "true"
+    property bool prefShowModeButtons: appSettings.value("ui/showModeButtons", true) === true || appSettings.value("ui/showModeButtons", true) === "true"
+    property bool prefShowTimestamps:  appSettings.value("ui/showTimestamps", true) === true || appSettings.value("ui/showTimestamps", true) === "true"
+    property bool prefShowNickColors:  appSettings.value("ui/showNickColors", true) === true || appSettings.value("ui/showNickColors", true) === "true"
+    property bool prefStripColors:     appSettings.value("ui/stripMircColors", false) === true || appSettings.value("ui/stripMircColors", false) === "true"
+
     // Helper: run a command for each selected nick
     function forEachSelectedNick(callback) {
         for (var i = 0; i < selectedNicks.length; i++) callback(selectedNicks[i])
@@ -516,9 +525,11 @@ ApplicationWindow {
 
         // ═══ LEFT SIDEBAR ═══
         Rectangle {
+            id: sidebarPanel
             Layout.preferredWidth: 180
             Layout.fillHeight: true
             color: theme.sidebarBg
+            visible: root.prefShowServerTree
 
             ColumnLayout {
                 anchors.fill: parent
@@ -641,6 +652,7 @@ ApplicationWindow {
             Layout.preferredWidth: 1
             Layout.fillHeight: true
             color: theme.separator
+            visible: sidebarPanel.visible
         }
 
         // ═══ CENTER: Chat Area ═══
@@ -651,11 +663,13 @@ ApplicationWindow {
 
             // ── Topic bar ──
             Rectangle {
+                id: topicBarRect
                 Layout.fillWidth: true
                 Layout.minimumHeight: 30
                 Layout.maximumHeight: 60
                 Layout.preferredHeight: topicText.implicitHeight + 12
                 color: theme.topicBg
+                visible: root.prefShowTopicBar
 
                 Text {
                     id: topicText
@@ -683,6 +697,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
                 color: theme.separator
+                visible: topicBarRect.visible
             }
 
             // ── Message area ──
@@ -893,15 +908,16 @@ ApplicationWindow {
             Layout.preferredWidth: 1
             Layout.fillHeight: true
             color: theme.separator
-            visible: currentChannel !== "" && currentChannel.startsWith("#")
+            visible: root.prefShowUserList && currentChannel !== "" && currentChannel.startsWith("#")
         }
 
         // ═══ RIGHT: Nick List ═══
         Rectangle {
+            id: nickListPanel
             Layout.preferredWidth: 160
             Layout.fillHeight: true
             color: theme.nickListBg
-            visible: currentChannel !== "" && currentChannel.startsWith("#")
+            visible: root.prefShowUserList && currentChannel !== "" && currentChannel.startsWith("#")
 
             ColumnLayout {
                 anchors.fill: parent
@@ -1027,8 +1043,10 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 1
                     color: theme.separator
+                    visible: root.prefShowModeButtons
                 }
                 GridLayout {
+                    visible: root.prefShowModeButtons
                     Layout.fillWidth: true
                     Layout.margins: 3
                     columns: 3

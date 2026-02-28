@@ -5,6 +5,7 @@
 #include <QSet>
 #include <QStringList>
 #include <QTimer>
+#include <QVariant>
 #include <QVector>
 
 class IrcConnection;

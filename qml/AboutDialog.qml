@@ -6,7 +6,7 @@ Dialog {
     id: dlg
     title: "About NUchat"
     width: 400
-    height: 300
+    height: 360
     modal: true
     anchors.centerIn: parent
 

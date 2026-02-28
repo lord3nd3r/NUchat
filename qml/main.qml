@@ -909,7 +909,9 @@ ApplicationWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             z: -1   // below the drag handle
-                            onClicked: {
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                            onClicked: function(mouse) {
                                 serverTree.currentIndex = index
                                 if (entryType === "channel") {
                                     // Find the server this channel belongs to
@@ -925,10 +927,21 @@ ApplicationWindow {
                                     ircManager.switchToChannel(srv, name)
                                     root.channelTopic = ircManager.channelTopic
                                     root.channelUsers = ircManager.channelUsers
+
+                                    if (mouse.button === Qt.RightButton) {
+                                        treeChannelMenu.targetServer = srv
+                                        treeChannelMenu.targetChannel = name
+                                        treeChannelMenu.popup()
+                                    }
                                 } else {
                                     root.currentServer = name
                                     root.currentChannel = ""
                                     ircManager.switchToChannel(name, name)
+
+                                    if (mouse.button === Qt.RightButton) {
+                                        treeServerMenu.targetServer = name
+                                        treeServerMenu.popup()
+                                    }
                                 }
                             }
                         }
@@ -1516,6 +1529,51 @@ ApplicationWindow {
         Action { text: "Part Channel";            onTriggered: { if (currentChannel !== "") ircManager.partChannel(currentChannel, "") } }
     }
 
+    // ── Sidebar Server right-click menu ──
+    Menu {
+        id: treeServerMenu
+        property string targetServer: ""
+
+        palette.base: theme.menuBg
+        palette.text: theme.menuText
+        palette.highlight: theme.menuHighlight
+        palette.highlightedText: theme.menuHighlightText
+
+        Action { text: "Connect";    onTriggered: quickConnectDialog.open() }
+        Action { text: "Disconnect"; onTriggered: { if (treeServerMenu.targetServer !== "") ircManager.disconnectFromServer(treeServerMenu.targetServer) } }
+        Action { text: "Reconnect";  onTriggered: {
+                if (treeServerMenu.targetServer !== "") {
+                    ircManager.disconnectFromServer(treeServerMenu.targetServer)
+                    reconnectTimer.start()
+                }
+            }
+        }
+    }
+
+    // ── Sidebar Channel right-click menu ──
+    Menu {
+        id: treeChannelMenu
+        property string targetServer: ""
+        property string targetChannel: ""
+
+        palette.base: theme.menuBg
+        palette.text: theme.menuText
+        palette.highlight: theme.menuHighlight
+        palette.highlightedText: theme.menuHighlightText
+
+        Action { text: "Close"; onTriggered: { if (treeChannelMenu.targetChannel !== "") ircManager.closeChannel(treeChannelMenu.targetServer, treeChannelMenu.targetChannel) } }
+        MenuSeparator {}
+        Action {
+            text: "Clear Buffer"
+            onTriggered: {
+                // If closing the active buffer, clear msgModel
+                if (root.currentServer === treeChannelMenu.targetServer && root.currentChannel === treeChannelMenu.targetChannel) {
+                    msgModel.clear()
+                }
+            }
+        }
+    }
+
     // ── Chat area link right-click menu ──
     Menu {
         id: chatLinkMenu
@@ -1611,6 +1669,17 @@ ApplicationWindow {
         }
         function onChannelParted(serverName, channel) {
             refreshChannelList()
+            if (root.currentServer === serverName && root.currentChannel === channel) {
+                root.currentChannel = ""
+                ircManager.switchToChannel(serverName, serverName)
+                for (var i = 0; i < channelListModel.count; i++) {
+                    if (channelListModel.get(i).name === serverName &&
+                        channelListModel.get(i).entryType === "server") {
+                        serverTree.currentIndex = i
+                        break
+                    }
+                }
+            }
         }
         function onUnreadStateChanged() {
             updateUnreadStates()

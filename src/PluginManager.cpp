@@ -3,42 +3,35 @@
 
 #include <QDir>
 #include <QPluginLoader>
+#include <utility>
 
-PluginManager::PluginManager(QObject *parent)
-    : QObject(parent)
-{
-}
+PluginManager::PluginManager(QObject *parent) : QObject(parent) {}
 
-PluginManager::~PluginManager()
-{
-    qDeleteAll(plugins);
-}
+PluginManager::~PluginManager() { qDeleteAll(plugins); }
 
-void PluginManager::loadPlugins(const QString &directory)
-{
-    QDir dir(directory);
-    for (const QString &file : dir.entryList(QDir::Files)) {
-        QPluginLoader loader(dir.absoluteFilePath(file));
-        QObject *plugin = loader.instance();
-        if (plugin) {
-            auto pi = qobject_cast<PluginInterface*>(plugin);
-            if (pi) {
-                pi->initialize(this);
-                plugins.append(pi);
-            }
-        }
+void PluginManager::loadPlugins(const QString &directory) {
+  QDir dir(directory);
+  for (const QString &file : dir.entryList(QDir::Files)) {
+    QPluginLoader loader(dir.absoluteFilePath(file));
+    QObject *plugin = loader.instance();
+    if (plugin) {
+      auto pi = qobject_cast<PluginInterface *>(plugin);
+      if (pi) {
+        pi->initialize(this);
+        plugins.append(pi);
+      }
     }
+  }
 }
 
-void PluginManager::onMessage(IrcConnection *conn, const QString &msg)
-{
-    // simple command parsing: messages starting with '!'
-    if (!msg.startsWith("!"))
-        return;
-    QStringList parts = msg.mid(1).split(' ');
-    QString cmd = parts.takeFirst();
-    for (PluginInterface *pi : qAsConst(plugins)) {
-        if (pi->handleCommand(cmd, parts, conn))
-            break;
-    }
+void PluginManager::onMessage(IrcConnection *conn, const QString &msg) {
+  // simple command parsing: messages starting with '!'
+  if (!msg.startsWith("!"))
+    return;
+  QStringList parts = msg.mid(1).split(' ');
+  QString cmd = parts.takeFirst();
+  for (PluginInterface *pi : std::as_const(plugins)) {
+    if (pi->handleCommand(cmd, parts, conn))
+      break;
+  }
 }

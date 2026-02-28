@@ -2,15 +2,18 @@
 
 #include <QStandardItemModel>
 
-class ServerChannelModel : public QStandardItemModel
-{
-    Q_OBJECT
+class ServerChannelModel : public QStandardItemModel {
+  Q_OBJECT
 public:
-    explicit ServerChannelModel(QObject *parent = nullptr);
+  explicit ServerChannelModel(QObject *parent = nullptr);
 
-    // convenience helpers
-    void addServer(const QString &name);
-    void addChannel(const QString &serverName, const QString &channelName);
-    bool hasChannel(const QString &serverName, const QString &channelName) const;
-    Q_INVOKABLE bool moveChannel(const QString &serverName, int fromIndex, int toIndex);
+  // convenience helpers
+  void addServer(const QString &name);
+  void addChannel(const QString &serverName, const QString &channelName);
+  bool hasChannel(const QString &serverName, const QString &channelName) const;
+  Q_INVOKABLE void removeChannel(const QString &serverName,
+                                 const QString &channelName);
+  Q_INVOKABLE void removeServer(const QString &serverName);
+  Q_INVOKABLE bool moveChannel(const QString &serverName, int fromIndex,
+                               int toIndex);
 };

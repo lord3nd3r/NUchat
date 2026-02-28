@@ -156,6 +156,19 @@ void IRCConnectionManager::partChannel(const QString &channel,
   }
 }
 
+void IRCConnectionManager::closeChannel(const QString &serverName,
+                                        const QString &channelName) {
+  if (channelName.startsWith('#') || channelName.startsWith('&')) {
+    if (auto *conn = connectionForServer(serverName)) {
+      conn->partChannel(channelName);
+    }
+  }
+  if (m_treeModel) {
+    m_treeModel->removeChannel(serverName, channelName);
+  }
+  emit channelParted(serverName, channelName);
+}
+
 void IRCConnectionManager::sendMessage(const QString &target,
                                        const QString &message) {
   if (auto *conn = activeConnection()) {
@@ -1465,7 +1478,6 @@ void IRCConnectionManager::appendToChannel(const QString &server,
       emit awayLogUpdated();
     }
   }
-}
 }
 
 void IRCConnectionManager::ensureScrollbackLoaded(const QString &server,

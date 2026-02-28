@@ -538,6 +538,10 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
   if (!m_msgModel)
     return;
 
+  // Tell the message model our current nick for highlight detection
+  if (auto *conn = connectionForServer(serverName))
+    m_msgModel->setNickname(conn->nickname());
+
   // Reload message history for this channel
   m_msgModel->clear();
 

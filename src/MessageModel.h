@@ -38,6 +38,7 @@ public:
   Q_INVOKABLE QString formatLineFromQml(const QString &text,
                                         const QString &type,
                                         const QString &timestamp) const;
+  Q_INVOKABLE void setNickname(const QString &nick);
   static QString ircToHtml(const QString &text);
 
 signals:
@@ -49,10 +50,11 @@ private slots:
                     int height);
 
 private:
-  static QString formatLine(const Message &msg);
+  QString formatLine(const Message &msg) const;
   static QString linkifyUrls(const QString &html);
   static QString colorizeNicks(const QString &html);
   static QString nickColor(const QString &nick);
   QList<Message> m_messages;
   QSet<QString> m_pendingImages;
+  QString m_nickname;
 };

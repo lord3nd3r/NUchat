@@ -507,6 +507,8 @@ static bool s_darkMode = true;
 
 void MessageModel::setDarkMode(bool dark) { s_darkMode = dark; }
 
+void MessageModel::setNickname(const QString &nick) { m_nickname = nick; }
+
 QString MessageModel::nickColor(const QString &nick) {
   // DJB2 hash for consistent color assignment
   uint hash = 5381;
@@ -592,7 +594,7 @@ QString MessageModel::formatLineFromQml(const QString &text,
   return formatLine(msg);
 }
 
-QString MessageModel::formatLine(const Message &msg) {
+QString MessageModel::formatLine(const Message &msg) const {
   // Embed messages are pre-formatted HTML — pass through
   if (msg.type == QLatin1String("embed"))
     return msg.text;
@@ -608,7 +610,21 @@ QString MessageModel::formatLine(const Message &msg) {
   else if (msg.type == QLatin1String("error"))
     prefix = QStringLiteral("<font color=\"#f44747\">! </font>");
 
-  return ts + prefix + linkifyUrls(colorizeNicks(ircToHtml(msg.text)));
+  QString body = linkifyUrls(colorizeNicks(ircToHtml(msg.text)));
+
+  // Highlight messages that mention our nick with a subtle background
+  bool isHighlight = false;
+  if (!m_nickname.isEmpty() && msg.type == QLatin1String("chat")) {
+    isHighlight = msg.text.contains(m_nickname, Qt::CaseInsensitive);
+  }
+
+  if (isHighlight) {
+    return QStringLiteral("<table width=\"100%\" cellpadding=\"2\"><tr>"
+                          "<td style=\"background-color:#3a2a00;\">") +
+           ts + prefix + body + QStringLiteral("</td></tr></table>");
+  }
+
+  return ts + prefix + body;
 }
 
 QString MessageModel::allFormattedText() const {

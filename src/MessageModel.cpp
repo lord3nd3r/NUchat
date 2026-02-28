@@ -371,6 +371,100 @@ void MessageModel::onImageReady(const QString &url, const QString &localPath,
     emit messageAdded(html);
 }
 
+// ── Nick colorization ──
+// 16 distinct, readable nick colors for dark backgrounds (HexChat-style palette)
+static const char *nickColorPalette[] = {
+    "#c678dd",  // purple
+    "#e06c75",  // red
+    "#98c379",  // green
+    "#e5c07b",  // yellow
+    "#61afef",  // blue
+    "#56b6c2",  // cyan
+    "#be5046",  // dark red
+    "#d19a66",  // orange
+    "#ff79c6",  // pink
+    "#50fa7b",  // bright green
+    "#8be9fd",  // bright cyan
+    "#bd93f9",  // lavender
+    "#ffb86c",  // light orange
+    "#ff5555",  // bright red
+    "#69ff94",  // mint
+    "#f1fa8c",  // light yellow
+};
+static const int nickColorCount = 16;
+
+QString MessageModel::nickColor(const QString &nick)
+{
+    // DJB2 hash for consistent color assignment
+    uint hash = 5381;
+    for (const QChar &c : nick)
+        hash = ((hash << 5) + hash) + c.toLower().unicode();
+    return QString::fromLatin1(nickColorPalette[hash % nickColorCount]);
+}
+
+// Finds <nick> and <@nick> patterns in HTML-escaped text and wraps them
+// in colored, clickable <a> tags with nick:// scheme.
+// Also handles action lines: "* nick ..." at the start.
+QString MessageModel::colorizeNicks(const QString &html)
+{
+    // Match: &lt;[prefix]nick&gt; — the < > are HTML-escaped by ircToHtml
+    static const QRegularExpression nickRe(
+        QStringLiteral("&lt;([~&amp;@%+]*)([^&]+?)&gt;"));
+
+    QString result;
+    result.reserve(html.size() + 256);
+    int lastPos = 0;
+    bool firstMatch = true;
+
+    auto it = nickRe.globalMatch(html);
+    while (it.hasNext()) {
+        auto m = it.next();
+        result += html.mid(lastPos, m.capturedStart() - lastPos);
+
+        QString prefix = m.captured(1);
+        QString bareNick = m.captured(2);
+        // Unescape &amp; back to & in prefix (e.g. &amp; for & prefix)
+        prefix.replace(QLatin1String("&amp;"), QLatin1String("&"));
+        QString color = nickColor(bareNick);
+
+        result += QStringLiteral("&lt;")
+                  + prefix
+                  + QStringLiteral("<a href=\"nick://")
+                  + bareNick.toHtmlEscaped()
+                  + QStringLiteral("\" style=\"color:")
+                  + color
+                  + QStringLiteral("; text-decoration:none; font-weight:bold;\">")
+                  + bareNick.toHtmlEscaped()
+                  + QStringLiteral("</a>")
+                  + QStringLiteral("&gt;");
+
+        lastPos = m.capturedEnd();
+        firstMatch = false;
+    }
+    result += html.mid(lastPos);
+
+    // Also colorize action nicks: "* nick " at line start
+    // Pattern: after "* " at start, the next word is the nick
+    static const QRegularExpression actionRe(
+        QStringLiteral("^(\\* )([^\\s<]+)"));
+    auto am = actionRe.match(result);
+    if (am.hasMatch()) {
+        QString actionNick = am.captured(2);
+        QString color = nickColor(actionNick);
+        QString replacement = am.captured(1)
+                              + QStringLiteral("<a href=\"nick://")
+                              + actionNick.toHtmlEscaped()
+                              + QStringLiteral("\" style=\"color:")
+                              + color
+                              + QStringLiteral("; text-decoration:none; font-weight:bold;\">")
+                              + actionNick.toHtmlEscaped()
+                              + QStringLiteral("</a>");
+        result = replacement + result.mid(am.capturedEnd());
+    }
+
+    return result;
+}
+
 QString MessageModel::formatLine(const Message &msg)
 {
     // Embed messages are pre-formatted HTML — pass through
@@ -388,7 +482,7 @@ QString MessageModel::formatLine(const Message &msg)
     else if (msg.type == QLatin1String("error"))
         prefix = QStringLiteral("<span style=\"color:#f44747;\">! </span>");
 
-    return ts + prefix + linkifyUrls(ircToHtml(msg.text));
+    return ts + prefix + linkifyUrls(colorizeNicks(ircToHtml(msg.text)));
 }
 
 QString MessageModel::allFormattedText() const

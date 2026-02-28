@@ -680,7 +680,13 @@ ApplicationWindow {
                     padding: 8
 
                     onLinkActivated: function(link) {
-                        Qt.openUrlExternally(link)
+                        if (link.startsWith("nick://")) {
+                            var nick = decodeURIComponent(link.substring(7))
+                            nickContextMenu.targetNick = nick
+                            nickContextMenu.popup()
+                        } else {
+                            Qt.openUrlExternally(link)
+                        }
                     }
 
                     // Change cursor to hand when hovering a link
@@ -697,8 +703,13 @@ ApplicationWindow {
                             // Check for link under cursor first
                             var link = chatArea.linkAt(px, py)
                             if (link && link !== "") {
-                                chatLinkMenu.targetUrl = link
-                                chatLinkMenu.popup()
+                                if (link.startsWith("nick://")) {
+                                    nickContextMenu.targetNick = decodeURIComponent(link.substring(7))
+                                    nickContextMenu.popup()
+                                } else {
+                                    chatLinkMenu.targetUrl = link
+                                    chatLinkMenu.popup()
+                                }
                                 return
                             }
 

@@ -908,50 +908,52 @@ ApplicationWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            z: -1   // below the drag handle
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            z: -1
+                            acceptedButtons: Qt.NoButton // Let TapHandlers do the clicking
+                        }
 
-                            onPressed: function(mouse) {
-                                if (mouse.button === Qt.RightButton) {
-                                    if (entryType === "channel") {
-                                        var srv = ""
-                                        for (var k = index - 1; k >= 0; k--) {
-                                            if (channelListModel.get(k).entryType === "server") {
-                                                srv = channelListModel.get(k).name
-                                                break
-                                            }
+                        TapHandler {
+                            acceptedButtons: Qt.LeftButton
+                            onTapped: {
+                                serverTree.currentIndex = index
+                                if (entryType === "channel") {
+                                    var srvLeft = ""
+                                    for (var l = index - 1; l >= 0; l--) {
+                                        if (channelListModel.get(l).entryType === "server") {
+                                            srvLeft = channelListModel.get(l).name
+                                            break
                                         }
-                                        treeChannelMenu.targetServer = srv
-                                        treeChannelMenu.targetChannel = name
-                                        treeChannelMenu.popup()
-                                    } else {
-                                        treeServerMenu.targetServer = name
-                                        treeServerMenu.popup()
                                     }
+                                    root.currentServer = srvLeft
+                                    root.currentChannel = name
+                                    ircManager.switchToChannel(srvLeft, name)
+                                    root.channelTopic = ircManager.channelTopic
+                                    root.channelUsers = ircManager.channelUsers
+                                } else {
+                                    root.currentServer = name
+                                    root.currentChannel = ""
+                                    ircManager.switchToChannel(name, name)
                                 }
                             }
+                        }
 
-                            onReleased: function(mouse) {
-                                if (mouse.button === Qt.LeftButton) {
-                                    serverTree.currentIndex = index
-                                    if (entryType === "channel") {
-                                        var srvLeft = ""
-                                        for (var l = index - 1; l >= 0; l--) {
-                                            if (channelListModel.get(l).entryType === "server") {
-                                                srvLeft = channelListModel.get(l).name
-                                                break
-                                            }
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: {
+                                if (entryType === "channel") {
+                                    var srv = ""
+                                    for (var k = index - 1; k >= 0; k--) {
+                                        if (channelListModel.get(k).entryType === "server") {
+                                            srv = channelListModel.get(k).name
+                                            break
                                         }
-                                        root.currentServer = srvLeft
-                                        root.currentChannel = name
-                                        ircManager.switchToChannel(srvLeft, name)
-                                        root.channelTopic = ircManager.channelTopic
-                                        root.channelUsers = ircManager.channelUsers
-                                    } else {
-                                        root.currentServer = name
-                                        root.currentChannel = ""
-                                        ircManager.switchToChannel(name, name)
                                     }
+                                    treeChannelMenu.targetServer = srv
+                                    treeChannelMenu.targetChannel = name
+                                    treeChannelMenu.popup()
+                                } else {
+                                    treeServerMenu.targetServer = name
+                                    treeServerMenu.popup()
                                 }
                             }
                         }

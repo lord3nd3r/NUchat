@@ -1105,7 +1105,9 @@ ApplicationWindow {
             // ── Input bar ──
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 42
+                Layout.minimumHeight: 42
+                Layout.preferredHeight: Math.min(Math.max(messageInput.contentHeight + 12, 42), 120)
+                Layout.maximumHeight: 120
                 color: theme.nickListBg
 
                 RowLayout {
@@ -1125,7 +1127,7 @@ ApplicationWindow {
                         font.family: root.prefFontFamily
                         font.pixelSize: root.prefFontSize
                         enabled: currentChannel !== "" || currentServer !== ""
-                        wrapMode: TextEdit.NoWrap
+                        wrapMode: TextEdit.Wrap
                         background: Rectangle {
                             color: theme.inputBg
                             border.color: messageInput.activeFocus ? theme.inputBorderFocus : theme.inputBorder
@@ -1287,6 +1289,9 @@ ApplicationWindow {
                             }
 
                             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                if (event.modifiers & Qt.ShiftModifier) {
+                                    return
+                                }
                                 if (event.modifiers === Qt.NoModifier || event.modifiers === Qt.KeypadModifier) {
                                     event.accepted = true
                                     sendMessage()
@@ -1725,19 +1730,20 @@ ApplicationWindow {
             commandHistory.splice(0, commandHistory.length - 200)
         historyIndex = -1
         historyStash = ""
-        // Allow /commands even without a channel selected
-        if (txt.startsWith("/")) {
-            var target = currentChannel !== "" ? currentChannel : (currentServer !== "" ? currentServer : "")
-            ircManager.sendMessage(target, txt)
-            messageInput.text = ""
-            messageInput.forceActiveFocus()
-            return
+        var target = currentChannel !== "" ? currentChannel : (currentServer !== "" ? currentServer : "")
+        var lines = txt.split(/\r?\n/)
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i]
+            if (line === "") continue
+            if (line.startsWith("/")) {
+                // Allow /commands even without a channel selected
+                ircManager.sendMessage(target, line)
+            } else if (currentChannel !== "") {
+                ircManager.sendMessage(currentChannel, line)
+            }
         }
-        if (currentChannel !== "") {
-            ircManager.sendMessage(currentChannel, txt)
-            messageInput.text = ""
-            messageInput.forceActiveFocus()
-        }
+        messageInput.text = ""
+        messageInput.forceActiveFocus()
     }
 
     // ── IRC event handlers ──

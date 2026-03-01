@@ -653,13 +653,12 @@ QString MessageModel::formatLine(const Message &msg) const {
 
   if (isHighlight) {
     return QStringLiteral("<span style=\"background-color:#3a2a00;\">") + ts +
-           prefix + htmlBody + QStringLiteral("</span>");
+           prefix + htmlBody +
+           QStringLiteral("</span>") +
+           QStringLiteral("<span style=\"background-color:transparent;\">&#8203;</span>");
   }
 
-  // Force transparent background on normal messages so they don't inherit
-  // the background color from a previous highlighted message when appended
-  return QStringLiteral("<span style=\"background-color:transparent;\">") + ts +
-         prefix + htmlBody + QStringLiteral("</span>");
+  return ts + prefix + htmlBody;
 }
 
 QString MessageModel::allFormattedText() const {

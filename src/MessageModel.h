@@ -31,7 +31,8 @@ public:
                 int role = Qt::DisplayRole) const override;
   QHash<int, QByteArray> roleNames() const override;
 
-  Q_INVOKABLE void addMessage(const QString &type, const QString &text);
+  Q_INVOKABLE void addMessage(const QString &type, const QString &text,
+                              const QString &timestamp = QString());
   Q_INVOKABLE void clear();
   Q_INVOKABLE QString allFormattedText() const;
   Q_INVOKABLE void setDarkMode(bool dark);

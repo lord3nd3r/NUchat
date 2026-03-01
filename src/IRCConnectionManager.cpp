@@ -559,11 +559,11 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
       if (!pastScrollback && m.type == QLatin1String("system") &&
           m.text.contains(QLatin1String("End of scrollback"))) {
         pastScrollback = true;
-        m_msgModel->addMessage(m.type, m.text);
+        m_msgModel->addMessage(m.type, m.text, m.timestamp);
         m_msgModel->setHighlightEnabled(true);
         continue;
       }
-      m_msgModel->addMessage(m.type, m.text);
+      m_msgModel->addMessage(m.type, m.text, m.timestamp);
     }
     // If no scrollback was loaded, enable highlights now
     if (!pastScrollback)

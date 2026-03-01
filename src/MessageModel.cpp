@@ -42,12 +42,22 @@ QHash<int, QByteArray> MessageModel::roleNames() const {
   return roles;
 }
 
-void MessageModel::addMessage(const QString &type, const QString &text) {
+void MessageModel::addMessage(const QString &type, const QString &text,
+                              const QString &timestamp) {
   beginInsertRows(QModelIndex(), m_messages.count(), m_messages.count());
   Message msg;
   msg.type = type;
   msg.text = text;
-  msg.timestamp = QDateTime::currentDateTime();
+
+  if (!timestamp.isEmpty()) {
+    msg.timestamp = QDateTime::fromString(timestamp, Qt::ISODate);
+    if (!msg.timestamp.isValid()) {
+      msg.timestamp = QDateTime::currentDateTime();
+    }
+  } else {
+    msg.timestamp = QDateTime::currentDateTime();
+  }
+
   msg.formattedText = formatLine(msg); // pre-render HTML once
   m_messages.append(msg);
   endInsertRows();

@@ -56,6 +56,8 @@ Dialog {
                     zncUser: n.zncUser || "", zncPass: n.zncPass || "", zncNetwork: n.zncNetwork || ""
                 })
             }
+            // Force bindings to update by resetting currentIndex
+            networkList.currentIndex = -1
             networkList.currentIndex = 0
         } catch (e) {
             console.warn("Failed to load saved networks:", e)

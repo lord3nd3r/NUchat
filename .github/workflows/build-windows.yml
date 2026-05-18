@@ -16,9 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Qt6 via aqtinstall
+      - name: Install dependencies
         shell: pwsh
         run: |
+          choco install -y hunspell lua
           pip install aqtinstall
           Write-Host "Available Qt versions:"
           aqt list-qt windows desktop
@@ -26,6 +27,9 @@ jobs:
           Add-Content $env:GITHUB_PATH "C:\Qt\6.8.3\msvc2022_64\bin"
           Add-Content $env:GITHUB_ENV "Qt6_DIR=C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6"
           Add-Content $env:GITHUB_ENV "CMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64"
+          # Add Hunspell and Lua to PATH for pkg-config like detection
+          Add-Content $env:GITHUB_PATH "C:\ProgramData\chocolatey\lib\hunspell\tools"
+          Add-Content $env:GITHUB_PATH "C:\ProgramData\chocolatey\lib\lua\tools"
 
       - name: Verify Qt install
         shell: pwsh
@@ -36,10 +40,8 @@ jobs:
           Test-Path "C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6Quick\Qt6QuickConfig.cmake"
           Test-Path "C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6QuickControls2\Qt6QuickControls2Config.cmake"
 
-      # Python is pre-installed on GitHub-hosted Windows runners.
-      # Lua and Hunspell are optional; skip them for the CI build.
-      # Use the Visual Studio generator — it locates MSVC from the registry
-      # without needing a separate env-setup action.
+      # Python, Lua and Hunspell are now installed via choco.
+      # Use the Visual Studio generator — it locates MSVC from the registry.
 
       - name: Configure
         run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release

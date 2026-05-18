@@ -540,8 +540,9 @@ QString MessageModel::colorizeNicks(const QString &html) {
   // The nick part must NOT contain < or > (which would indicate we're
   // spanning across HTML tags from mIRC color wrapping)
   // Channel mode prefixes: ~ (owner), & (admin/protected), @ (op), % (halfop), + (voice)
+  // Use alternation to match &amp; as a complete entity, not individual chars
   static const QRegularExpression nickRe(
-      QStringLiteral("&lt;([~@%+]*)([^&<>]+?)&gt;"));
+      QStringLiteral("&lt;((?:~|&amp;|@|%|\\+)*)([^&<>]+?)&gt;"));
 
   QString result;
   result.reserve(html.size() + 256);
@@ -568,7 +569,11 @@ QString MessageModel::colorizeNicks(const QString &html) {
     prefix.replace(QLatin1String("&amp;"), QLatin1String("&"));
     QString color = nickColor(bareNick);
 
-    result += QStringLiteral("&lt;") + prefix +
+    // Re-escape the prefix for HTML output
+    QString escapedPrefix = prefix;
+    escapedPrefix.replace(QLatin1String("&"), QLatin1String("&amp;"));
+    
+    result += QStringLiteral("&lt;") + escapedPrefix +
               QStringLiteral("<a href=\"nick://") + bareNick.toHtmlEscaped() +
               QStringLiteral("\" style=\"color:") + color +
               QStringLiteral("; text-decoration:none; font-weight:bold;\">") +

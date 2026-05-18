@@ -1,5 +1,6 @@
 #include <QGuiApplication>
 #include <QIcon>
+#include <QSize>
 #include <QStandardPaths>
 #ifdef QT_QUICK_LIB
 #include <QQmlApplicationEngine>
@@ -34,7 +35,17 @@ int main(int argc, char *argv[]) {
   app.setApplicationName("NUchat");
   app.setApplicationVersion(NUCHAT_VERSION);
   app.setDesktopFileName("nuchat");
-  app.setWindowIcon(QIcon(":/icons/nuchat.svg"));
+  
+  // Set application icon with multiple sizes for better cross-platform support
+  QIcon appIcon;
+  appIcon.addFile(":/icons/nuchat-16.png", QSize(16, 16));
+  appIcon.addFile(":/icons/nuchat-32.png", QSize(32, 32));
+  appIcon.addFile(":/icons/nuchat-48.png", QSize(48, 48));
+  appIcon.addFile(":/icons/nuchat-64.png", QSize(64, 64));
+  appIcon.addFile(":/icons/nuchat-128.png", QSize(128, 128));
+  appIcon.addFile(":/icons/nuchat-256.png", QSize(256, 256));
+  appIcon.addFile(":/icons/nuchat.svg"); // Fallback to SVG for scalability
+  app.setWindowIcon(appIcon);
 
   // register types
 #ifdef QT_QUICK_LIB

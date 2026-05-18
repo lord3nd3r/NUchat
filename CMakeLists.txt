@@ -59,8 +59,39 @@ add_subdirectory(tests)
 if(UNIX AND NOT APPLE)
     install(FILES resources/nuchat.desktop
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+    
+    # Install SVG icon
     install(FILES resources/icons/nuchat.svg
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps)
+    
+    # Install PNG icons at various sizes
+    install(FILES resources/icons/nuchat-16.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/16x16/apps
+            RENAME nuchat.png)
+    install(FILES resources/icons/nuchat-24.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/24x24/apps
+            RENAME nuchat.png)
+    install(FILES resources/icons/nuchat-32.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/32x32/apps
+            RENAME nuchat.png)
+    install(FILES resources/icons/nuchat-48.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/48x48/apps
+            RENAME nuchat.png)
+    install(FILES resources/icons/nuchat-64.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/64x64/apps
+            RENAME nuchat.png)
+    install(FILES resources/icons/nuchat-128.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/128x128/apps
+            RENAME nuchat.png)
+    install(FILES resources/icons/nuchat-256.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps
+            RENAME nuchat.png)
+    install(FILES resources/icons/nuchat-512.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/512x512/apps
+            RENAME nuchat.png)
+    
+    # Update icon cache after installation
+    install(CODE "execute_process(COMMAND gtk-update-icon-cache -f -t ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor ERROR_QUIET)")
 endif()
 
 # macOS app bundle

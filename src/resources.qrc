@@ -26,6 +26,12 @@
     <file alias="qml/ThemeManager.qml">../qml/ThemeManager.qml</file>
     <file alias="qml/HexChatMigrateDialog.qml">../qml/HexChatMigrateDialog.qml</file>
     <file alias="icons/nuchat.svg">../resources/icons/nuchat.svg</file>
+    <file alias="icons/nuchat-16.png">../resources/icons/nuchat-16.png</file>
+    <file alias="icons/nuchat-32.png">../resources/icons/nuchat-32.png</file>
+    <file alias="icons/nuchat-48.png">../resources/icons/nuchat-48.png</file>
+    <file alias="icons/nuchat-64.png">../resources/icons/nuchat-64.png</file>
+    <file alias="icons/nuchat-128.png">../resources/icons/nuchat-128.png</file>
+    <file alias="icons/nuchat-256.png">../resources/icons/nuchat-256.png</file>
     <file alias="themes/default.json">../resources/themes/default.json</file>
 </qresource>
 </RCC>

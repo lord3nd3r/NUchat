@@ -30,15 +30,17 @@ if(LUA_FOUND AND NOT LUA_INCLUDE_DIRS)
 endif()
 
 if(NOT Qt6Quick_FOUND)
-    message(FATAL_ERROR "Qt6 Quick component not found; NUchat requires Qt6::Quick for its QML UI. Install Qt6 Quick (qt6-declarative) and re-run CMake.")
+    message(WARNING "Qt6 Quick component not found; QML UI may not work. Install qt6-declarative-dev (or equivalent) and re-run CMake.")
+else()
+    message(STATUS "Qt6::Quick found")
 endif()
 
 if(NOT Python3_FOUND)
-    message(WARNING "Python3 development libraries not found; Python scripting will be disabled. Install python3-dev for HexChat script support.")
+    message(WARNING "Python3 development libraries not found; Python scripting will be disabled.")
 endif()
 
 if(NOT LUA_FOUND)
-    message(WARNING "Lua development libraries not found; Lua scripting will be disabled. Install liblua5.4-dev for HexChat Lua script support.")
+    message(WARNING "Lua development libraries not found; Lua scripting will be disabled.")
 endif()
 
 include(GNUInstallDirs)

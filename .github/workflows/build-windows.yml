@@ -22,7 +22,6 @@ jobs:
           version: '6.8.*'
           host: windows
           target: desktop
-          arch: win64_msvc2022_64
           modules: 'qtquickcontrols2 qtdeclarative qtquick'
           cache: true
 

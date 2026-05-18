@@ -410,6 +410,18 @@ void PythonScriptEngine::initPython()
     PyImport_AppendInittab("hexchat", &PyInit_hexchat);
     PyImport_AppendInittab("xchat",   &PyInit_xchat);
 
+#if defined(Q_OS_WIN)
+    // On Windows, look for a bundled "python" folder next to the executable.
+    // This allows shipping an embeddable Python distribution alongside NUchat
+    // without requiring a system-wide Python install.
+    QString bundledPython = QCoreApplication::applicationDirPath() + "/python";
+    if (QDir(bundledPython).exists()) {
+        static std::wstring home = bundledPython.toStdWString();
+        Py_SetPythonHome(home.c_str());
+        qDebug() << "[PythonScriptEngine] Using bundled Python at:" << bundledPython;
+    }
+#endif
+
     Py_Initialize();
     m_pyInited = true;
 

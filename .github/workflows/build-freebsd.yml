@@ -1,0 +1,39 @@
+name: FreeBSD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest   # host runner; the VM action spins up a FreeBSD guest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y \
+              cmake \
+              qt6-base qt6-declarative qt6-quickcontrols2 \
+              python3 \
+              lua54 \
+              hunspell \
+              pkgconf
+          run: |
+            cmake -B build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_PREFIX_PATH=/usr/local
+            cmake --build build --parallel $(sysctl -n hw.ncpu)
+            ctest --test-dir build --output-on-failure
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuchat-freebsd
+          path: build/src/nuchat

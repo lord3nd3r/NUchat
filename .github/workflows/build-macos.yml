@@ -1,0 +1,59 @@
+name: macOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install lua hunspell
+
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.8.*'
+          host: mac
+          target: desktop
+          arch: clang_64
+          modules: 'qtquickcontrols2'
+          cache: true
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="${Qt6_DIR}"
+
+      - name: Build
+        run: cmake --build build --parallel $(sysctl -n hw.logicalcpu)
+
+      - name: Deploy Qt (.app bundle)
+        run: |
+          APP="build/src/NUchat.app"
+          if [ -d "$APP" ]; then
+            macdeployqt "$APP" -qmldir=qml
+          fi
+
+      - name: Package DMG
+        run: |
+          APP="build/src/NUchat.app"
+          if [ -d "$APP" ]; then
+            hdiutil create -volname NUchat -srcfolder "$APP" \
+              -ov -format UDZO nuchat-macos.dmg
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuchat-macos
+          path: nuchat-macos.dmg

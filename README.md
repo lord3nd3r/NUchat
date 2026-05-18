@@ -102,7 +102,7 @@ If your IRC server uses a self-signed certificate or one where the hostname does
 
 Pre-built installers and binaries are available for Windows, macOS, and Linux:
 
-- **Windows**: [Download Latest Windows Installer](https://github.com/lord3nd3r/NUchat/releases/latest/download/NUchat_1.0.0_Windows_x64.exe) — Standalone NSIS installer
+- **Windows**: [Download NUchat_1.0.0_Windows_x64.exe](https://github.com/lord3nd3r/NUchat/raw/main/Binary/NUchat_1.0.0_Windows_x64.exe) — Standalone NSIS installer
 - **macOS**: Download `.dmg` installer from [GitHub Actions artifacts](https://github.com/lord3nd3r/NUchat/actions/workflows/build-macos.yml) (select latest successful run)
 - **Linux/FreeBSD**: Compile from source (see Build & Run section below) or download from [GitHub Actions artifacts](https://github.com/lord3nd3r/NUchat/actions)
 

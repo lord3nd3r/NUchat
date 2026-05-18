@@ -37,14 +37,14 @@ jobs:
 
       - name: Deploy Qt (.app bundle)
         run: |
-          APP="build/src/NUchat.app"
+          APP="build/src/nuchat.app"
           if [ -d "$APP" ]; then
             macdeployqt "$APP" -qmldir=qml
           fi
 
       - name: Package DMG
         run: |
-          APP="build/src/NUchat.app"
+          APP="build/src/nuchat.app"
           if [ -d "$APP" ]; then
             hdiutil create -volname NUchat -srcfolder "$APP" \
               -ov -format UDZO nuchat-macos.dmg

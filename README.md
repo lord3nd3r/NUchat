@@ -98,6 +98,40 @@ Uses GNUInstallDirs — installs binary, desktop file, icon, and plugin/script d
 
 If your IRC server uses a self-signed certificate or one where the hostname doesn't match (common on self-hosted servers), you'll see an SSL error and the connection will be refused. To allow it:
 
+## Downloads
+
+Pre-built installers and binaries are available for Windows, macOS, and Linux:
+
+- **Windows**: Standalone NSIS installer — download `NUchat_1.0.0_Windows_x64.exe` from the [Binary/](Binary/) folder or from [GitHub Actions](https://github.com/lord3nd3r/NUchat/actions) artifacts.
+- **macOS**: `.dmg` installer bundle — available from [GitHub Actions](https://github.com/lord3nd3r/NUchat/actions) artifacts (macOS workflow).
+- **Linux/FreeBSD**: Compile from source (see Build & Run section below) or grab the binary from [GitHub Actions](https://github.com/lord3nd3r/NUchat/actions) artifacts.
+
+---
+
+## Windows Build (for developers)
+
+If you prefer to build locally on Windows:
+
+**Local build steps (recommended for testing):**
+
+1. Install **Visual Studio 2022** with the "Desktop development with C++" workload.
+2. Download and install **Qt 6.8.x** for **MSVC 2022 64-bit** from [qt.io](https://www.qt.io/download-open-source) (open source version is fine).
+3. Add the Qt bin directory to your PATH (e.g. `C:\Qt\6.8.3\msvc2022_64\bin`).
+4. Open **Developer Command Prompt for VS 2022**.
+5. In the project directory:
+   ```cmd
+   mkdir build && cd build
+   cmake .. -A x64
+   cmake --build . --config Release
+   ```
+6. The executable is `build\src\Release\nuchat.exe`.
+
+To bundle the Qt DLLs, run `windeployqt --qmldir ..\qml --no-translations build\src\Release\nuchat.exe`.
+
+**Note:** Python scripting is currently disabled on Windows builds (due to embedding complexities). Lua and C++ plugins work fine. HexChat migration also works.
+
+See `CMakeLists.txt` and `src/CMakeLists.txt` for the cross-platform setup. PRs welcome for improvements.
+
 1. Open **Settings → Preferences → Connection**
 2. Check **"Accept self-signed / untrusted SSL certificates"**
 3. Reconnect

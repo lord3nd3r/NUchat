@@ -72,6 +72,7 @@ Dialog {
         spnMaxReconnect.value       = intSetting("conn/maxReconnectAttempts", 10)
         chkAutoJoin.checked         = boolSetting("conn/autoJoin", true)
         chkGlobalUserInfo.checked   = boolSetting("conn/globalUserInfo", true)
+        chkAllowSelfSignedCerts.checked = boolSetting("conn/allowSelfSignedCerts", false)
         cboProxyType.currentIndex   = intSetting("conn/proxyTypeIndex", 0)
         txtProxyHost.text           = appSettings.value("conn/proxyHost", "")
         txtProxyPort.text           = appSettings.value("conn/proxyPort", "")
@@ -488,6 +489,9 @@ Dialog {
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     CheckBox { id: chkGlobalUserInfo; text: "Use global user info for all servers"
                         onCheckedChanged: saveSetting("conn/globalUserInfo", checked)
+                        contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
+                    CheckBox { id: chkAllowSelfSignedCerts; text: "Accept self-signed / untrusted SSL certificates"
+                        onCheckedChanged: saveSetting("conn/allowSelfSignedCerts", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     Text { text: "Proxy:"; color: "#ccc"; font.pixelSize: 13; font.bold: true }
                     RowLayout {

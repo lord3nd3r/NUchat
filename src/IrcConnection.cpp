@@ -189,12 +189,15 @@ void IrcConnection::onSslErrors(const QList<QSslError> &errors) {
     switch (e.error()) {
     case QSslError::SelfSignedCertificate:
     case QSslError::SelfSignedCertificateInChain:
+    case QSslError::HostNameMismatch:
+    case QSslError::UnableToVerifyFirstCertificate:
+    case QSslError::CertificateUntrusted:
+    case QSslError::UnableToGetLocalIssuerCertificate:
       if (m_allowSelfSignedCerts) {
         ignorable << e;
-        qDebug() << "[IRC] Ignoring self-signed certificate (user-approved)";
+        qDebug() << "[IRC] Ignoring SSL error (user-approved):" << e.errorString();
       } else {
-        emit errorOccurred(tr("SSL error: self-signed certificate not allowed: %1")
-                               .arg(e.errorString()));
+        emit errorOccurred(tr("SSL error: %1").arg(e.errorString()));
         m_socket->abort();
         return;
       }

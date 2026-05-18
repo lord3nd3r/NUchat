@@ -539,8 +539,9 @@ QString MessageModel::colorizeNicks(const QString &html) {
   // Match: &lt;[prefix]nick&gt; — the < > are HTML-escaped by ircToHtml
   // The nick part must NOT contain < or > (which would indicate we're
   // spanning across HTML tags from mIRC color wrapping)
+  // Channel mode prefixes: ~ (owner), & (admin/protected), @ (op), % (halfop), + (voice)
   static const QRegularExpression nickRe(
-      QStringLiteral("&lt;([~&amp;@%+]*)([^&<>]+?)&gt;"));
+      QStringLiteral("&lt;([~@%+]*)([^&<>]+?)&gt;"));
 
   QString result;
   result.reserve(html.size() + 256);

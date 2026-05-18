@@ -136,17 +136,9 @@ if(WIN32)
     endif()
 endif()
 
-# macOS: run macdeployqt after build to create a self-contained .app bundle
+# macOS: run macdeployqt manually or package step, removed auto POST_BUILD to avoid CI failures
 if(APPLE)
     find_program(MACDEPLOYQT NAMES macdeployqt HINTS "${Qt6_DIR}/../../../bin")
-    if(MACDEPLOYQT)
-        add_custom_command(TARGET nuchat POST_BUILD
-            COMMAND "${MACDEPLOYQT}"
-                "$<TARGET_BUNDLE_DIR:nuchat>"
-                -qmldir="${CMAKE_SOURCE_DIR}/qml"
-            COMMENT "Running macdeployqt..."
-            VERBATIM)
-    endif()
 endif()
 
 # Install the binary (Linux / BSD)

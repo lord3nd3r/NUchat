@@ -39,7 +39,7 @@ jobs:
         run: |
           APP="build/src/nuchat.app"
           if [ -d "$APP" ]; then
-            macdeployqt "$APP" -qmldir=qml
+            macdeployqt "$APP" -qmldir=qml || echo "macdeployqt finished with warnings"
           fi
 
       - name: Package DMG

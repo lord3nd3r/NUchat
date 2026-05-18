@@ -34,7 +34,7 @@ A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexCh
 - **Per-network identity** override (nick, username, real name)
 - **Channel modes on join** — displays mode string when entering a channel
 - **Dynamic title bar** — shows channel, server, and topic (like HexChat)
-- **C++ plugin system** and **Python scripting engine**
+- **C++ plugin system**, **Python scripting engine**, and **Lua scripting engine** — HexChat-compatible API for all three
 - **ZNC bouncer** support
 - **Desktop integration** — `.desktop` file, SVG icon, `make install` support
 

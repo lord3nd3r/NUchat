@@ -12,6 +12,11 @@ hot-reloaded when modified on disk.
 > **Only load scripts from sources you fully trust.** NUchat does not sandbox
 > or restrict script capabilities.
 
+> **Lua memory limit:** The Lua VM is capped at **32 MB** of heap memory per
+> script engine instance. Scripts that attempt to allocate beyond this limit will
+> receive a Lua out-of-memory error. Python scripts have no equivalent hard cap
+> (they use the system allocator).
+
 ---
 
 ## Table of Contents

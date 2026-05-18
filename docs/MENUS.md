@@ -201,14 +201,14 @@ Appears when right-clicking a URL in the chat area.
 | **Text and Fonts** | Font family/size. Timestamps + format. Max scrollback. Indent. Highlight words. |
 | **Input** | Spell check. Tab completion settings + suffix. Per-channel history + max size. |
 | **User Info** | Primary nick + 3 alternates. Username, real name. Quit/part/away messages. |
-| **Connection** | Auto-reconnect (delay, max attempts). Auto-join. Proxy (SOCKS4/5, HTTP). |
+| **Connection** | Auto-reconnect (delay, max attempts). Auto-join. Proxy (SOCKS4/5, HTTP). Accept self-signed SSL certificates (`conn/allowSelfSignedCerts`). |
 | **SASL / Auth** | Auth method (PLAIN, EXTERNAL, SCRAM, ECDSA, NickServ, CERTFP). Certificate paths. |
 | **DCC** | Download folder. Auto-accept. Max file size. IP detection. Port range. |
 | **Logging** | Enable/disable. Directory. Format (Plain/HTML/JSON). PM logging. Per-channel files. |
 | **Notifications** | Desktop notifications. Flash taskbar. Tray unread. Highlight on nick mention. Timeout. |
 | **Sounds** | Enable/disable. Per-event toggles (highlight, PM, connect). Custom beep command. |
 | **Auto-Replace** | Pattern/replacement rules for outgoing text. |
-| **URL Handlers** | Clickable URLs. Auto-grab. Custom browser command. |
+| **URL Handlers** | Clickable URLs. Auto-grab. Custom browser command. Inline image previews (http/https only, 15 MB limit, image MIME types only; private/loopback addresses are blocked). |
 | **Text Events** | Format strings for join, part, quit, kick, nick change, topic, action, notice, CTCP. |
 | **Plugins** | Load/unload/reload C++ plugins. Plugin directory path. |
 | **Scripts** | Load/unload/reload scripts. Script editor. Script directory. |

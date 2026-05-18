@@ -31,6 +31,7 @@ class LuaScriptEngine : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QStringList loadedScripts READ loadedScripts NOTIFY loadedScriptsChanged)
+    Q_PROPERTY(QString scriptsDirectory READ scriptsDirectory CONSTANT)
 public:
     explicit LuaScriptEngine(IRCConnectionManager *mgr, QObject *parent = nullptr);
     ~LuaScriptEngine();
@@ -41,6 +42,9 @@ public:
     Q_INVOKABLE void loadScript(const QString &path);
     Q_INVOKABLE void unloadScript(const QString &filename);
     Q_INVOKABLE void reloadAll();
+    Q_INVOKABLE void openScriptsFolder();
+    Q_INVOKABLE QString scriptsDirectory() const { return m_directory; }
+    Q_INVOKABLE QString scriptInfo(const QString &filename) const;
 
     // Called by IRCConnectionManager
     bool handleCommand(const QString &command, const QStringList &args);
@@ -79,6 +83,7 @@ private:
     QFileSystemWatcher *m_watcher = nullptr;
     QVector<LuaHook> m_hooks;
     QStringList m_loadedScripts;
+    QMap<QString, QString> m_scriptInfo;  // filename -> description/version
     QString m_currentLoadingScript;  // track which script is being loaded
     int m_nextHookId = 1;
 

@@ -9,9 +9,11 @@ extern "C" {
 #include "IrcConnection.h"
 #include "MessageModel.h"
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QUrl>
 #include <QDebug>
 #include <cstdlib>
 #include <cstring>
@@ -690,4 +692,14 @@ bool LuaScriptEngine::handleServerLine(IrcConnection * /*conn*/, const QString &
             return true;
     }
     return false;
+}
+
+void LuaScriptEngine::openScriptsFolder()
+{
+    QDesktopServices::openUrl(QUrl::fromLocalFile(m_directory));
+}
+
+QString LuaScriptEngine::scriptInfo(const QString &filename) const
+{
+    return m_scriptInfo.value(filename, filename);
 }

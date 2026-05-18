@@ -18,6 +18,50 @@ Dialog {
         Text { anchors.centerIn: parent; text: "Loaded Scripts"; color: "#ddd"; font.pixelSize: 14; font.bold: true }
     }
 
+    // Combined script model
+    ListModel {
+        id: combinedScripts
+    }
+
+    // Update combined model when engines change
+    function updateScriptList() {
+        combinedScripts.clear()
+        
+        if (typeof pyEngine !== 'undefined') {
+            var pyScripts = pyEngine.loadedScripts
+            for (var i = 0; i < pyScripts.length; i++) {
+                combinedScripts.append({
+                    "filename": pyScripts[i],
+                    "engine": "python",
+                    "info": pyEngine.scriptInfo(pyScripts[i])
+                })
+            }
+        }
+        
+        if (typeof luaEngine !== 'undefined') {
+            var luaScripts = luaEngine.loadedScripts
+            for (var j = 0; j < luaScripts.length; j++) {
+                combinedScripts.append({
+                    "filename": luaScripts[j],
+                    "engine": "lua",
+                    "info": luaEngine.scriptInfo(luaScripts[j])
+                })
+            }
+        }
+    }
+
+    Component.onCompleted: updateScriptList()
+
+    Connections {
+        target: typeof pyEngine !== 'undefined' ? pyEngine : null
+        function onLoadedScriptsChanged() { updateScriptList() }
+    }
+
+    Connections {
+        target: typeof luaEngine !== 'undefined' ? luaEngine : null
+        function onLoadedScriptsChanged() { updateScriptList() }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 12
@@ -25,9 +69,20 @@ Dialog {
 
         // ── Information ──
         Text {
-            text: typeof pyEngine !== 'undefined'
-                  ? "Scripts directory: " + pyEngine.scriptsDirectory
-                  : "Python scripting is not available (python3-dev not installed)"
+            text: {
+                var parts = []
+                if (typeof pyEngine !== 'undefined')
+                    parts.push("Python")
+                if (typeof luaEngine !== 'undefined')
+                    parts.push("Lua")
+                
+                if (parts.length === 0)
+                    return "No scripting engines available (python3-dev and/or lua not installed)"
+                
+                var dir = typeof pyEngine !== 'undefined' ? pyEngine.scriptsDirectory
+                         : typeof luaEngine !== 'undefined' ? luaEngine.scriptsDirectory : ""
+                return "Scripts directory: " + dir + " (" + parts.join(", ") + ")"
+            }
             color: "#999"; font.pixelSize: 11; wrapMode: Text.Wrap
             Layout.fillWidth: true
         }
@@ -45,12 +100,14 @@ Dialog {
                 anchors.fill: parent
                 anchors.margins: 1
                 clip: true
-                model: typeof pyEngine !== 'undefined' ? pyEngine.loadedScripts : []
+                model: combinedScripts
                 currentIndex: 0
 
                 delegate: Rectangle {
                     required property int index
-                    required property string modelData
+                    required property string filename
+                    required property string engine
+                    required property string info
                     width: scriptList.width
                     height: 50
                     color: scriptList.currentIndex === index ? "#264f78"
@@ -64,14 +121,30 @@ Dialog {
                         anchors.bottomMargin: 6
                         spacing: 2
 
-                        Text {
-                            text: modelData
-                            color: "#ddd"
-                            font.pixelSize: 13
-                            font.bold: true
+                        RowLayout {
+                            spacing: 6
+                            Text {
+                                text: filename
+                                color: "#ddd"
+                                font.pixelSize: 13
+                                font.bold: true
+                            }
+                            Rectangle {
+                                width: 40
+                                height: 16
+                                radius: 3
+                                color: engine === "python" ? "#3776ab" : "#000080"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: engine === "python" ? "PY" : "LUA"
+                                    color: "#fff"
+                                    font.pixelSize: 9
+                                    font.bold: true
+                                }
+                            }
                         }
                         Text {
-                            text: typeof pyEngine !== 'undefined' ? pyEngine.scriptInfo(modelData) : ""
+                            text: info
                             color: "#999"
                             font.pixelSize: 11
                             elide: Text.ElideRight
@@ -89,7 +162,7 @@ Dialog {
                 Text {
                     anchors.centerIn: parent
                     visible: scriptList.count === 0
-                    text: "No scripts loaded.\nDrop .py files into the scripts folder."
+                    text: "No scripts loaded.\nDrop .py or .lua files into the scripts folder."
                     color: "#666"
                     font.pixelSize: 13
                     horizontalAlignment: Text.AlignHCenter
@@ -99,9 +172,13 @@ Dialog {
 
         // ── Hook count ──
         Text {
-            text: typeof pyEngine !== 'undefined'
-                  ? pyEngine.hookCount() + " active hooks"
-                  : ""
+            text: {
+                var total = 0
+                if (typeof pyEngine !== 'undefined')
+                    total += pyEngine.hookCount()
+                // Note: Lua engine doesn't expose hookCount() yet
+                return total > 0 ? total + " active hooks" : ""
+            }
             color: "#888"; font.pixelSize: 11
         }
 
@@ -135,10 +212,12 @@ Dialog {
                 text: "Unload"
                 enabled: scriptList.currentIndex >= 0 && scriptList.count > 0
                 onClicked: {
-                    if (typeof pyEngine !== 'undefined' && scriptList.currentIndex >= 0) {
-                        var scripts = pyEngine.loadedScripts
-                        if (scriptList.currentIndex < scripts.length) {
-                            pyEngine.unloadScript(scripts[scriptList.currentIndex])
+                    if (scriptList.currentIndex >= 0 && scriptList.currentIndex < combinedScripts.count) {
+                        var item = combinedScripts.get(scriptList.currentIndex)
+                        if (item.engine === "python" && typeof pyEngine !== 'undefined') {
+                            pyEngine.unloadScript(item.filename)
+                        } else if (item.engine === "lua" && typeof luaEngine !== 'undefined') {
+                            luaEngine.unloadScript(item.filename)
                         }
                     }
                 }
@@ -149,10 +228,14 @@ Dialog {
                 text: "Reload"
                 enabled: scriptList.currentIndex >= 0 && scriptList.count > 0
                 onClicked: {
-                    if (typeof pyEngine !== 'undefined' && scriptList.currentIndex >= 0) {
-                        var scripts = pyEngine.loadedScripts
-                        if (scriptList.currentIndex < scripts.length) {
-                            pyEngine.reloadScript(scripts[scriptList.currentIndex])
+                    if (scriptList.currentIndex >= 0 && scriptList.currentIndex < combinedScripts.count) {
+                        var item = combinedScripts.get(scriptList.currentIndex)
+                        if (item.engine === "python" && typeof pyEngine !== 'undefined') {
+                            pyEngine.reloadScript(item.filename)
+                        } else if (item.engine === "lua" && typeof luaEngine !== 'undefined') {
+                            // Lua doesn't have reloadScript, use unload + load
+                            luaEngine.unloadScript(item.filename)
+                            luaEngine.loadScript(luaEngine.scriptsDirectory + "/" + item.filename)
                         }
                     }
                 }
@@ -161,7 +244,10 @@ Dialog {
             }
             Button {
                 text: "Reload All"
-                onClicked: { if (typeof pyEngine !== 'undefined') pyEngine.reloadAll() }
+                onClicked: {
+                    if (typeof pyEngine !== 'undefined') pyEngine.reloadAll()
+                    if (typeof luaEngine !== 'undefined') luaEngine.reloadAll()
+                }
                 background: Rectangle { color: parent.down ? "#1177bb" : "#0e639c"; radius: 3 }
                 contentItem: Text { text: parent.text; color: "#fff"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
             }
@@ -170,7 +256,12 @@ Dialog {
 
             Button {
                 text: "Open Folder"
-                onClicked: { if (typeof pyEngine !== 'undefined') pyEngine.openScriptsFolder() }
+                onClicked: {
+                    if (typeof pyEngine !== 'undefined')
+                        pyEngine.openScriptsFolder()
+                    else if (typeof luaEngine !== 'undefined')
+                        luaEngine.openScriptsFolder()
+                }
                 background: Rectangle { color: parent.down ? "#555" : "#444"; radius: 3 }
                 contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
             }

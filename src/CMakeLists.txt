@@ -115,6 +115,14 @@ set(nuchatcore_RESOURCE_FILES resources.qrc)
 
 target_link_libraries(nuchat PRIVATE nuchatcore Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickControls2)
 
+if(Python3_FOUND)
+    target_compile_definitions(nuchat PRIVATE HAVE_PYTHON=1)
+endif()
+
+if(LUA_FOUND)
+    target_compile_definitions(nuchat PRIVATE HAVE_LUA=1)
+endif()
+
 if(WIN32)
     target_compile_definitions(nuchat PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN)
     target_link_libraries(nuchat PRIVATE ws2_32)

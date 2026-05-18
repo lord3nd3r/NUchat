@@ -13,6 +13,33 @@ extern "C" {
 #include <QFile>
 #include <QFileInfo>
 #include <QDebug>
+#include <cstdlib>
+#include <cstring>
+
+// Limit Lua scripts to 32 MB of memory to prevent DoS via runaway allocation.
+static constexpr size_t kLuaMemoryLimit = 32 * 1024 * 1024;
+
+struct LuaAllocState {
+    size_t used = 0;
+};
+
+static void *luaLimitedAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
+    auto *state = static_cast<LuaAllocState *>(ud);
+    if (nsize == 0) {
+        state->used -= osize;
+        std::free(ptr);
+        return nullptr;
+    }
+    const size_t delta = (nsize > osize) ? (nsize - osize) : 0;
+    if (delta > 0 && state->used + delta > kLuaMemoryLimit)
+        return nullptr;  // deny allocation — Lua will raise a memory error
+    void *newPtr = std::realloc(ptr, nsize);
+    if (newPtr) {
+        state->used += nsize;
+        state->used -= osize;
+    }
+    return newPtr;
+}
 #include <QStandardPaths>
 
 LuaScriptEngine *LuaScriptEngine::s_instance = nullptr;
@@ -233,7 +260,8 @@ LuaScriptEngine *LuaScriptEngine::instance()
 
 void LuaScriptEngine::initLua()
 {
-    m_L = luaL_newstate();
+    m_luaAllocState = new LuaAllocState();
+    m_L = lua_newstate(luaLimitedAlloc, m_luaAllocState);
     luaL_openlibs(m_L);
     registerAPI();
 }
@@ -253,6 +281,8 @@ void LuaScriptEngine::shutdownLua()
         lua_close(m_L);
         m_L = nullptr;
     }
+    delete m_luaAllocState;
+    m_luaAllocState = nullptr;
 }
 
 void LuaScriptEngine::registerAPI()

@@ -5,7 +5,7 @@
 IrcConnection::IrcConnection(QObject *parent)
     : QObject(parent), m_socket(new QSslSocket(this)), m_port(6697),
       m_useSsl(true), m_nickname("NUchat_user"), m_username("nuchat"),
-      m_realname("NUchat User"), m_registered(false), m_namesInProgress(false) {
+      m_realname("NUchat User"), m_registered(false) {
   connect(m_socket, &QSslSocket::readyRead, this, &IrcConnection::onReadyRead);
   connect(m_socket, &QSslSocket::disconnected, this,
           &IrcConnection::onDisconnectedSlot);
@@ -179,13 +179,34 @@ void IrcConnection::onDisconnectedSlot() {
   qDebug() << "[IRC] Disconnected from" << m_host;
 }
 
+void IrcConnection::setAllowSelfSignedCerts(bool allow) {
+  m_allowSelfSignedCerts = allow;
+}
+
 void IrcConnection::onSslErrors(const QList<QSslError> &errors) {
-  QStringList msgs;
-  for (const QSslError &e : errors)
-    msgs << e.errorString();
-  qDebug() << "[IRC] SSL errors:" << msgs.join(", ") << "- ignoring";
-  // Accept all SSL errors (self-signed certs, etc.)
-  m_socket->ignoreSslErrors();
+  QList<QSslError> ignorable;
+  for (const QSslError &e : errors) {
+    switch (e.error()) {
+    case QSslError::SelfSignedCertificate:
+    case QSslError::SelfSignedCertificateInChain:
+      if (m_allowSelfSignedCerts) {
+        ignorable << e;
+        qDebug() << "[IRC] Ignoring self-signed certificate (user-approved)";
+      } else {
+        emit errorOccurred(tr("SSL error: self-signed certificate not allowed: %1")
+                               .arg(e.errorString()));
+        m_socket->abort();
+        return;
+      }
+      break;
+    default:
+      emit errorOccurred(tr("SSL error: %1").arg(e.errorString()));
+      m_socket->abort();
+      return;
+    }
+  }
+  if (!ignorable.isEmpty())
+    m_socket->ignoreSslErrors(ignorable);
 }
 
 // ── IRC Protocol ──
@@ -194,8 +215,11 @@ void IrcConnection::sendRegistration() {
   // CAP negotiation — request sasl if configured
   sendRaw("CAP LS 302");
 
-  if (!m_password.isEmpty())
+  if (!m_password.isEmpty()) {
     sendRaw("PASS " + m_password);
+    m_password.fill('\0');
+    m_password.clear();
+  }
 
   sendRaw("NICK " + m_nickname);
   sendRaw("USER " + m_username + " 0 * :" + m_realname);
@@ -297,6 +321,11 @@ void IrcConnection::processLine(const QString &line) {
         QByteArray encoded = authStr.toUtf8().toBase64();
         sendRaw("AUTHENTICATE " + QString::fromLatin1(encoded));
         qDebug() << "[IRC] Sent SASL PLAIN credentials for" << m_saslUser;
+        // Zero credentials from memory immediately after use
+        m_saslPass.fill('\0');
+        m_saslPass.clear();
+        m_saslUser.fill('\0');
+        m_saslUser.clear();
       } else if (m_saslMethod == "EXTERNAL") {
         sendRaw("AUTHENTICATE +");
         qDebug() << "[IRC] Sent SASL EXTERNAL (empty)";
@@ -322,6 +351,7 @@ void IrcConnection::processLine(const QString &line) {
     if (numeric == 1) {
       m_registered = true;
       m_saslInProgress = false;
+      m_nickRetries = 0;
       // Update our nick from the server's response (params[0] is our actual
       // nick)
       if (!params.isEmpty()) {
@@ -356,6 +386,9 @@ void IrcConnection::processLine(const QString &line) {
         } else if (cmd.startsWith("/")) {
           sendRaw(cmd.mid(1));
         }
+        // Zero NickServ password from memory immediately after use
+        m_nickServPass.fill('\0');
+        m_nickServPass.clear();
         qDebug() << "[IRC] Sent NickServ auto-identify for" << m_nickname;
       }
     }
@@ -399,6 +432,11 @@ void IrcConnection::processLine(const QString &line) {
       }
       if (!channel.isEmpty()) {
         QStringList names = namesList.split(' ', Qt::SkipEmptyParts);
+        // If this is the first 353 for a new names sequence, start fresh.
+        if (!m_namesStarted.contains(channel)) {
+          m_channelNames[channel] = QStringList();
+          m_namesStarted.insert(channel);
+        }
         m_channelNames[channel] += names;
       }
     }
@@ -408,14 +446,22 @@ void IrcConnection::processLine(const QString &line) {
       if (m_channelNames.contains(channel)) {
         emit namesReceived(channel, m_channelNames[channel]);
         m_channelNames.remove(channel);
+        m_namesStarted.remove(channel);
       }
     }
     // ERR_NICKNAMEINUSE (433)
     else if (numeric == 433) {
-      // Try appending underscore
-      m_nickname += "_";
-      sendRaw("NICK " + m_nickname);
-      emit nicknameChanged(m_nickname);
+      static const int kMaxNickRetries = 3;
+      if (m_nickRetries < kMaxNickRetries) {
+        ++m_nickRetries;
+        m_nickname += "_";
+        sendRaw("NICK " + m_nickname);
+        emit nicknameChanged(m_nickname);
+      } else {
+        emit errorOccurred(
+            tr("Nickname in use and all alternatives exhausted. "
+               "Please choose a different nickname."));
+      }
     }
     return;
   }
@@ -458,6 +504,7 @@ void IrcConnection::processLine(const QString &line) {
     // If it's us joining, init names list
     if (nickFromPrefix(prefix) == m_nickname) {
       m_channelNames[channel] = QStringList();
+      m_namesStarted.remove(channel);  // allow fresh tracking on next 353
     }
   } else if (command == "PART") {
     QString channel = params.isEmpty() ? "" : params[0];

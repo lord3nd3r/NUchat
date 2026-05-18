@@ -10,6 +10,7 @@
 
 // Forward-declare lua_State to avoid exposing Lua headers
 struct lua_State;
+struct LuaAllocState;  // defined in LuaScriptEngine.cpp
 
 class IRCConnectionManager;
 class IrcConnection;
@@ -73,6 +74,7 @@ private:
 
     IRCConnectionManager *m_mgr;
     lua_State *m_L = nullptr;
+    LuaAllocState *m_luaAllocState = nullptr;
     QString m_directory;
     QFileSystemWatcher *m_watcher = nullptr;
     QVector<LuaHook> m_hooks;

@@ -65,15 +65,13 @@ target_link_libraries(nuchatcore PRIVATE
     Qt6::Concurrent
     Qt6::Gui
     Qt6::Widgets
+    Qt6::Quick
 )
 
 if(HUNSPELL_FOUND)
     target_include_directories(nuchatcore PRIVATE ${HUNSPELL_INCLUDE_DIRS})
     target_link_libraries(nuchatcore PRIVATE ${HUNSPELL_LIBRARIES})
     target_compile_definitions(nuchatcore PUBLIC HAVE_HUNSPELL=1)
-    if(Qt6Quick_FOUND)
-        target_link_libraries(nuchatcore PRIVATE Qt6::Quick)
-    endif()
 endif()
 
 if(Python3_FOUND)
@@ -98,11 +96,7 @@ add_executable(nuchat main.cpp)
 # include resources directly in the library so they are available
 set(nuchatcore_RESOURCE_FILES resources.qrc)
 
-target_link_libraries(nuchat PRIVATE nuchatcore Qt6::Gui Qt6::Widgets Qt6::QuickControls2)
-
-if(Qt6Quick_FOUND)
-    target_link_libraries(nuchat PRIVATE Qt6::Quick)
-endif()
+target_link_libraries(nuchat PRIVATE nuchatcore Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickControls2)
 
 # Install the binary
 install(TARGETS nuchat RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

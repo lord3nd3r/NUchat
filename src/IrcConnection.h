@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QMap>
 #include <QtNetwork/QSslSocket>
@@ -37,6 +38,9 @@ public:
     void setProxy(QNetworkProxy::ProxyType type,
                   const QString &host = QString(), quint16 port = 0,
                   const QString &user = QString(), const QString &password = QString());
+
+    // SSL options
+    void setAllowSelfSignedCerts(bool allow);
 
     QString serverHost() const { return m_host; }
     bool isConnected() const { return m_registered; }
@@ -89,11 +93,13 @@ private:
     QString m_host;
     quint16 m_port;
     bool m_useSsl;
+    bool m_allowSelfSignedCerts = false;
     QString m_nickname;
     QString m_username;
     QString m_realname;
     QString m_password;
     bool m_registered;
+    int m_nickRetries = 0;      // incremented on each 433; reset on registration
     QByteArray m_readBuffer;
 
     // SASL authentication state
@@ -108,10 +114,12 @@ private:
 
     // Channels we've joined — tracks names lists
     QMap<QString, QStringList> m_channelNames;
-    bool m_namesInProgress;      // accumulating RPL_NAMREPLY
-    QString m_namesChannel;
+    QSet<QString> m_namesStarted;   // channels with an in-progress 353 sequence
 
     void processLine(const QString &line);
+
+    // Allow unit tests to drive processLine() directly
+    friend class IrcConnectionTestable;
     void sendRegistration();
     static QString nickFromPrefix(const QString &prefix);
 };

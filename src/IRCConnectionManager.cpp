@@ -119,6 +119,9 @@ void IRCConnectionManager::connectToServer(
                       "...");
 
   applyProxySettings(conn);
+  if (m_settings)
+    conn->setAllowSelfSignedCerts(
+        m_settings->getBool("conn/allowSelfSignedCerts", false));
   conn->connectToServer(host, static_cast<quint16>(port), ssl);
 }
 
@@ -171,18 +174,55 @@ void IRCConnectionManager::closeChannel(const QString &serverName,
 
 void IRCConnectionManager::sendMessage(const QString &target,
                                        const QString &message) {
-  if (auto *conn = activeConnection()) {
-    // Handle /commands
-    if (message.startsWith('/')) {
-      QString cmd = message.section(' ', 0, 0).mid(1).toUpper();
-      QString args = message.section(' ', 1);
+  auto *conn = activeConnection();
+  if (!conn)
+    return;
 
+  if (message.startsWith('/')) {
+    QString cmd  = message.section(' ', 0, 0).mid(1).toUpper();
+    QString args = message.section(' ', 1);
+    handleSlashCommand(conn, target, cmd, args);
+    return;
+  }
+
+  // Regular message
+  conn->sendMessage(target, message);
+
+  // Show our own message locally with status prefix
+  QString nick = conn->nickname();
+  QString displayNick = nick;
+  ChannelKey key{m_activeServer, target};
+  if (m_users.contains(key)) {
+    for (const QString &u : m_users[key]) {
+      QString bare = u;
+      QString pfx;
+      while (!bare.isEmpty() && QString("~&@%+").contains(bare[0])) {
+        pfx += bare[0];
+        bare = bare.mid(1);
+      }
+      if (bare.compare(nick, Qt::CaseInsensitive) == 0) {
+        if (!pfx.isEmpty())
+          displayNick = pfx[0] + nick;
+        break;
+      }
+    }
+  }
+  QString text = "<" + displayNick + "> " + message;
+  if (m_msgModel && m_activeChannel == target)
+    m_msgModel->addMessage("chat", text);
+  appendToChannel(m_activeServer, target, "chat", text);
+}
+
+bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
+                                               const QString &target,
+                                               const QString &cmd,
+                                               const QString &args) {
       // ── ECHO — print locally without sending ──
       if (cmd == "ECHO" || cmd == "SAY" && false /* SAY handled below */) {
         if (cmd == "ECHO") {
           if (m_msgModel)
             m_msgModel->addMessage("system", args);
-          return;
+          return true;
         }
       }
 
@@ -191,7 +231,7 @@ void IRCConnectionManager::sendMessage(const QString &target,
       if (PythonScriptEngine::instance()) {
         QStringList argParts = args.isEmpty() ? QStringList() : args.split(' ');
         if (PythonScriptEngine::instance()->handleCommand(cmd, argParts))
-          return; // Script consumed the command
+          return true; // Script consumed the command
       }
 #endif
 #ifdef HAVE_LUA
@@ -199,7 +239,7 @@ void IRCConnectionManager::sendMessage(const QString &target,
       if (LuaScriptEngine::instance()) {
         QStringList argParts = args.isEmpty() ? QStringList() : args.split(' ');
         if (LuaScriptEngine::instance()->handleCommand(cmd, argParts))
-          return; // Script consumed the command
+          return true; // Script consumed the command
       }
 #endif
 
@@ -208,9 +248,8 @@ void IRCConnectionManager::sendMessage(const QString &target,
         QString k = args.section(' ', 1, 1);
         conn->joinChannel(ch, k);
       } else if (cmd == "PART" || cmd == "LEAVE" || cmd == "P") {
-        if (args.isEmpty())
-          args = target;
-        conn->partChannel(args);
+        QString a = args.isEmpty() ? target : args;
+        conn->partChannel(a);
       } else if (cmd == "NICK") {
         conn->changeNick(args.trimmed());
       } else if (cmd == "MSG" || cmd == "PRIVMSG" || cmd == "M" ||
@@ -475,36 +514,7 @@ void IRCConnectionManager::sendMessage(const QString &target,
         // Unknown /command — send as raw
         conn->sendRaw(cmd + " " + args);
       }
-      return;
-    }
-
-    // Regular message
-    conn->sendMessage(target, message);
-
-    // Show our own message locally with status prefix
-    QString nick = conn->nickname();
-    QString displayNick = nick;
-    ChannelKey key{m_activeServer, target};
-    if (m_users.contains(key)) {
-      for (const QString &u : m_users[key]) {
-        QString bare = u;
-        QString pfx;
-        while (!bare.isEmpty() && QString("~&@%+").contains(bare[0])) {
-          pfx += bare[0];
-          bare = bare.mid(1);
-        }
-        if (bare.compare(nick, Qt::CaseInsensitive) == 0) {
-          if (!pfx.isEmpty())
-            displayNick = pfx[0] + nick;
-          break;
-        }
-      }
-    }
-    QString text = "<" + displayNick + "> " + message;
-    if (m_msgModel && m_activeChannel == target)
-      m_msgModel->addMessage("chat", text);
-    appendToChannel(m_activeServer, target, "chat", text);
-  }
+      return true;
 }
 
 void IRCConnectionManager::sendRawCommand(const QString &raw) {
@@ -1813,7 +1823,7 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
   if (!m_settings)
     return;
 
-  bool autoReconnect = m_settings->value("conn/autoReconnect", true).toBool();
+  bool autoReconnect = m_settings->getBool("conn/autoReconnect", true);
   if (!autoReconnect)
     return;
 
@@ -1821,8 +1831,8 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
     return;
 
   ReconnectInfo &ri = m_reconnectInfo[host];
-  int maxAttempts = m_settings->value("conn/maxReconnectAttempts", 10).toInt();
-  int delay = m_settings->value("conn/reconnectDelay", 10).toInt();
+  int maxAttempts = m_settings->getInt("conn/maxReconnectAttempts", 10);
+  int delay = m_settings->getInt("conn/reconnectDelay", 10);
 
   if (maxAttempts > 0 && ri.attempts >= maxAttempts) {
     QString msg = "Auto-reconnect: max attempts (" +
@@ -1893,6 +1903,9 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
       m_msgModel->addMessage("system", reconnMsg);
 
     applyProxySettings(conn);
+    if (m_settings)
+      conn->setAllowSelfSignedCerts(
+          m_settings->getBool("conn/allowSelfSignedCerts", false));
     conn->connectToServer(host, static_cast<quint16>(info.port), info.ssl);
   });
   ri.timer->start(delay * 1000);
@@ -1907,7 +1920,7 @@ void IRCConnectionManager::executePerformCommands(const QString &server) {
     return;
 
   QString performText =
-      m_settings->value("adv/performCommands", "").toString().trimmed();
+      m_settings->getString("adv/performCommands", "").trimmed();
   if (performText.isEmpty())
     return;
 
@@ -1952,7 +1965,7 @@ void IRCConnectionManager::executePerformCommands(const QString &server) {
 void IRCConnectionManager::extractUrls(const QString &text, const QString &nick,
                                        const QString &channel) {
   // Check if URL grabbing is enabled
-  if (m_settings && !m_settings->value("url/autoGrab", true).toBool())
+  if (m_settings && !m_settings->getBool("url/autoGrab", true))
     return;
 
   static QRegularExpression urlRe(R"((https?://[^\s<>"'\)\]]+))",
@@ -2016,14 +2029,14 @@ void IRCConnectionManager::applyProxySettings(IrcConnection *conn) {
   if (!m_settings || !conn)
     return;
 
-  int typeIdx = m_settings->value("conn/proxyTypeIndex", 0).toInt();
+  int typeIdx = m_settings->getInt("conn/proxyTypeIndex", 0);
   if (typeIdx <= 0) {
     conn->setProxy(QNetworkProxy::NoProxy);
     return;
   }
 
-  QString host = m_settings->value("conn/proxyHost", "").toString().trimmed();
-  int port = m_settings->value("conn/proxyPort", 1080).toInt();
+  QString host = m_settings->getString("conn/proxyHost", "").trimmed();
+  int port = m_settings->getInt("conn/proxyPort", 1080);
 
   if (host.isEmpty())
     return;
@@ -2044,11 +2057,11 @@ void IRCConnectionManager::applyProxySettings(IrcConnection *conn) {
   }
 
   // Authentication (user/pass from settings if proxy auth is enabled)
-  bool useAuth = m_settings->value("conn/proxyAuth", false).toBool();
+  bool useAuth = m_settings->getBool("conn/proxyAuth", false);
   QString user, pass;
   if (useAuth) {
-    user = m_settings->value("conn/proxyUser", "").toString();
-    pass = m_settings->value("conn/proxyPass", "").toString();
+    user = m_settings->getString("conn/proxyUser", "");
+    pass = m_settings->getString("conn/proxyPass", "");
   }
 
   conn->setProxy(proxyType, host, static_cast<quint16>(port), user, pass);

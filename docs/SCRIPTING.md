@@ -6,6 +6,14 @@ hot-reloaded when modified on disk.
 
 ---
 
+> **Security Warning:** Scripts execute with the same privileges as NUchat and
+> have **full access** to the Python/Lua standard libraries, including file I/O,
+> network sockets, and process execution (`os.system`, `subprocess`, etc.).
+> **Only load scripts from sources you fully trust.** NUchat does not sandbox
+> or restrict script capabilities.
+
+---
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)

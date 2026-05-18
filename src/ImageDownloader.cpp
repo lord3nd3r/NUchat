@@ -12,6 +12,7 @@
 #include <QGuiApplication>
 #include <QClipboard>
 #include <QFileInfo>
+#include <QHostAddress>
 
 ImageDownloader *ImageDownloader::instance()
 {
@@ -96,10 +97,48 @@ bool ImageDownloader::isVideoUrl(const QString &url)
 
 // ---------- download ----------
 
+// Returns true if the URL is safe to fetch: https/http only, no private/loopback hosts.
+static bool isSafeImageUrl(const QUrl &qurl) {
+    const QString scheme = qurl.scheme().toLower();
+    if (scheme != QLatin1String("https") && scheme != QLatin1String("http"))
+        return false;
+
+    // Block requests to loopback, link-local, and RFC-1918 private addresses.
+    const QString host = qurl.host();
+    if (host.isEmpty())
+        return false;
+
+    // Reject localhost by name
+    if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0)
+        return false;
+
+    // Reject by IP range
+    QHostAddress addr(host);
+    if (!addr.isNull()) {
+        if (addr.isLoopback() || addr.isLinkLocal() ||
+            addr.isInSubnet(QHostAddress("10.0.0.0"),    8)  ||
+            addr.isInSubnet(QHostAddress("172.16.0.0"),  12) ||
+            addr.isInSubnet(QHostAddress("192.168.0.0"), 16) ||
+            addr.isInSubnet(QHostAddress("fc00::"),      7)  ||
+            addr.isInSubnet(QHostAddress("fe80::"),      10))
+            return false;
+    }
+
+    return true;
+}
+
 void ImageDownloader::download(const QString &url)
 {
     if (m_pending.contains(url))
         return;
+
+    // Validate URL before making any network request.
+    QUrl qurl(url);
+    if (!isSafeImageUrl(qurl)) {
+        qWarning() << "[ImageDownloader] Blocked unsafe URL:" << url;
+        emit downloadFailed(url);
+        return;
+    }
 
     // Already cached – emit immediately
     if (isCached(url)) {
@@ -125,6 +164,24 @@ void ImageDownloader::download(const QString &url)
 
         if (reply->error() != QNetworkReply::NoError) {
             qWarning() << "Image download failed:" << reply->errorString() << url;
+            emit downloadFailed(url);
+            return;
+        }
+
+        // Check Content-Type — must be an image MIME type.
+        const QByteArray contentType =
+            reply->header(QNetworkRequest::ContentTypeHeader).toByteArray().toLower();
+        static const QList<QByteArray> kImageMimeTypes = {
+            "image/png", "image/jpeg", "image/gif", "image/webp",
+            "image/bmp",  "image/svg+xml", "image/tiff"
+        };
+        bool mimeOk = false;
+        for (const QByteArray &mime : kImageMimeTypes) {
+            if (contentType.startsWith(mime)) { mimeOk = true; break; }
+        }
+        if (!contentType.isEmpty() && !mimeOk) {
+            qWarning() << "[ImageDownloader] Non-image Content-Type rejected:"
+                       << contentType << url;
             emit downloadFailed(url);
             return;
         }

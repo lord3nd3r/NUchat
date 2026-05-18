@@ -23,7 +23,7 @@ if(NOT LUA_FOUND)
 endif()
 
 if(NOT Qt6Quick_FOUND)
-    message(WARNING "Qt6 Quick component not found; QML UI will not be available. Install Qt6 Quick (qt6-declarative) for full functionality.")
+    message(FATAL_ERROR "Qt6 Quick component not found; NUchat requires Qt6::Quick for its QML UI. Install Qt6 Quick (qt6-declarative) and re-run CMake.")
 endif()
 
 if(NOT Python3_FOUND)
@@ -35,6 +35,9 @@ if(NOT LUA_FOUND)
 endif()
 
 include(GNUInstallDirs)
+
+# enable CTest support
+enable_testing()
 
 # add subdirectories
 add_subdirectory(src)

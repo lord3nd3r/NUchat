@@ -146,6 +146,9 @@ private:
   void attemptReconnect(const QString &host);
   void applyProxySettings(IrcConnection *conn);
   void ensureScrollbackLoaded(const QString &server, const QString &channel);
+  // Dispatch /command input — returns true if the message was consumed.
+  bool handleSlashCommand(IrcConnection *conn, const QString &target,
+                          const QString &cmd, const QString &args);
 
   QVector<IrcConnection *> m_connections;
   QMap<IrcConnection *, QString> m_connToName; // conn -> display name (host)

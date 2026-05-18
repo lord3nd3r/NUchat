@@ -5,6 +5,14 @@ compiled against the `PluginInterface` header and placed in the `plugins/` direc
 
 ---
 
+> **Security Warning:** Plugins are native shared libraries that run with the
+> same privileges as NUchat itself. A malicious plugin can read your files,
+> access the network, and exfiltrate credentials. **Only install plugins from
+> sources you fully trust.** NUchat verifies the plugin interface ID before
+> loading, but does not perform code signing or sandboxing.
+
+---
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)

@@ -1,7 +1,7 @@
 #include "SpellChecker.h"
 #include <QDebug>
 #include <QFile>
-#include <hunspell/hunspell.hxx>
+#include <hunspell.hxx>
 #include <string>
 #include <vector>
 

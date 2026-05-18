@@ -16,15 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Qt6
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.8.*'
-          host: windows
-          target: desktop
-          arch: win64_msvc2022_64
-          modules: 'qtquickcontrols2'
-          cache: true
+      - name: Install Qt6 via aqtinstall
+        shell: pwsh
+        run: |
+          pip install aqtinstall
+          aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "C:\Qt"
+          Add-Content $env:GITHUB_PATH "C:\Qt\6.8.3\msvc2022_64\bin"
+          Add-Content $env:GITHUB_ENV "Qt6_DIR=C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6"
+          Add-Content $env:GITHUB_ENV "CMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64"
 
       # Set up MSVC environment (cl.exe, link.exe, etc.) for Ninja
       - name: Set up MSVC

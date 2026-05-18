@@ -21,21 +21,16 @@ jobs:
           brew update
           brew install lua hunspell
 
-      - name: Install Qt6
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.8.*'
-          host: mac
-          target: desktop
-          arch: clang_64
-          modules: 'qtquickcontrols2'
-          cache: true
+      - name: Install Qt6 via aqtinstall
+        run: |
+          pip3 install aqtinstall
+          aqt install-qt mac desktop 6.8.3 clang_64 --outputdir "$HOME/Qt"
+          echo "$HOME/Qt/6.8.3/macos/bin" >> "$GITHUB_PATH"
+          echo "Qt6_DIR=$HOME/Qt/6.8.3/macos/lib/cmake/Qt6" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/macos" >> "$GITHUB_ENV"
 
       - name: Configure
-        run: |
-          cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="${Qt6_DIR}"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --parallel $(sysctl -n hw.logicalcpu)

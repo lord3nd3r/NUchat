@@ -12,14 +12,9 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network Concurrent Quick Q
 find_package(Python3 COMPONENTS Development)
 
 # Lua scripting (optional)
-# CMake's built-in FindLua works on all platforms; fall back to pkg-config on Unix.
+# CMake's built-in FindLua works on all platforms; fall back to pkg-config on Unix only.
 find_package(Lua QUIET)
-if(LUA_FOUND)
-    # Normalize: CMake FindLua uses LUA_INCLUDE_DIR (singular)
-    if(NOT LUA_INCLUDE_DIRS)
-        set(LUA_INCLUDE_DIRS "${LUA_INCLUDE_DIR}")
-    endif()
-else()
+if(NOT LUA_FOUND AND UNIX)
     include(FindPkgConfig)
     pkg_check_modules(LUA lua5.4)
     if(NOT LUA_FOUND)
@@ -28,6 +23,10 @@ else()
     if(NOT LUA_FOUND)
         pkg_check_modules(LUA lua)
     endif()
+endif()
+if(LUA_FOUND AND NOT LUA_INCLUDE_DIRS)
+    # Normalize: CMake FindLua uses LUA_INCLUDE_DIR (singular)
+    set(LUA_INCLUDE_DIRS "${LUA_INCLUDE_DIR}")
 endif()
 
 if(NOT Qt6Quick_FOUND)

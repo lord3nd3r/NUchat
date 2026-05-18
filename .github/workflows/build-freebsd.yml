@@ -23,7 +23,7 @@ jobs:
           prepare: |
             pkg install -y \
               cmake \
-              qt6-base qt6-declarative qt6-quickcontrols2 \
+              qt6-base qt6-declarative \
               python3 \
               lua54 \
               hunspell \

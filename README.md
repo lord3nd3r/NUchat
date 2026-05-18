@@ -93,6 +93,16 @@ Uses GNUInstallDirs — installs binary, desktop file, icon, and plugin/script d
 | `~/.config/NUchat/scripts/` | Python scripts |
 | `~/.cache/NUchat/images/` | Cached inline image previews |
 
+### Self-signed / untrusted SSL certificates
+
+If your IRC server uses a self-signed certificate or one where the hostname doesn't match (common on self-hosted servers), you'll see an SSL error and the connection will be refused. To allow it:
+
+1. Open **Settings → Preferences → Connection**
+2. Check **"Accept self-signed / untrusted SSL certificates"**
+3. Reconnect
+
+This covers hostname mismatches, self-signed certs, and untrusted issuer chains. It does **not** suppress errors for expired certificates or other hard failures.
+
 ---
 
 ## Themes

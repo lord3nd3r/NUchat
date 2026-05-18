@@ -7,9 +7,8 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# find Qt6 components; Quick is optional for headless builds
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network Concurrent QuickControls2)
-find_package(Qt6 COMPONENTS Quick)
+# find Qt6 components
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network Concurrent Quick QuickControls2)
 find_package(Python3 COMPONENTS Development)
 
 # Lua scripting (optional)

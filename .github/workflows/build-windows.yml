@@ -29,6 +29,9 @@ jobs:
           target: desktop
           cache: false
 
+      - name: Install NSIS
+        run: choco install nsis
+
       # Python is pre-installed on the runner. Lua and Hunspell are optional.
       # The action automatically sets up Qt6_DIR, PATH, and the environment.
 

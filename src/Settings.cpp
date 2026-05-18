@@ -3,6 +3,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QTextStream>
+#include <QVariantList>
+#include <QVariantMap>
 
 Settings::Settings(QObject *parent)
     : QObject(parent), settings("NUchat", "NUchat")
@@ -120,4 +123,135 @@ int Settings::importHexChatScripts() const
         }
     }
     return count;
+}
+
+// ── HexChat config migration ──
+
+static QString hexchatConfigDir()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+           + "/hexchat";
+}
+
+bool Settings::hexchatConfigExists() const
+{
+    return QFile::exists(hexchatConfigDir() + "/hexchat.conf")
+        || QFile::exists(hexchatConfigDir() + "/servlist.conf");
+}
+
+QVariantMap Settings::importHexChatIdentity() const
+{
+    QVariantMap result;
+    QFile f(hexchatConfigDir() + "/hexchat.conf");
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return result;
+
+    QTextStream in(&f);
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+        int eq = line.indexOf('=');
+        if (eq < 0) continue;
+        QString key = line.left(eq).trimmed();
+        QString val = line.mid(eq + 1).trimmed();
+        if (key == "irc_nick1")     result["nick"]     = val;
+        if (key == "irc_user_name") result["username"] = val;
+        if (key == "irc_realname")  result["realname"] = val;
+    }
+    return result;
+}
+
+QVariantList Settings::importHexChatNetworks() const
+{
+    QVariantList networks;
+    QFile f(hexchatConfigDir() + "/servlist.conf");
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return networks;
+
+    // Parse each network block (blocks separated by blank lines)
+    QVariantMap current;
+    QString firstName, firstServer;
+    bool firstSsl = false;
+    int firstPort = 6667;
+
+    auto flushNetwork = [&]() {
+        if (current.isEmpty() || !current.contains("network")) return;
+        // Use first server entry
+        if (!firstServer.isEmpty()) {
+            current["server"] = firstServer;
+            current["port"]   = firstPort;
+            current["ssl"]    = firstSsl;
+        }
+        // Fill NUchat defaults for missing fields
+        if (!current.contains("saslMethod"))  current["saslMethod"]  = QString("None");
+        if (!current.contains("saslUser"))    current["saslUser"]    = QString();
+        if (!current.contains("saslPass"))    current["saslPass"]    = QString();
+        if (!current.contains("nickServCmd")) current["nickServCmd"] = QString();
+        if (!current.contains("nickServPass"))current["nickServPass"]= QString();
+        if (!current.contains("useGlobalNick"))current["useGlobalNick"] = true;
+        if (!current.contains("customNick")) current["customNick"]   = QString();
+        if (!current.contains("customUser")) current["customUser"]   = QString();
+        if (!current.contains("customReal")) current["customReal"]   = QString();
+        if (!current.contains("serverPass")) current["serverPass"]   = QString();
+        current["isZnc"]     = false;
+        current["zncUser"]   = QString();
+        current["zncPass"]   = QString();
+        current["zncNetwork"]= QString();
+        networks.append(current);
+    };
+
+    auto startNetwork = [&]() {
+        current.clear();
+        firstServer.clear();
+        firstName.clear();
+        firstSsl = false;
+        firstPort = 6667;
+    };
+
+    QTextStream in(&f);
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        if (line.trimmed().isEmpty()) {
+            flushNetwork();
+            startNetwork();
+            continue;
+        }
+        int eq = line.indexOf('=');
+        if (eq < 0) continue;
+        QString key = line.left(eq).trimmed();
+        QString val = line.mid(eq + 1).trimmed();
+
+        if (key == "N") {
+            current["network"] = val;
+        } else if (key == "S" && firstServer.isEmpty()) {
+            // Server format: host/port  or  host/+port  or  host
+            int slash = val.lastIndexOf('/');
+            if (slash >= 0) {
+                firstServer = val.left(slash);
+                QString portStr = val.mid(slash + 1);
+                if (portStr.startsWith('+')) {
+                    firstSsl = true;
+                    firstPort = portStr.mid(1).toInt();
+                    if (firstPort == 0) firstPort = 6697;
+                } else {
+                    firstSsl = false;
+                    firstPort = portStr.toInt();
+                    if (firstPort == 0) firstPort = 6667;
+                }
+            } else {
+                firstServer = val;
+                firstSsl  = false;
+                firstPort = 6667;
+            }
+        } else if (key == "P") {
+            current["serverPass"] = val;
+        } else if (key == "I") {
+            current["customUser"] = val;
+            current["useGlobalNick"] = false;
+        } else if (key == "R") {
+            current["customReal"] = val;
+        }
+    }
+    flushNetwork(); // handle last block without trailing blank line
+
+    return networks;
 }

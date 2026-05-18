@@ -383,3 +383,32 @@ before the script is re-executed.
 - Scripts run in the main thread. Long-running operations will block the UI.
 - All script output (`prnt`) appears in the currently active channel tab.
 - mIRC color codes are supported in `prnt()` output (e.g. `\00304red text\003`).
+
+---
+
+## Migrating from HexChat
+
+If you have existing HexChat scripts, NUchat can import them automatically.
+
+### Automatic (first launch)
+
+On first launch, if NUchat finds no loaded scripts and detects `~/.config/hexchat/`,
+it opens the **Migrate from HexChat** wizard. You can choose to import:
+
+- **Scripts** — copies `.py` and `.lua` files from `~/.config/hexchat/addons/` into
+  `~/.config/NUchat/scripts/`
+- **Networks** — imports your server list from `servlist.conf` into the NUchat network list
+- **Identity** — imports your nickname, username, and realname from `hexchat.conf`
+
+### Manual
+
+Open **Settings → Preferences → Scripts → Open Migration Wizard** at any time.
+
+### Compatibility notes
+
+- NUchat uses the same `import hexchat` API, so most HexChat Python scripts work
+  without changes.
+- Scripts that use `hexchat.find_context()`, `hexchat.get_context()`, or
+  `hexchat.get_list()` may need minor adjustments as those are not yet implemented.
+- Lua scripts using the `hexchat` global work as-is; scripts using `xchat` may need
+  the global renamed.

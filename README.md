@@ -35,6 +35,7 @@ A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexCh
 - **Channel modes on join** — displays mode string when entering a channel
 - **Dynamic title bar** — shows channel, server, and topic (like HexChat)
 - **C++ plugin system**, **Python scripting engine**, and **Lua scripting engine** — HexChat-compatible API for all three
+- **Migrate from HexChat** — first-launch wizard imports your scripts, server list, and identity from `~/.config/hexchat/`
 - **ZNC bouncer** support
 - **Desktop integration** — `.desktop` file, SVG icon, `make install` support
 
@@ -102,6 +103,22 @@ If your IRC server uses a self-signed certificate or one where the hostname does
 3. Reconnect
 
 This covers hostname mismatches, self-signed certs, and untrusted issuer chains. It does **not** suppress errors for expired certificates or other hard failures.
+
+---
+
+## Migrating from HexChat
+
+If HexChat data is detected in `~/.config/hexchat/` on first launch, NUchat will offer to import:
+
+| What | Source |
+|------|--------|
+| Python & Lua scripts | `~/.config/hexchat/addons/*.py` / `*.lua` |
+| Server/network list | `~/.config/hexchat/servlist.conf` |
+| Nick, username, realname | `~/.config/hexchat/hexchat.conf` |
+
+You can also run the wizard later via **Settings → Preferences → Scripts → Open Migration Wizard**.
+
+Existing scripts and networks in NUchat are never overwritten.
 
 ---
 

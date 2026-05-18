@@ -273,9 +273,10 @@ ApplicationWindow {
             }
         }
 
-        // First-launch HexChat script migration prompt
+        // First-launch HexChat migration prompt
         var alreadyAsked = appSettings.value("app/hexchatMigratePrompted", false)
-        if ((alreadyAsked !== true && alreadyAsked !== "true") && appSettings.hexchatScriptsExist()) {
+        if ((alreadyAsked !== true && alreadyAsked !== "true")
+                && (appSettings.hexchatScriptsExist() || appSettings.hexchatConfigExists())) {
             var noScripts = (typeof pyEngine === "undefined" || pyEngine.loadedScripts.length === 0)
             if (noScripts)
                 Qt.callLater(function() { hexchatMigrateDialog.open() })

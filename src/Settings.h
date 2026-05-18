@@ -20,6 +20,11 @@ public:
     Q_INVOKABLE QStringList hexchatScriptFiles() const;
     Q_INVOKABLE int importHexChatScripts() const;
 
+    // HexChat config migration
+    Q_INVOKABLE bool hexchatConfigExists() const;
+    Q_INVOKABLE QVariantMap importHexChatIdentity() const;
+    Q_INVOKABLE QVariantList importHexChatNetworks() const;
+
     // Type-safe C++ accessors — preferred over value() in C++ code.
     int    getInt   (const QString &key, int           defaultValue = 0)     const;
     bool   getBool  (const QString &key, bool          defaultValue = false)  const;

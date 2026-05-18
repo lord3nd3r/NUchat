@@ -30,7 +30,7 @@ jobs:
       # The action automatically sets up Qt6_DIR, PATH, and the environment.
 
       - name: Configure
-        run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DPython3_FOUND=OFF
 
       - name: Build
         run: cmake --build build --config Release --parallel --verbose

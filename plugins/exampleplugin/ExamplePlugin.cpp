@@ -12,7 +12,9 @@ bool ExamplePlugin::handleCommand(const QString &command, const QStringList &arg
 {
     if (command == "hello") {
         if (connection) {
-            connection->sendMessage("#general", "Hello from plugin!");
+            QMetaObject::invokeMethod(connection, "sendMessage",
+                                      Q_ARG(QString, "#general"),
+                                      Q_ARG(QString, "Hello from plugin!"));
         }
         return true;
     }

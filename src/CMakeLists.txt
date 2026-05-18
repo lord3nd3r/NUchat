@@ -33,7 +33,7 @@ set(CORE_HEADERS
 )
 
 include(FindPkgConfig)
-pkg_check_modules(HUNSPELL hunspell)
+pkg_check_modules(HUNSPELL IMPORTED_TARGET hunspell)
 if(NOT HUNSPELL_FOUND)
     message(WARNING "hunspell library not found; spell checking disabled.")
 else()
@@ -69,8 +69,7 @@ target_link_libraries(nuchatcore PRIVATE
 )
 
 if(HUNSPELL_FOUND)
-    target_include_directories(nuchatcore PRIVATE ${HUNSPELL_INCLUDE_DIRS})
-    target_link_libraries(nuchatcore PRIVATE ${HUNSPELL_LIBRARIES})
+    target_link_libraries(nuchatcore PRIVATE PkgConfig::HUNSPELL)
     target_compile_definitions(nuchatcore PUBLIC HAVE_HUNSPELL=1)
 endif()
 

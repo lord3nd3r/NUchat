@@ -16,26 +16,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Qt6 via aqtinstall
-        shell: pwsh
-        run: |
-          pip install aqtinstall
-          aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "C:\Qt" -m qtquickcontrols2 qtdeclarative
-          Add-Content $env:GITHUB_PATH "C:\Qt\6.8.3\msvc2022_64\bin"
-          Add-Content $env:GITHUB_ENV "Qt6_DIR=C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6"
-          Add-Content $env:GITHUB_ENV "CMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64"
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: 'qtquickcontrols2 qtdeclarative'
+          cache: true
 
-      - name: Verify Qt install
-        shell: pwsh
-        run: |
-          Write-Host "Qt6_DIR: $env:Qt6_DIR"
-          Write-Host "CMAKE_PREFIX_PATH: $env:CMAKE_PREFIX_PATH"
-          Test-Path "C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6\Qt6Config.cmake"
-          Test-Path "C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6Quick\Qt6QuickConfig.cmake"
-          Test-Path "C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6QuickControls2\Qt6QuickControls2Config.cmake"
-
-      # Python is pre-installed. Lua and Hunspell are optional (skipped for speed).
-      # Use the Visual Studio generator — it locates MSVC from the registry.
+      # Python is pre-installed on the runner. Lua and Hunspell are optional.
+      # The action automatically sets up Qt6_DIR, PATH, and the environment.
 
       - name: Configure
         run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release

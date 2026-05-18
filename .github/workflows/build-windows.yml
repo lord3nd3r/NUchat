@@ -23,6 +23,7 @@ jobs:
           host: windows
           target: desktop
           modules: 'qtquickcontrols2 qtdeclarative qtquick'
+          tools: 'qttools'
           cache: true
 
       # Python is pre-installed on the runner. Lua and Hunspell are optional.

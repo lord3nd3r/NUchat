@@ -55,12 +55,13 @@ static int callPyHook(PyObject *cb, PyObject *word, PyObject *word_eol, PyObject
 {
     if (!cb || !PyCallable_Check(cb)) return EAT_NONE;
 
-    PyObject *args;
-    if (userdata && userdata != Py_None) {
-        args = PyTuple_Pack(3, word, word_eol, userdata);
-    } else {
-        args = PyTuple_Pack(2, word, word_eol);
+    // Always pass 3 arguments (word, word_eol, userdata) for HexChat compatibility
+    // Even when userdata is None, scripts may expect it as the 3rd argument
+    if (!userdata) {
+        userdata = Py_None;
     }
+    PyObject *args = PyTuple_Pack(3, word, word_eol, userdata);
+    
     PyObject *result = PyObject_CallObject(cb, args);
     Py_XDECREF(args);
 
@@ -618,13 +619,9 @@ bool PythonScriptEngine::handleCommand(const QString &command, const QStringList
         if (hook.type != PyHook::Command) continue;
         if (hook.name != upper) continue;
 
-        // Build word list: [0]="" [1]=command [2..]=args
-        QStringList allParts;
-        allParts << command;
-        allParts << args;
-
+        // Build word list: [0]="" [1..]=args (command name NOT included for command hooks)
         PyObject *word, *word_eol;
-        buildWordLists(allParts, &word, &word_eol);
+        buildWordLists(args, &word, &word_eol);
         int ret = callPyHook((PyObject*)hook.pyCallback, word, word_eol, (PyObject*)hook.pyUserdata);
         Py_DECREF(word);
         Py_DECREF(word_eol);

@@ -408,7 +408,12 @@ Open **Settings → Preferences → Scripts → Open Migration Wizard** at any t
 
 - NUchat uses the same `import hexchat` API, so most HexChat Python scripts work
   without changes.
+- **Command hooks** receive arguments exactly like HexChat — the command name is excluded
+  from the word list, and callbacks always receive 3 parameters (word, word_eol, userdata).
+- **SAY command** is fully implemented — scripts can use `hexchat.command("SAY text")` to
+  send messages to the active channel with proper status prefix display.
 - Scripts that use `hexchat.find_context()`, `hexchat.get_context()`, or
   `hexchat.get_list()` may need minor adjustments as those are not yet implemented.
 - Lua scripts using the `hexchat` global work as-is; scripts using `xchat` may need
   the global renamed.
+- `hexchat.hook_unload()` is not yet implemented — use module-level cleanup or context managers.

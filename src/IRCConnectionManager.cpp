@@ -218,12 +218,10 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
                                                const QString &cmd,
                                                const QString &args) {
       // ── ECHO — print locally without sending ──
-      if (cmd == "ECHO" || cmd == "SAY" && false /* SAY handled below */) {
-        if (cmd == "ECHO") {
-          if (m_msgModel)
-            m_msgModel->addMessage("system", args);
-          return true;
-        }
+      if (cmd == "ECHO") {
+        if (m_msgModel)
+          m_msgModel->addMessage("system", args);
+        return true;
       }
 
 #ifdef HAVE_PYTHON
@@ -242,6 +240,39 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
           return true; // Script consumed the command
       }
 #endif
+
+      // ── SAY — send message to current channel (HexChat compatibility) ──
+      if (cmd == "SAY") {
+        // Use active channel if target is empty (from script commands)
+        QString ch = target.isEmpty() ? m_activeChannel : target;
+        if (!ch.isEmpty() && !args.isEmpty()) {
+          conn->sendMessage(ch, args);
+          // Show locally with status prefix
+          QString nick = conn->nickname();
+          QString displayNick = nick;
+          ChannelKey key{m_activeServer, ch};
+          if (m_users.contains(key)) {
+            for (const QString &u : m_users[key]) {
+              QString bare = u;
+              QString pfx;
+              while (!bare.isEmpty() && QString("~&@%+").contains(bare[0])) {
+                pfx += bare[0];
+                bare = bare.mid(1);
+              }
+              if (bare.compare(nick, Qt::CaseInsensitive) == 0) {
+                if (!pfx.isEmpty())
+                  displayNick = pfx[0] + nick;
+                break;
+              }
+            }
+          }
+          QString text = "<" + displayNick + "> " + args;
+          if (m_msgModel && m_activeChannel == ch)
+            m_msgModel->addMessage("chat", text);
+          appendToChannel(m_activeServer, ch, "chat", text);
+        }
+        return true;
+      }
 
       if (cmd == "JOIN" || cmd == "J") {
         QString ch = args.section(' ', 0, 0);

@@ -2,9 +2,9 @@
 
 A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexChat.
 
-![Version](https://img.shields.io/badge/version-0.1.0_BETA-blue)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
-![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS%20%7C%20FreeBSD-lightgrey)
 
 ---
 
@@ -34,7 +34,7 @@ A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexCh
 - **Per-network identity** override (nick, username, real name)
 - **Channel modes on join** — displays mode string when entering a channel
 - **Dynamic title bar** — shows channel, server, and topic (like HexChat)
-- **C++ plugin system**, **Python scripting engine**, and **Lua scripting engine** — HexChat-compatible API for all three
+- **C++ plugin system**, **Python scripting engine**, and **Lua scripting engine** — HexChat-compatible API for all three (command hooks, print hooks, server hooks)
 - **Migrate from HexChat** — first-launch wizard imports your scripts, server list, and identity from `~/.config/hexchat/`
 - **ZNC bouncer** support
 - **Desktop integration** — `.desktop` file, SVG icon, `make install` support
@@ -102,7 +102,7 @@ If your IRC server uses a self-signed certificate or one where the hostname does
 
 Pre-built installers and binaries are available for Windows, macOS, and Linux:
 
-- **Windows**: [Download NUchat_1.0.0_Windows_x64.exe](https://github.com/lord3nd3r/NUchat/raw/main/Binary/NUchat_1.0.0_Windows_x64.exe) — Standalone NSIS installer
+- **Windows**: [Download Latest Windows Installer](https://github.com/lord3nd3r/NUchat/releases/latest/download/NUchat_1.0.0_Windows_x64.exe) — Standalone NSIS installer
 - **macOS**: Download `.dmg` installer from [GitHub Actions artifacts](https://github.com/lord3nd3r/NUchat/actions/workflows/build-macos.yml) (select latest successful run)
 - **Linux/FreeBSD**: Compile from source (see Build & Run section below) or download from [GitHub Actions artifacts](https://github.com/lord3nd3r/NUchat/actions)
 

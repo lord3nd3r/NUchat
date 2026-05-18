@@ -30,8 +30,8 @@ __module_description__ = "Example NUchat script"
 # ── Example: /HELLO command ──
 def hello_cb(word, word_eol):
     hexchat.prnt("Hello from Python script!")
-    hexchat.prnt("You are: " + str(hexchat.get_info("nick")))
-    hexchat.prnt("Server:  " + str(hexchat.get_info("server")))
+    hexchat.prnt(f"You are: {hexchat.get_info('nick')}")
+    hexchat.prnt(f"Server:  {hexchat.get_info('server')}")
     return hexchat.EAT_ALL
 
 hexchat.hook_command("HELLO", hello_cb, help="Usage: /HELLO — test command from Python")
@@ -40,7 +40,7 @@ hexchat.hook_command("HELLO", hello_cb, help="Usage: /HELLO — test command fro
 # ── Example: /PYVERSION command ──
 import sys
 def pyver_cb(word, word_eol):
-    hexchat.prnt("Python " + sys.version)
+    hexchat.prnt(f"Python {sys.version}")
     return hexchat.EAT_ALL
 
 hexchat.hook_command("PYVERSION", pyver_cb, help="Usage: /PYVERSION — show Python version")

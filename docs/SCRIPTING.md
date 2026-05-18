@@ -50,7 +50,7 @@ __module_version__ = "1.0"
 __module_description__ = "My first NUchat script"
 
 def greet_cb(word, word_eol):
-    hexchat.prnt("Hello, " + hexchat.get_info("nick") + "!")
+    hexchat.prnt(f"Hello, {hexchat.get_info('nick')}!")
     return hexchat.EAT_ALL
 
 hexchat.hook_command("GREET", greet_cb, help="Usage: /GREET — say hello")
@@ -297,7 +297,7 @@ def on_join(word, word_eol, userdata):
     channel = word[1] if len(word) > 1 else ""
     my_nick = hexchat.get_info("nick")
     if nick != my_nick:
-        hexchat.command("PRIVMSG " + channel + " :Welcome, " + nick + "!")
+        hexchat.command(f"PRIVMSG {channel} :Welcome, {nick}!")
     return hexchat.EAT_NONE
 
 hexchat.hook_print("Join", on_join)
@@ -343,7 +343,7 @@ def on_motd(word, word_eol, userdata):
     return hexchat.EAT_NONE
 
 def on_endmotd(word, word_eol, userdata):
-    hexchat.prnt("MOTD was " + str(len(motd_lines)) + " lines long")
+    hexchat.prnt(f"MOTD was {len(motd_lines)} lines long")
     motd_lines.clear()
     return hexchat.EAT_NONE
 

@@ -1041,6 +1041,10 @@ ApplicationWindow {
                             var nick = decodeURIComponent(link.substring(7))
                             nickContextMenu.targetNick = nick
                             nickContextMenu.popup()
+                        } else if (link.startsWith("channel://")) {
+                            var ch = decodeURIComponent(link.substring(10))
+                            channelJoinMenu.targetChannel = ch
+                            channelJoinMenu.popup()
                         } else {
                             Qt.openUrlExternally(link)
                         }
@@ -1075,6 +1079,9 @@ ApplicationWindow {
                                 if (link.startsWith("nick://")) {
                                     nickContextMenu.targetNick = decodeURIComponent(link.substring(7))
                                     nickContextMenu.popup()
+                                } else if (link.startsWith("channel://")) {
+                                    channelJoinMenu.targetChannel = decodeURIComponent(link.substring(10))
+                                    channelJoinMenu.popup()
                                 } else {
                                     chatLinkMenu.targetUrl = link
                                     chatLinkMenu.popup()
@@ -1689,6 +1696,26 @@ ApplicationWindow {
                     msgModel.clear()
                 }
             }
+        }
+    }
+
+    // ── WHOIS channel link menu ──
+    Menu {
+        id: channelJoinMenu
+        property string targetChannel: ""
+
+        palette.base: theme.menuBg
+        palette.text: theme.menuText
+        palette.highlight: theme.menuHighlight
+        palette.highlightedText: theme.menuHighlightText
+
+        Action {
+            text: "Join " + channelJoinMenu.targetChannel
+            onTriggered: ircManager.joinChannel(channelJoinMenu.targetChannel, "")
+        }
+        Action {
+            text: "Copy Name"
+            onTriggered: imgDownloader.copyToClipboard(channelJoinMenu.targetChannel)
         }
     }
 

@@ -1286,12 +1286,37 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         } else if (code == 319) {
           // RPL_WHOISCHANNELS: <nick> :<channels>
           QString nick = params.value(0);
-          QString text = "[WHOIS] " + nick + " channels: " + trailing;
+          // Build clickable channel links
+          QStringList tokens = trailing.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+          QString channelsHtml;
+          for (const QString &token : tokens) {
+            if (!channelsHtml.isEmpty()) channelsHtml += QLatin1Char(' ');
+            int nameStart = 0;
+            while (nameStart < token.length() &&
+                   QStringLiteral("@%+~&").contains(token[nameStart]))
+              nameStart++;
+            QString modePrefix = token.left(nameStart).toHtmlEscaped();
+            QString chanName   = token.mid(nameStart);
+            if (chanName.isEmpty()) { channelsHtml += modePrefix; continue; }
+            QString href = QStringLiteral("channel://") + chanName;
+            href.replace(QLatin1String("#"), QLatin1String("%23"));
+            channelsHtml += modePrefix +
+                QStringLiteral("<a href=\"") + href +
+                QStringLiteral("\" style=\"color:#4fc3f7;text-decoration:underline;\">") +
+                chanName.toHtmlEscaped() + QStringLiteral("</a>");
+          }
+          QString ts = QStringLiteral("<font color=\"#888888\">[") +
+                       QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss")) +
+                       QStringLiteral("]</font> ");
+          QString html = ts +
+              QStringLiteral("<font color=\"#888888\">*** </font>") +
+              QStringLiteral("[WHOIS] ") + nick.toHtmlEscaped() +
+              QStringLiteral(" channels: ") + channelsHtml;
           if (m_msgModel)
-            m_msgModel->addMessage("system", text);
+            m_msgModel->addMessage("embed", html);
           appendToChannel(srv,
                           m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+                          "embed", html);
         } else if (code == 330) {
           // RPL_WHOISACCOUNT: <nick> <account> :is logged in as
           QString nick = params.value(0);

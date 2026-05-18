@@ -1,5 +1,8 @@
 #include "Settings.h"
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QStandardPaths>
 
 Settings::Settings(QObject *parent)
     : QObject(parent), settings("NUchat", "NUchat")
@@ -66,4 +69,55 @@ void Settings::setString(const QString &key, const QString &v)
 void Settings::setDouble(const QString &key, double v)
 {
     settings.setValue(key, v);
+}
+
+// ── HexChat migration ──
+
+static QString hexchatAddonsDir()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+           + "/hexchat/addons";
+}
+
+bool Settings::hexchatScriptsExist() const
+{
+    QDir dir(hexchatAddonsDir());
+    if (!dir.exists())
+        return false;
+    return !dir.entryList({"*.py", "*.lua"}, QDir::Files).isEmpty();
+}
+
+QStringList Settings::hexchatScriptFiles() const
+{
+    QDir dir(hexchatAddonsDir());
+    if (!dir.exists())
+        return {};
+    QStringList result;
+    for (const QString &f : dir.entryList({"*.py", "*.lua"}, QDir::Files))
+        result << f;
+    return result;
+}
+
+int Settings::importHexChatScripts() const
+{
+    QDir src(hexchatAddonsDir());
+    if (!src.exists())
+        return 0;
+
+    QString destPath = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                       + "/NUchat/scripts";
+    QDir destDir(destPath);
+    if (!destDir.exists())
+        destDir.mkpath(".");
+
+    int count = 0;
+    for (const QString &name : src.entryList({"*.py", "*.lua"}, QDir::Files)) {
+        QString srcFile  = src.filePath(name);
+        QString destFile = destDir.filePath(name);
+        if (!QFile::exists(destFile)) {
+            if (QFile::copy(srcFile, destFile))
+                ++count;
+        }
+    }
+    return count;
 }

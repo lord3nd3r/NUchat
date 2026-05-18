@@ -15,6 +15,11 @@ public:
     Q_INVOKABLE void sync();
     Q_INVOKABLE QString configPath() const;
 
+    // HexChat script migration
+    Q_INVOKABLE bool hexchatScriptsExist() const;
+    Q_INVOKABLE QStringList hexchatScriptFiles() const;
+    Q_INVOKABLE int importHexChatScripts() const;
+
     // Type-safe C++ accessors — preferred over value() in C++ code.
     int    getInt   (const QString &key, int           defaultValue = 0)     const;
     bool   getBool  (const QString &key, bool          defaultValue = false)  const;

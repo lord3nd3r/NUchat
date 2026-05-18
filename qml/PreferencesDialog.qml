@@ -1006,6 +1006,58 @@ Dialog {
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
                     }
+
+                    // ── HexChat migration ──
+                    Rectangle { Layout.fillWidth: true; height: 1; color: "#404040" }
+
+                    Text {
+                        text: "HexChat Script Migration"
+                        color: "#ddd"; font.pixelSize: 13; font.bold: true
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: appSettings.hexchatScriptsExist()
+                            ? "HexChat scripts found in ~/.config/hexchat/addons/. You can copy them into NUchat's scripts folder."
+                            : "No HexChat scripts found in ~/.config/hexchat/addons/."
+                        color: "#aaa"; font.pixelSize: 12; wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        spacing: 8
+                        Button {
+                            id: btnMigrateHexChat
+                            enabled: appSettings.hexchatScriptsExist()
+                            text: "Import HexChat Scripts"
+                            background: Rectangle {
+                                color: btnMigrateHexChat.enabled
+                                    ? (btnMigrateHexChat.down ? "#1177bb" : "#0e639c")
+                                    : "#333"
+                                radius: 3
+                            }
+                            contentItem: Text {
+                                text: "Import HexChat Scripts"
+                                color: btnMigrateHexChat.enabled ? "#fff" : "#666"
+                                font.pixelSize: 12
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: {
+                                var n = appSettings.importHexChatScripts()
+                                appSettings.setValue("app/hexchatMigratePrompted", true)
+                                appSettings.sync()
+                                prefMigrateResult.text = n > 0
+                                    ? n + " script(s) imported successfully."
+                                    : "No new scripts copied (they may already exist in your scripts folder)."
+                                prefMigrateResult.visible = true
+                                btnMigrateHexChat.enabled = false
+                            }
+                        }
+                    }
+                    Text {
+                        id: prefMigrateResult
+                        Layout.fillWidth: true
+                        color: "#4ec9b0"; font.pixelSize: 12; wrapMode: Text.WordWrap
+                        visible: false
+                    }
                 }
             }
 

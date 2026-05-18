@@ -272,6 +272,14 @@ ApplicationWindow {
                 break
             }
         }
+
+        // First-launch HexChat script migration prompt
+        var alreadyAsked = appSettings.value("app/hexchatMigratePrompted", false)
+        if ((alreadyAsked !== true && alreadyAsked !== "true") && appSettings.hexchatScriptsExist()) {
+            var noScripts = (typeof pyEngine === "undefined" || pyEngine.loadedScripts.length === 0)
+            if (noScripts)
+                Qt.callLater(function() { hexchatMigrateDialog.open() })
+        }
     }
 
     // ── Menu Bar ──
@@ -1859,6 +1867,11 @@ ApplicationWindow {
     AboutDialog         { id: aboutDialog }
     PreferencesDialog   { id: preferencesDialog }
     ScriptsDialog       { id: scriptsDialog }
+
+    HexChatMigrateDialog {
+        id: hexchatMigrateDialog
+        onDone: { /* nothing extra needed */ }
+    }
 
     // ── Native file browser for loading Python scripts ──
     FileDialog {

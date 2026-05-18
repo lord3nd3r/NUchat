@@ -24,6 +24,7 @@
     <file alias="qml/AwayLogDialog.qml">../qml/AwayLogDialog.qml</file>
     <file alias="qml/IgnoreListDialog.qml">../qml/IgnoreListDialog.qml</file>
     <file alias="qml/ThemeManager.qml">../qml/ThemeManager.qml</file>
+    <file alias="qml/HexChatMigrateDialog.qml">../qml/HexChatMigrateDialog.qml</file>
     <file alias="icons/nuchat.svg">../resources/icons/nuchat.svg</file>
     <file alias="themes/default.json">../resources/themes/default.json</file>
 </qresource>

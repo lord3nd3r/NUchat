@@ -261,7 +261,11 @@ LuaScriptEngine *LuaScriptEngine::instance()
 void LuaScriptEngine::initLua()
 {
     m_luaAllocState = new LuaAllocState();
+#if LUA_VERSION_NUM >= 505
+    m_L = lua_newstate(luaLimitedAlloc, m_luaAllocState, 0);
+#else
     m_L = lua_newstate(luaLimitedAlloc, m_luaAllocState);
+#endif
     luaL_openlibs(m_L);
     registerAPI();
 }

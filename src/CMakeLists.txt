@@ -88,6 +88,10 @@ endif()
 
 target_compile_definitions(nuchatcore PRIVATE QT_DEPRECATED_WARNINGS)
 
+if(WIN32)
+    target_compile_definitions(nuchatcore PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN)
+endif()
+
 target_include_directories(nuchatcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ── Main executable ──
@@ -112,8 +116,8 @@ set(nuchatcore_RESOURCE_FILES resources.qrc)
 
 target_link_libraries(nuchat PRIVATE nuchatcore Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickControls2)
 
-# Windows: Winsock (needed transitively by Qt Network, but explicit is safer)
 if(WIN32)
+    target_compile_definitions(nuchat PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN)
     target_link_libraries(nuchat PRIVATE ws2_32)
 endif()
 

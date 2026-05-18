@@ -23,7 +23,7 @@ jobs:
             build-essential cmake \
             qt6-base-dev qt6-declarative-dev \
             qml6-module-qtquick-controls qml6-module-qtquick-layouts \
-            qml6-module-qtquick-templates2 \
+            qml6-module-qtquick-templates \
             libgl1-mesa-dev \
             python3-dev \
             liblua5.4-dev \

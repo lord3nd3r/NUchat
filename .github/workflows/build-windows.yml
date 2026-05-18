@@ -20,30 +20,37 @@ jobs:
         shell: pwsh
         run: |
           pip install aqtinstall
+          Write-Host "Available Qt versions:"
+          aqt list-qt windows desktop
           aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "C:\Qt"
           Add-Content $env:GITHUB_PATH "C:\Qt\6.8.3\msvc2022_64\bin"
           Add-Content $env:GITHUB_ENV "Qt6_DIR=C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6"
           Add-Content $env:GITHUB_ENV "CMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64"
 
-      # Set up MSVC environment (cl.exe, link.exe, etc.) for Ninja
-      - name: Set up MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+      - name: Verify Qt install
+        shell: pwsh
+        run: |
+          Write-Host "Qt6_DIR: $env:Qt6_DIR"
+          Write-Host "CMAKE_PREFIX_PATH: $env:CMAKE_PREFIX_PATH"
+          Test-Path "C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6\Qt6Config.cmake"
+          Test-Path "C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6Quick\Qt6QuickConfig.cmake"
+          Test-Path "C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6QuickControls2\Qt6QuickControls2Config.cmake"
 
       # Python is pre-installed on GitHub-hosted Windows runners.
       # Lua and Hunspell are optional; skip them for the CI build.
+      # Use the Visual Studio generator — it locates MSVC from the registry
+      # without needing a separate env-setup action.
 
       - name: Configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --parallel
+        run: cmake --build build --config Release --parallel
 
       - name: Deploy Qt
         shell: pwsh
         run: |
-          $exe = "build\src\nuchat.exe"
+          $exe = "build\src\Release\nuchat.exe"
           if (Test-Path $exe) {
             windeployqt --qmldir qml --no-translations $exe
           }
@@ -52,4 +59,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nuchat-windows
-          path: build/src/
+          path: build/src/Release/

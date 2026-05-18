@@ -18,8 +18,11 @@
   <rect x="32" y="32" width="448" height="448" rx="80" ry="80" fill="url(#shine)"/>
   <!-- Chat bubble shape -->
   <path d="M 140 160 Q 140 130 170 130 L 342 130 Q 372 130 372 160 L 372 290 Q 372 320 342 320 L 220 320 L 170 370 L 180 320 L 170 320 Q 140 320 140 290 Z" fill="#ffffff" fill-opacity="0.95"/>
-  <!-- NU text -->
-  <text x="256" y="258" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="120" font-weight="800" fill="#0d47a1" text-anchor="middle" dominant-baseline="central" letter-spacing="-4">NU</text>
+  <!-- NU text - split into individual letters for precise positioning -->
+  <g font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="120" font-weight="800" fill="#0d47a1">
+    <text x="200" y="258" text-anchor="middle" dominant-baseline="central">N</text>
+    <text x="312" y="258" text-anchor="middle" dominant-baseline="central">U</text>
+  </g>
   <!-- Small accent line under text -->
   <rect x="195" y="288" width="122" height="4" rx="2" fill="#1a73e8" opacity="0.6"/>
 </svg>

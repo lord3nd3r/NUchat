@@ -38,13 +38,21 @@ jobs:
       - name: Deploy Qt
         shell: pwsh
         run: |
-          $exe = "build\src\Release\nuchat.exe"
-          if (Test-Path $exe) {
-            # Common flags for Qt6 QML apps to reduce size and avoid missing DLL warnings
-            windeployqt --qmldir qml --no-translations --no-opengl --no-system-d3d-compiler --no-compiler-runtime $exe
-            Write-Host "Deployed Qt dependencies next to $exe"
+          # Find the built exe (VS generator puts it in Release subdir)
+          $exe = Get-ChildItem -Path "build\src\Release\nuchat.exe" -ErrorAction SilentlyContinue
+          if (-not $exe) {
+            $exe = Get-ChildItem -Path "build\src\*\nuchat.exe" -Recurse | Select-Object -First 1
+          }
+          if ($exe) {
+            $exePath = $exe.FullName
+            $qmlDir = Resolve-Path "qml"
+            Write-Host "Found exe at: $exePath"
+            Write-Host "QML dir: $qmlDir"
+            # Standard flags for Qt6 QML apps
+            windeployqt --qmldir $qmlDir --no-translations --no-opengl --no-system-d3d-compiler --no-compiler-runtime $exePath
+            Write-Host "Successfully deployed Qt dependencies next to the exe."
           } else {
-            Write-Error "Executable not found at expected path. Check build output."
+            Write-Error "Could not find nuchat.exe in build output. Check the Build step above."
             exit 1
           }
 

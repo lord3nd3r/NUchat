@@ -23,7 +23,7 @@ jobs:
 
       - name: Install Qt6 via aqtinstall
         run: |
-          pip3 install aqtinstall
+          pip3 install aqtinstall --break-system-packages
           aqt install-qt mac desktop 6.8.3 clang_64 --outputdir "$HOME/Qt"
           echo "$HOME/Qt/6.8.3/macos/bin" >> "$GITHUB_PATH"
           echo "Qt6_DIR=$HOME/Qt/6.8.3/macos/lib/cmake/Qt6" >> "$GITHUB_ENV"

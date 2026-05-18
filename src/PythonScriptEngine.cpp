@@ -1,10 +1,22 @@
 // ── CPython embedding ──
 // Python.h must be included FIRST, before any Qt headers, because Python's
 // object.h uses "slots" as a struct member which conflicts with Qt's macro.
+// On Windows, define NOMINMAX and WIN32_LEAN_AND_MEAN before any Windows header
+// (Python.h pulls in windows.h) to prevent min/max macro conflicts with Qt/STL.
+#if defined(_WIN32) || defined(Q_OS_WIN)
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#endif
 #define PY_SSIZE_T_CLEAN
 #undef slots
 #include <Python.h>
 #define slots Q_SLOTS
+
+#include <string>  // std::wstring (needed for Py_SetPythonHome on Windows)
 
 #include "PythonScriptEngine.h"
 #include "IRCConnectionManager.h"

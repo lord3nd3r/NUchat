@@ -20,7 +20,7 @@ jobs:
         shell: pwsh
         run: |
           pip install aqtinstall
-          aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "C:\Qt"
+          aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "C:\Qt" -m qtquickcontrols2 qtdeclarative
           Add-Content $env:GITHUB_PATH "C:\Qt\6.8.3\msvc2022_64\bin"
           Add-Content $env:GITHUB_ENV "Qt6_DIR=C:\Qt\6.8.3\msvc2022_64\lib\cmake\Qt6"
           Add-Content $env:GITHUB_ENV "CMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64"

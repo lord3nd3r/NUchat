@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(NUchat LANGUAGES CXX)
+project(NUchat VERSION 1.0.0 LANGUAGES CXX)
 
 # enable automoc so Qt signal/slot classes generate moc files automatically
 set(CMAKE_AUTOMOC ON)
@@ -87,3 +87,21 @@ if(NOT TARGET uninstall)
     add_custom_target(uninstall
         COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
 endif()
+
+# ── CPack (Installers) ──
+set(CPACK_PACKAGE_NAME "NUchat")
+set(CPACK_PACKAGE_VENDOR "lord3nd3r")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "NUchat - IRC Client")
+set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+
+if(WIN32)
+    set(CPACK_GENERATOR "NSIS")
+    set(CPACK_NSIS_DISPLAY_NAME "NUchat")
+    set(CPACK_NSIS_MUI_FINISHPAGE_RUN "nuchat.exe")
+    set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/lord3nd3r/NUchat")
+    set(CPACK_PACKAGE_FILE_NAME "NUchat_${PROJECT_VERSION}_Windows_x64")
+endif()
+
+include(CPack)

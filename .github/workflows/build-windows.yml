@@ -33,16 +33,23 @@ jobs:
       # The action automatically sets up Qt6_DIR, PATH, and the environment.
 
       - name: Configure
-        run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DPython3_FOUND=OFF
+        run: |
+          cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DPython3_FOUND=OFF
 
       - name: Build
-        run: cmake --build build --config Release --parallel --verbose
+        run: |
+          cmake --build build --config Release --parallel --verbose
+
+      - name: Package with CPack
+        working-directory: build
+        run: |
+          cpack -C Release -G NSIS
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nuchat-windows
-          path: build/
+          name: nuchat-windows-installer
+          path: build/NUchat_*_Windows_x64.exe
           if-no-files-found: warn
 
       - name: Force job success

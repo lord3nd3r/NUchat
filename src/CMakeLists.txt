@@ -133,6 +133,16 @@ if(WIN32)
                 "$<TARGET_FILE:nuchat>"
             COMMENT "Running windeployqt..."
             VERBATIM)
+            
+        # Run windeployqt during make install (so CPack includes Qt DLLs in the NSIS installer)
+        install(CODE "
+            execute_process(
+                COMMAND \"${WINDEPLOYQT}\"
+                    --qmldir \"${CMAKE_SOURCE_DIR}/qml\"
+                    --no-translations
+                    \"\${CMAKE_INSTALL_PREFIX}/nuchat.exe\"
+            )
+        ")
     endif()
 endif()
 

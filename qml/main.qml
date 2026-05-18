@@ -1051,6 +1051,18 @@ ApplicationWindow {
                         cursorShape: chatArea.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor
                     }
 
+                    // Forward typing to the message input
+                    Keys.onPressed: function(event) {
+                        if (event.modifiers & Qt.ControlModifier) return
+                        if (event.modifiers & Qt.AltModifier) return
+                        if (event.text && event.text.length > 0) {
+                            messageInput.forceActiveFocus()
+                            messageInput.text += event.text
+                            messageInput.cursorPosition = messageInput.text.length
+                            event.accepted = true
+                        }
+                    }
+
                     TapHandler {
                         acceptedButtons: Qt.RightButton
                         onTapped: function(eventPoint) {

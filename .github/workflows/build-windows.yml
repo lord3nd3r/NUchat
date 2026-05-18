@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Qt6
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.*'
           host: windows
@@ -26,22 +26,25 @@ jobs:
           modules: 'qtquickcontrols2'
           cache: true
 
+      # Set up MSVC environment (cl.exe, link.exe, etc.) for Ninja
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       # Python is pre-installed on GitHub-hosted Windows runners.
       # Lua and Hunspell are optional; skip them for the CI build.
 
-      - name: Configure (MSVC)
-        run: >
-          cmake -B build
-          -G "Visual Studio 17 2022" -A x64
-          -DCMAKE_BUILD_TYPE=Release
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --parallel
 
       - name: Deploy Qt
         shell: pwsh
         run: |
-          $exe = "build\src\Release\nuchat.exe"
+          $exe = "build\src\nuchat.exe"
           if (Test-Path $exe) {
             windeployqt --qmldir qml --no-translations $exe
           }
@@ -50,4 +53,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nuchat-windows
-          path: build/src/Release/
+          path: build/src/

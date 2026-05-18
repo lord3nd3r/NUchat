@@ -22,7 +22,7 @@ jobs:
           brew install lua hunspell
 
       - name: Install Qt6
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.*'
           host: mac

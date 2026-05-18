@@ -40,7 +40,12 @@ jobs:
         run: |
           $exe = "build\src\Release\nuchat.exe"
           if (Test-Path $exe) {
-            windeployqt --qmldir qml --no-translations $exe
+            # Common flags for Qt6 QML apps to reduce size and avoid missing DLL warnings
+            windeployqt --qmldir qml --no-translations --no-opengl --no-system-d3d-compiler --no-compiler-runtime $exe
+            Write-Host "Deployed Qt dependencies next to $exe"
+          } else {
+            Write-Error "Executable not found at expected path. Check build output."
+            exit 1
           }
 
       - name: Upload artifact

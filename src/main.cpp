@@ -6,6 +6,9 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #endif
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 #include "IRCConnectionManager.h"
 #include "ImageDownloader.h"
@@ -154,6 +157,17 @@ int main(int argc, char *argv[]) {
       &engine, &QQmlApplicationEngine::objectCreated, &app,
       [url](QObject *obj, const QUrl &objUrl) {
         if (!obj && url == objUrl) {
+#ifdef Q_OS_WIN
+          // WIN32 subsystem has no console — surface the error as a native dialog
+          // so the user isn't left with a silently-disappearing process.
+          MessageBoxW(
+              nullptr,
+              L"NUchat could not start because the user interface failed to load.\n\n"
+              L"Qt Quick libraries may be missing from the installation directory.\n\n"
+              L"Please reinstall NUchat or report this issue.",
+              L"NUchat \u2014 Fatal Error",
+              MB_ICONERROR | MB_OK);
+#endif
           QCoreApplication::exit(-1);
         }
       },

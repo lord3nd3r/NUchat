@@ -103,34 +103,44 @@ endif()
 if(WIN32)
     install(TARGETS nuchat RUNTIME DESTINATION .)
 
-    # ── Qt runtime (windeployqt) ────────────────────────────────────────────────
-    # Locate windeployqt next to qmake in the Qt bin directory.
-    find_program(WINDEPLOYQT_EXECUTABLE windeployqt
-        HINTS "${Qt6_DIR}/../../../bin"
-    )
-    if(WINDEPLOYQT_EXECUTABLE)
-        set(_nuchat_qml_dir "${CMAKE_SOURCE_DIR}/qml")
-        install(CODE "
-            message(STATUS \"Running windeployqt to deploy Qt runtime...\")
-            execute_process(
-                COMMAND \"${WINDEPLOYQT_EXECUTABLE}\"
-                        --no-translations
-                        --qmldir \"${_nuchat_qml_dir}\"
-                        \"\${CMAKE_INSTALL_PREFIX}/nuchat.exe\"
-                RESULT_VARIABLE _wdq_result
-                OUTPUT_VARIABLE _wdq_out
-                ERROR_VARIABLE  _wdq_err
-            )
-            if(NOT _wdq_result EQUAL 0)
-                message(WARNING \"windeployqt failed (exit \${_wdq_result}): \${_wdq_err}\")
-            else()
-                message(STATUS \"windeployqt finished successfully\")
-            endif()
-        ")
+    # ── Qt runtime + QML modules ───────────────────────────────────────────────
+    # qt_generate_deploy_app_script (Qt 6.3+) is the officially supported
+    # deployment API.  We inject QT_DEPLOY_QML_DIRS via an install(CODE) block
+    # that runs *before* the generated script so that Qt's internal deploy
+    # machinery passes --qmldir to windeployqt and correctly bundles all QML
+    # module plugins (including QtQuick.Dialogs which is easy to miss).
+    if(Qt6_VERSION VERSION_GREATER_EQUAL "6.3")
+        install(CODE "set(QT_DEPLOY_QML_DIRS \"${CMAKE_SOURCE_DIR}/qml\")")
+        qt_generate_deploy_app_script(
+            TARGET nuchat
+            OUTPUT_SCRIPT _nuchat_deploy_script
+            NO_UNSUPPORTED_PLATFORM_ERROR
+        )
+        install(SCRIPT "${_nuchat_deploy_script}")
     else()
-        message(WARNING
-            "windeployqt not found – Qt DLLs will not be bundled automatically. "
-            "Add the Qt bin directory to PATH (e.g. C:/Qt/6.x.y/msvc2022_64/bin) and re-run CMake.")
+        # Fallback for hypothetical Qt < 6.3 builds.
+        find_program(WINDEPLOYQT_EXECUTABLE windeployqt
+            HINTS "${Qt6_DIR}/../../../bin"
+        )
+        if(WINDEPLOYQT_EXECUTABLE)
+            set(_nuchat_qml_dir "${CMAKE_SOURCE_DIR}/qml")
+            install(CODE "
+                message(STATUS \"Running windeployqt (fallback)...\")
+                execute_process(
+                    COMMAND \"${WINDEPLOYQT_EXECUTABLE}\"
+                            --no-translations
+                            --qmldir \"${_nuchat_qml_dir}\"
+                            \"\${CMAKE_INSTALL_PREFIX}/nuchat.exe\"
+                    RESULT_VARIABLE _wdq_result
+                    ERROR_VARIABLE  _wdq_err
+                )
+                if(NOT _wdq_result EQUAL 0)
+                    message(WARNING \"windeployqt failed: \${_wdq_err}\")
+                endif()
+            ")
+        else()
+            message(WARNING "windeployqt not found; Qt DLLs will not be bundled.")
+        endif()
     endif()
 
     # ── Python runtime DLL (e.g. python312.dll) ────────────────────────────────
@@ -155,8 +165,6 @@ if(WIN32)
 
     # ── Lua runtime DLL (e.g. lua54.dll) ──────────────────────────────────────
     if(LUA_FOUND)
-        # LUA_LIBRARIES on Windows is the import lib (.lib); the DLL sits alongside
-        # it or one level up in a bin/ subdirectory (vcpkg layout).
         list(GET LUA_LIBRARIES 0 _lua_lib_first)
         get_filename_component(_lua_lib_dir "${_lua_lib_first}" DIRECTORY)
         set(_lv "${LUA_VERSION_MAJOR}${LUA_VERSION_MINOR}")
@@ -197,8 +205,6 @@ if(WIN32)
     endif()
 
     # ── MSVC runtime redistributables ─────────────────────────────────────────
-    # Copies the Visual C++ runtime DLLs (msvcp140.dll, vcruntime140.dll, etc.)
-    # into the install tree so the app runs on machines without VS installed.
     include(InstallRequiredSystemLibraries)
 endif()
 

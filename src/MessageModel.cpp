@@ -199,6 +199,120 @@ static QString stripHtmlTags(const QString &text) {
   return result;
 }
 
+// Wrap emoji grapheme clusters with an explicit emoji-capable fallback stack.
+// This keeps the main chat font intact (including monospace) while ensuring
+// emoji symbols render with available color/emoji fonts.
+static bool isEmojiBaseCodepoint(char32_t cp) {
+  if (cp >= 0x1F300 && cp <= 0x1FAFF)
+    return true;
+  if (cp >= 0x1F1E6 && cp <= 0x1F1FF)
+    return true; // regional indicators (flags)
+  if (cp >= 0x2600 && cp <= 0x27BF)
+    return true;
+  if (cp >= 0x2300 && cp <= 0x23FF)
+    return true;
+  if (cp == 0x00A9 || cp == 0x00AE || cp == 0x203C || cp == 0x2049 ||
+      cp == 0x2122 || cp == 0x2139 || cp == 0x3030 || cp == 0x303D ||
+      cp == 0x3297 || cp == 0x3299)
+    return true;
+  return false;
+}
+
+static bool isEmojiJoinerOrModifier(char32_t cp) {
+  return cp == 0x200D || cp == 0xFE0E || cp == 0xFE0F || cp == 0x20E3 ||
+         (cp >= 0x1F3FB && cp <= 0x1F3FF);
+}
+
+static QString wrapEmojiWithFontFallback(const QString &html) {
+  static const QString kEmojiSpanPrefix = QStringLiteral(
+      "<span style=\"font-family:'Noto Color Emoji','Segoe UI Emoji','Apple "
+      "Color Emoji','Noto Emoji';\">");
+  static const QString kEmojiSpanSuffix = QStringLiteral("</span>");
+
+  QString out;
+  out.reserve(html.size() + 64);
+
+  auto appendCodepoint = [&out](char32_t cp) {
+    if (cp <= 0xFFFF) {
+      out += QChar(static_cast<ushort>(cp));
+    } else {
+      cp -= 0x10000;
+      const ushort hi = static_cast<ushort>(0xD800 + ((cp >> 10) & 0x3FF));
+      const ushort lo = static_cast<ushort>(0xDC00 + (cp & 0x3FF));
+      out += QChar(hi);
+      out += QChar(lo);
+    }
+  };
+
+  int i = 0;
+  while (i < html.size()) {
+    const QChar ch = html.at(i);
+
+    // Preserve HTML tags/entities verbatim.
+    if (ch == QLatin1Char('<')) {
+      const int end = html.indexOf(QLatin1Char('>'), i + 1);
+      if (end < 0) {
+        out += html.mid(i);
+        break;
+      }
+      out += html.mid(i, end - i + 1);
+      i = end + 1;
+      continue;
+    }
+    if (ch == QLatin1Char('&')) {
+      const int end = html.indexOf(QLatin1Char(';'), i + 1);
+      if (end > i) {
+        out += html.mid(i, end - i + 1);
+        i = end + 1;
+        continue;
+      }
+    }
+
+    char32_t cp = ch.unicode();
+    int cpLen = 1;
+    if (ch.isHighSurrogate() && i + 1 < html.size() &&
+        html.at(i + 1).isLowSurrogate()) {
+      cp = QChar::surrogateToUcs4(ch, html.at(i + 1));
+      cpLen = 2;
+    }
+
+    if (!isEmojiBaseCodepoint(cp)) {
+      out += html.mid(i, cpLen);
+      i += cpLen;
+      continue;
+    }
+
+    out += kEmojiSpanPrefix;
+    appendCodepoint(cp);
+    i += cpLen;
+
+    // Include ZWJ/VS/modifier-linked continuation codepoints in one span.
+    while (i < html.size()) {
+      const QChar n = html.at(i);
+      if (n == QLatin1Char('<') || n == QLatin1Char('&'))
+        break;
+
+      char32_t ncp = n.unicode();
+      int nLen = 1;
+      if (n.isHighSurrogate() && i + 1 < html.size() &&
+          html.at(i + 1).isLowSurrogate()) {
+        ncp = QChar::surrogateToUcs4(n, html.at(i + 1));
+        nLen = 2;
+      }
+
+      if (!isEmojiJoinerOrModifier(ncp) && !isEmojiBaseCodepoint(ncp))
+        break;
+
+      appendCodepoint(ncp);
+      i += nLen;
+    }
+
+    out += kEmojiSpanSuffix;
+  }
+
+  return out;
+}
+
 QString MessageModel::ircToHtml(const QString &text) {
   // Strip any literal HTML tags first (relay bots sometimes embed HTML)
   const QString stripped = stripHtmlTags(text);
@@ -386,7 +500,7 @@ QString MessageModel::ircToHtml(const QString &text) {
   if (strikethrough)
     result += "</s>";
 
-  return result;
+  return wrapEmojiWithFontFallback(result);
 }
 
 // ── URL linkification ──

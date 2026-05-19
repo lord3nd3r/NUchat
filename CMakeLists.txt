@@ -99,16 +99,16 @@ if(APPLE)
     install(TARGETS nuchat BUNDLE DESTINATION /Applications)
 endif()
 
-# Windows: install binary into a flat directory and deploy Qt DLLs
+# Windows: install binary into a flat directory and deploy all runtime dependencies
 if(WIN32)
     install(TARGETS nuchat RUNTIME DESTINATION .)
 
-    # Locate windeployqt next to qmake in the Qt bin directory
+    # ── Qt runtime (windeployqt) ────────────────────────────────────────────────
+    # Locate windeployqt next to qmake in the Qt bin directory.
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt
         HINTS "${Qt6_DIR}/../../../bin"
     )
     if(WINDEPLOYQT_EXECUTABLE)
-        # Capture source-time paths so they expand correctly inside install(CODE)
         set(_nuchat_qml_dir "${CMAKE_SOURCE_DIR}/qml")
         install(CODE "
             message(STATUS \"Running windeployqt to deploy Qt runtime...\")
@@ -129,14 +129,12 @@ if(WIN32)
         ")
     else()
         message(WARNING
-            "windeployqt not found – Qt DLLs will not be bundled automatically.\n"
+            "windeployqt not found – Qt DLLs will not be bundled automatically. "
             "Add the Qt bin directory to PATH (e.g. C:/Qt/6.x.y/msvc2022_64/bin) and re-run CMake.")
     endif()
 
-    # Bundle the Python runtime DLL (e.g. python312.dll) if Python scripting is enabled.
-    # windeployqt does not handle non-Qt dependencies, so we do it here.
+    # ── Python runtime DLL (e.g. python312.dll) ────────────────────────────────
     if(Python3_FOUND)
-        # Derive Python install dir from the interpreter path (most reliable cross-version approach).
         get_filename_component(_py_install_dir "${Python3_EXECUTABLE}" DIRECTORY)
         set(_py_dll_name "python${Python3_VERSION_MAJOR}${Python3_VERSION_MINOR}.dll")
         find_file(PYTHON3_RUNTIME_DLL
@@ -150,10 +148,58 @@ if(WIN32)
             install(FILES "${PYTHON3_RUNTIME_DLL}" DESTINATION .)
         else()
             message(WARNING
-                "${_py_dll_name} not found in Python install directory (${_py_install_dir}).\n"
-                "Python scripting will not work in the installed package unless the DLL is on PATH.")
+                "${_py_dll_name} not found in Python install dir (${_py_install_dir}). "
+                "Python scripting will not work unless the DLL is on PATH.")
         endif()
     endif()
+
+    # ── Lua runtime DLL (e.g. lua54.dll) ──────────────────────────────────────
+    if(LUA_FOUND)
+        # LUA_LIBRARIES on Windows is the import lib (.lib); the DLL sits alongside
+        # it or one level up in a bin/ subdirectory (vcpkg layout).
+        list(GET LUA_LIBRARIES 0 _lua_lib_first)
+        get_filename_component(_lua_lib_dir "${_lua_lib_first}" DIRECTORY)
+        set(_lv "${LUA_VERSION_MAJOR}${LUA_VERSION_MINOR}")
+        find_file(LUA_RUNTIME_DLL
+            NAMES "lua${_lv}.dll"
+                  "lua${LUA_VERSION_MAJOR}.${LUA_VERSION_MINOR}.dll"
+                  "lua.dll"
+            HINTS "${_lua_lib_dir}"
+                  "${_lua_lib_dir}/../bin"
+            NO_DEFAULT_PATH
+        )
+        if(LUA_RUNTIME_DLL)
+            message(STATUS "Will bundle Lua runtime: ${LUA_RUNTIME_DLL}")
+            install(FILES "${LUA_RUNTIME_DLL}" DESTINATION .)
+        else()
+            message(WARNING
+                "lua${_lv}.dll not found near ${_lua_lib_dir}. "
+                "Lua scripting will not work unless the DLL is on PATH.")
+        endif()
+    endif()
+
+    # ── Hunspell runtime DLL ───────────────────────────────────────────────────
+    if(HUNSPELL_FOUND)
+        find_file(HUNSPELL_RUNTIME_DLL
+            NAMES "hunspell.dll" "libhunspell.dll"
+                  "hunspell-1.7.dll" "hunspell-1.6.dll"
+            HINTS ${HUNSPELL_LIBRARY_DIRS}
+                  "${HUNSPELL_LIBRARY_DIRS}/../bin"
+            NO_DEFAULT_PATH
+        )
+        if(HUNSPELL_RUNTIME_DLL)
+            message(STATUS "Will bundle Hunspell runtime: ${HUNSPELL_RUNTIME_DLL}")
+            install(FILES "${HUNSPELL_RUNTIME_DLL}" DESTINATION .)
+        else()
+            message(WARNING
+                "hunspell.dll not found. Spell checking will not work unless the DLL is on PATH.")
+        endif()
+    endif()
+
+    # ── MSVC runtime redistributables ─────────────────────────────────────────
+    # Copies the Visual C++ runtime DLLs (msvcp140.dll, vcruntime140.dll, etc.)
+    # into the install tree so the app runs on machines without VS installed.
+    include(InstallRequiredSystemLibraries)
 endif()
 
 # Example scripts (all platforms)

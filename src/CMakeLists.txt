@@ -134,6 +134,7 @@ endif()
 if(WIN32)
     find_program(WINDEPLOYQT NAMES windeployqt HINTS "${Qt6_DIR}/../../../bin")
     if(WINDEPLOYQT)
+        # Run windeployqt at build time so Qt DLLs are available when launching from the build tree.
         add_custom_command(TARGET nuchat POST_BUILD
             COMMAND "${WINDEPLOYQT}"
                 --qmldir "${CMAKE_SOURCE_DIR}/qml"
@@ -141,16 +142,7 @@ if(WIN32)
                 "$<TARGET_FILE:nuchat>"
             COMMENT "Running windeployqt..."
             VERBATIM)
-            
-        # Run windeployqt during make install (so CPack includes Qt DLLs in the NSIS installer)
-        install(CODE "
-            execute_process(
-                COMMAND \"${WINDEPLOYQT}\"
-                    --qmldir \"${CMAKE_SOURCE_DIR}/qml\"
-                    --no-translations
-                    \"\${CMAKE_INSTALL_PREFIX}/nuchat.exe\"
-            )
-        ")
+        # Install-time deployment is handled in the root CMakeLists.txt with full error handling.
     endif()
 endif()
 

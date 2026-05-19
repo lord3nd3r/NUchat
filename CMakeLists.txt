@@ -99,9 +99,39 @@ if(APPLE)
     install(TARGETS nuchat BUNDLE DESTINATION /Applications)
 endif()
 
-# Windows: install binary into a flat directory
+# Windows: install binary into a flat directory and deploy Qt DLLs
 if(WIN32)
     install(TARGETS nuchat RUNTIME DESTINATION .)
+
+    # Locate windeployqt next to qmake in the Qt bin directory
+    find_program(WINDEPLOYQT_EXECUTABLE windeployqt
+        HINTS "${Qt6_DIR}/../../../bin"
+    )
+    if(WINDEPLOYQT_EXECUTABLE)
+        # Capture source-time paths so they expand correctly inside install(CODE)
+        set(_nuchat_qml_dir "${CMAKE_SOURCE_DIR}/qml")
+        install(CODE "
+            message(STATUS \"Running windeployqt to deploy Qt runtime...\")
+            execute_process(
+                COMMAND \"${WINDEPLOYQT_EXECUTABLE}\"
+                        --no-translations
+                        --qmldir \"${_nuchat_qml_dir}\"
+                        \"\${CMAKE_INSTALL_PREFIX}/nuchat.exe\"
+                RESULT_VARIABLE _wdq_result
+                OUTPUT_VARIABLE _wdq_out
+                ERROR_VARIABLE  _wdq_err
+            )
+            if(NOT _wdq_result EQUAL 0)
+                message(WARNING \"windeployqt failed (exit \${_wdq_result}): \${_wdq_err}\")
+            else()
+                message(STATUS \"windeployqt finished successfully\")
+            endif()
+        ")
+    else()
+        message(WARNING
+            "windeployqt not found – Qt DLLs will not be bundled automatically.\n"
+            "Add the Qt bin directory to PATH (e.g. C:/Qt/6.x.y/msvc2022_64/bin) and re-run CMake.")
+    endif()
 endif()
 
 # Example scripts (all platforms)

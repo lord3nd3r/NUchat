@@ -132,6 +132,28 @@ if(WIN32)
             "windeployqt not found – Qt DLLs will not be bundled automatically.\n"
             "Add the Qt bin directory to PATH (e.g. C:/Qt/6.x.y/msvc2022_64/bin) and re-run CMake.")
     endif()
+
+    # Bundle the Python runtime DLL (e.g. python312.dll) if Python scripting is enabled.
+    # windeployqt does not handle non-Qt dependencies, so we do it here.
+    if(Python3_FOUND)
+        # Derive Python install dir from the interpreter path (most reliable cross-version approach).
+        get_filename_component(_py_install_dir "${Python3_EXECUTABLE}" DIRECTORY)
+        set(_py_dll_name "python${Python3_VERSION_MAJOR}${Python3_VERSION_MINOR}.dll")
+        find_file(PYTHON3_RUNTIME_DLL
+            NAMES "${_py_dll_name}"
+            HINTS "${_py_install_dir}"
+                  "${Python3_RUNTIME_LIBRARY_DIRS}"
+            NO_DEFAULT_PATH
+        )
+        if(PYTHON3_RUNTIME_DLL)
+            message(STATUS "Will bundle Python runtime: ${PYTHON3_RUNTIME_DLL}")
+            install(FILES "${PYTHON3_RUNTIME_DLL}" DESTINATION .)
+        else()
+            message(WARNING
+                "${_py_dll_name} not found in Python install directory (${_py_install_dir}).\n"
+                "Python scripting will not work in the installed package unless the DLL is on PATH.")
+        endif()
+    endif()
 endif()
 
 # Example scripts (all platforms)

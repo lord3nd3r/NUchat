@@ -1167,13 +1167,15 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
 
         // ── RPL_BANLIST (367): <channel> <mask> <setter> <timestamp> ──
         else if (code == 367) {
-          QString channel = params.value(1);
-          QString mask = params.value(2);
-          QString setter = params.value(3);
+          // params[0]=channel, [1]=mask, [2]=setter, [3]=timestamp
+          // (our nick was already stripped by IrcConnection)
+          QString channel = params.value(0);
+          QString mask = params.value(1);
+          QString setter = params.value(2);
           // The timestamp is a Unix epoch; convert to readable
           QString timeStr;
-          if (params.size() > 4) {
-            qint64 ts = params.value(4).toLongLong();
+          if (params.size() > 3) {
+            qint64 ts = params.value(3).toLongLong();
             timeStr = QDateTime::fromSecsSinceEpoch(ts).toString(
                 "yyyy-MM-dd hh:mm");
           }
@@ -1181,7 +1183,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         }
         // ── RPL_ENDOFBANLIST (368) ──
         else if (code == 368) {
-          QString channel = params.value(1);
+          QString channel = params.value(0);
           emit banListEnd(channel);
         }
         else if ((code >= 372 && code <= 376) || code == 2 || code == 3 ||

@@ -1165,7 +1165,25 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             m_msgModel->addMessage("system", text);
         }
 
-        // Show MOTD lines (372, 375, 376) and other informational numerics
+        // ── RPL_BANLIST (367): <channel> <mask> <setter> <timestamp> ──
+        else if (code == 367) {
+          QString channel = params.value(1);
+          QString mask = params.value(2);
+          QString setter = params.value(3);
+          // The timestamp is a Unix epoch; convert to readable
+          QString timeStr;
+          if (params.size() > 4) {
+            qint64 ts = params.value(4).toLongLong();
+            timeStr = QDateTime::fromSecsSinceEpoch(ts).toString(
+                "yyyy-MM-dd hh:mm");
+          }
+          emit banListEntry(channel, mask, setter, timeStr);
+        }
+        // ── RPL_ENDOFBANLIST (368) ──
+        else if (code == 368) {
+          QString channel = params.value(1);
+          emit banListEnd(channel);
+        }
         else if ((code >= 372 && code <= 376) || code == 2 || code == 3 ||
                  code == 4 || code == 5 || code == 251 || code == 252 ||
                  code == 253 || code == 254 || code == 255 || code == 265 ||

@@ -145,6 +145,9 @@ signals:
   void notifyUser(const QString &title, const QString &message,
                   bool isHighlight, bool isPrivate);
   void lagChanged(int ms);
+  void banListEntry(const QString &channel, const QString &mask,
+                    const QString &setBy, const QString &timestamp);
+  void banListEnd(const QString &channel);
 
 private:
   void wireConnection(IrcConnection *conn);

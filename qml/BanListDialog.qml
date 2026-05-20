@@ -17,6 +17,28 @@ Dialog {
         Text { anchors.centerIn: parent; text: "Ban List — " + root.currentChannel; color: "#ddd"; font.pixelSize: 14; font.bold: true }
     }
 
+    // Auto-request ban list when dialog opens
+    onOpened: {
+        if (root.currentChannel !== "") {
+            banModel.clear()
+            ircManager.sendRawCommand("MODE " + root.currentChannel + " +b")
+        }
+    }
+
+    // ── Connections to C++ signals for ban list data ──
+    Connections {
+        target: ircManager
+        function onBanListEntry(channel, mask, setBy, timestamp) {
+            // Only populate if this dialog is open and the channel matches
+            if (dlg.visible && channel === root.currentChannel) {
+                banModel.append({mask: mask, setBy: setBy, date: timestamp})
+            }
+        }
+        function onBanListEnd(channel) {
+            // Could show a status message or update UI; currently no-op
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 12; spacing: 8
 

@@ -782,12 +782,95 @@ QString MessageModel::formatLine(const Message &msg) const {
   return ts + prefix + htmlBody;
 }
 
+// ─── Event-collapse helpers ──────────────────────────────────────────────────
+namespace {
+enum class EventKind { Join, Part, Quit, Kick, Nick, Mode, Unknown };
+
+static EventKind classifyEvent(const QString &text, QString &outNick) {
+  int sp = text.indexOf(QLatin1Char(' '));
+  outNick = sp > 0 ? text.left(sp) : text;
+  if (text.contains(QLatin1String(" has joined ")))      return EventKind::Join;
+  if (text.contains(QLatin1String(" has left ")))        return EventKind::Part;
+  if (text.contains(QLatin1String(" has quit")))         return EventKind::Quit;
+  if (text.contains(QLatin1String(" was kicked by ")))   return EventKind::Kick;
+  if (text.contains(QLatin1String(" is now known as "))) return EventKind::Nick;
+  if (text.contains(QLatin1String(" sets mode ")))       return EventKind::Mode;
+  return EventKind::Unknown;
+}
+
+static bool isCollapsibleEvent(const MessageModel::Message &msg) {
+  if (msg.type != QLatin1String("system")) return false;
+  QString nick;
+  return classifyEvent(msg.text, nick) != EventKind::Unknown;
+}
+
+static QString makeEventGroupHtml(const QList<MessageModel::Message> &msgs,
+                                   int from, int count) {
+  QStringList joins, parts, quits, kicks, nicks;
+  int modes = 0;
+  for (int i = from; i < from + count; ++i) {
+    QString nick;
+    switch (classifyEvent(msgs.at(i).text, nick)) {
+    case EventKind::Join:  joins.append(nick); break;
+    case EventKind::Part:  parts.append(nick); break;
+    case EventKind::Quit:  quits.append(nick); break;
+    case EventKind::Kick:  kicks.append(nick); break;
+    case EventKind::Nick:  nicks.append(nick); break;
+    case EventKind::Mode:  ++modes;             break;
+    default:                                    break;
+    }
+  }
+  QStringList summary;
+  if (!joins.isEmpty()) summary << joins.join(QStringLiteral(", ")) + QStringLiteral(" joined");
+  if (!parts.isEmpty()) summary << parts.join(QStringLiteral(", ")) + QStringLiteral(" left");
+  if (!quits.isEmpty()) summary << quits.join(QStringLiteral(", ")) + QStringLiteral(" quit");
+  if (!kicks.isEmpty()) summary << kicks.join(QStringLiteral(", ")) + QStringLiteral(" kicked");
+  if (!nicks.isEmpty()) summary << nicks.join(QStringLiteral(", ")) + QStringLiteral(" changed nick");
+  if (modes > 0)        summary << QString::number(modes) + QStringLiteral(" mode change(s)");
+
+  // Timestamp: single minute or a range
+  const QDateTime t0  = msgs.at(from).timestamp;
+  const QDateTime t1  = msgs.at(from + count - 1).timestamp;
+  const QString   fmt = QStringLiteral("hh:mm");
+  const QString tsStr = (t0.toString(fmt) == t1.toString(fmt))
+      ? QStringLiteral("[") + t0.toString(fmt) + QStringLiteral("]")
+      : QStringLiteral("[") + t0.toString(fmt) + QStringLiteral(" \u2013 ") + t1.toString(fmt) + QStringLiteral("]");
+
+  return QStringLiteral("<font color=\"#888888\">") + tsStr +
+         QStringLiteral("</font> <font color=\"#888888\">*** \u21d4 ") +
+         summary.join(QStringLiteral(" \u00b7 ")) +
+         QStringLiteral(" (") + QString::number(count) + QStringLiteral(" events)</font>");
+}
+} // anonymous namespace
+// ─────────────────────────────────────────────────────────────────────────────
+
 QString MessageModel::allFormattedText() const {
-  QStringList lines;
-  lines.reserve(m_messages.size());
-  for (const auto &msg : m_messages)
-    lines.append(msg.formattedText); // already pre-rendered in addMessage()
-  return lines.join(QStringLiteral("<br>"));
+  static const int kCollapseThreshold = 3;
+  const bool collapseEvents =
+      QSettings().value(QStringLiteral("ui/collapseEvents"), true).toBool();
+
+  QStringList result;
+  result.reserve(m_messages.size());
+
+  int i = 0;
+  while (i < m_messages.size()) {
+    if (collapseEvents && isCollapsibleEvent(m_messages.at(i))) {
+      int j = i + 1;
+      while (j < m_messages.size() && isCollapsibleEvent(m_messages.at(j)))
+        ++j;
+      const int count = j - i;
+      if (count >= kCollapseThreshold)
+        result.append(makeEventGroupHtml(m_messages, i, count));
+      else
+        for (int k = i; k < j; ++k)
+          result.append(m_messages.at(k).formattedText);
+      i = j;
+    } else {
+      result.append(m_messages.at(i).formattedText);
+      ++i;
+    }
+  }
+  return result.join(QStringLiteral("<br>"));
 }
 
 void MessageModel::beginBatch() {

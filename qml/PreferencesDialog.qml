@@ -55,6 +55,7 @@ Dialog {
         cboTimestampFmt.currentIndex = intSetting("ui/timestampFmtIndex", 0)
         spnScrollback.value         = intSetting("ui/maxScrollback", 10000)
         chkIndentWrap.checked       = boolSetting("ui/indentWrap", true)
+        chkCollapseEvents.checked   = boolSetting("ui/collapseEvents", true)
         chkHighlighting.checked     = boolSetting("ui/textHighlighting", true)
         txtHighlightWords.text      = appSettings.value("ui/highlightWords", "")
 
@@ -360,6 +361,9 @@ Dialog {
                     }
                     CheckBox { id: chkIndentWrap; text: "Indent wrapped text"
                         onCheckedChanged: saveSetting("ui/indentWrap", checked)
+                        contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
+                    CheckBox { id: chkCollapseEvents; text: "Collapse consecutive join/part/quit events"
+                        onCheckedChanged: saveSetting("ui/collapseEvents", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     CheckBox { id: chkHighlighting; text: "Enable text highlighting"
                         onCheckedChanged: saveSetting("ui/textHighlighting", checked)

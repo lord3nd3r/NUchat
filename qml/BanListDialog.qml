@@ -29,13 +29,13 @@ Dialog {
     Connections {
         target: ircManager
         function onBanListEntry(channel, mask, setBy, timestamp) {
-            // Only populate if this dialog is open and the channel matches
-            if (dlg.visible && channel === root.currentChannel) {
-                banModel.append({mask: mask, setBy: setBy, date: timestamp})
-            }
+            console.log("[BanList] entry:", channel, mask, setBy, timestamp,
+                        "dlg.opened:", dlg.opened, "dlg.visible:", dlg.visible,
+                        "currentChannel:", root.currentChannel)
+            banModel.append({mask: mask, setBy: setBy, date: timestamp})
         }
         function onBanListEnd(channel) {
-            // Could show a status message or update UI; currently no-op
+            console.log("[BanList] end of list for", channel, "total:", banModel.count)
         }
     }
 

@@ -37,7 +37,7 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DPython3_FOUND=OFF
+          cmake -B build -A x64 -DCMAKE_DISABLE_FIND_PACKAGE_Python3=ON
 
       - name: Build
         run: |
@@ -54,7 +54,3 @@ jobs:
           name: nuchat-windows-installer
           path: build/NUchat_*_Windows_x64.exe
           if-no-files-found: warn
-
-      - name: Force job success
-        if: always()
-        run: exit 0

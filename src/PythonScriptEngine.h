@@ -91,6 +91,7 @@ private:
     QMap<QString, QString> m_scriptInfo;       // filename -> __module_name__ + version + desc
     int m_nextHookId = 1;
     bool m_pyInited = false;
+    bool m_pyInitFailed = false;  // true if Py_Initialize failed (no stdlib)
 
     static PythonScriptEngine *s_instance;
 };

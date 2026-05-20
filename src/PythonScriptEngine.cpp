@@ -417,7 +417,7 @@ PythonScriptEngine *PythonScriptEngine::instance()
 
 void PythonScriptEngine::initPython()
 {
-    if (m_pyInited) return;
+    if (m_pyInited || m_pyInitFailed) return;
 
     // Register our built-in modules before Py_Initialize
     PyImport_AppendInittab("hexchat", &PyInit_hexchat);
@@ -433,11 +433,32 @@ void PythonScriptEngine::initPython()
         Py_SetPythonHome(home.c_str());
         qDebug() << "[PythonScriptEngine] Using bundled Python at:" << bundledPython;
     }
+
+    // Pre-flight check: Py_Initialize() calls Py_FatalError → abort() if it
+    // cannot locate the Python standard library.  On a machine without Python
+    // installed (and no bundled distribution) this would kill the entire app
+    // silently (WIN32 subsystem = no console).  Guard against it by verifying
+    // that Python can actually resolve a home/prefix path before we try to
+    // initialise the interpreter.
+    {
+        PyConfig config;
+        PyConfig_InitPythonConfig(&config);
+        PyStatus status = Py_InitializeFromConfig(&config);
+        if (PyStatus_Exception(status)) {
+            qWarning() << "[PythonScriptEngine] Python init failed:"
+                       << (status.err_msg ? status.err_msg : "unknown error")
+                       << "— Python scripting disabled.";
+            PyConfig_Clear(&config);
+            m_pyInitFailed = true;
+            return;
+        }
+        PyConfig_Clear(&config);
+    }
+#else
+    Py_Initialize();
 #endif
 
-    Py_Initialize();
     m_pyInited = true;
-
     qDebug() << "[PythonScriptEngine] Python" << Py_GetVersion() << "initialized";
 }
 
@@ -472,6 +493,9 @@ void PythonScriptEngine::loadScripts(const QString &directory)
     }
 
     initPython();
+
+    // If Python init failed (e.g. no stdlib on Windows), skip loading scripts.
+    if (!m_pyInited) return;
 
     // Add scripts directory to Python's sys.path
     QString addPath = QStringLiteral(

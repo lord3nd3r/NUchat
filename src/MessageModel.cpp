@@ -61,7 +61,8 @@ void MessageModel::addMessage(const QString &type, const QString &text,
   msg.formattedText = formatLine(msg); // pre-render HTML once
   m_messages.append(msg);
   endInsertRows();
-  emit messageAdded(formatLine(msg));
+  if (!m_batchMode)
+    emit messageAdded(msg.formattedText); // reuse cached text, no double format
 
   // Auto-download images for chat/action messages if enabled in preferences
   bool showInlineImages =
@@ -785,6 +786,15 @@ QString MessageModel::allFormattedText() const {
   QStringList lines;
   lines.reserve(m_messages.size());
   for (const auto &msg : m_messages)
-    lines.append(formatLine(msg));
+    lines.append(msg.formattedText); // already pre-rendered in addMessage()
   return lines.join(QStringLiteral("<br>"));
+}
+
+void MessageModel::beginBatch() {
+  m_batchMode = true;
+}
+
+void MessageModel::endBatch() {
+  m_batchMode = false;
+  emit reloaded();
 }

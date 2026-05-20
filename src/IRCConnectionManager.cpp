@@ -594,6 +594,8 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
     const auto &msgs = m_history[key];
     // Disable highlight for log-file scrollback, enable for session messages
     m_msgModel->setHighlightEnabled(false);
+    // Batch mode: suppress per-message signals and do a single reload at the end
+    m_msgModel->beginBatch();
     bool pastScrollback = false;
     for (const auto &m : msgs) {
       // Enable highlights after the scrollback end marker
@@ -609,6 +611,7 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
     // If no scrollback was loaded, enable highlights now
     if (!pastScrollback)
       m_msgModel->setHighlightEnabled(true);
+    m_msgModel->endBatch(); // emits reloaded() → QML reloads view in one shot
   } else {
     m_msgModel->addMessage("system", "Now talking in " + channel);
     m_msgModel->setHighlightEnabled(true);

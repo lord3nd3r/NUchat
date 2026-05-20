@@ -1106,6 +1106,7 @@ ApplicationWindow {
                     Connections {
                         target: msgModel
                         function onMessageAdded(formattedLine) {
+                            // Live incoming message — fast single-line append
                             chatArea.append(formattedLine)
                             Qt.callLater(function() {
                                 chatArea.cursorPosition = chatArea.length
@@ -1113,6 +1114,14 @@ ApplicationWindow {
                         }
                         function onCleared() {
                             chatArea.text = ""
+                        }
+                        function onReloaded() {
+                            // Channel switch: set entire text in one shot instead of
+                            // N individual append() calls (each re-layouts the document)
+                            chatArea.text = msgModel.allFormattedText()
+                            Qt.callLater(function() {
+                                chatArea.cursorPosition = chatArea.length
+                            })
                         }
                     }
 

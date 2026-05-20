@@ -41,11 +41,17 @@ public:
                                         const QString &timestamp) const;
   Q_INVOKABLE void setNickname(const QString &nick);
   Q_INVOKABLE void setHighlightEnabled(bool enabled);
+  // Batch-load mode: suppresses per-message signals during a channel switch.
+  // Call beginBatch() before inserting, endBatch() when done; QML receives a
+  // single reloaded() signal instead of N messageAdded() signals.
+  void beginBatch();
+  void endBatch();
   static QString ircToHtml(const QString &text);
 
 signals:
   void messageAdded(const QString &formattedLine);
   void cleared();
+  void reloaded(); // emitted by endBatch() after a channel-switch load
 
 private slots:
   void onImageReady(const QString &url, const QString &localPath, int width,
@@ -60,4 +66,5 @@ private:
   QSet<QString> m_pendingImages;
   QString m_nickname;
   bool m_highlightEnabled = false;
+  bool m_batchMode = false;
 };

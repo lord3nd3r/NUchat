@@ -4,7 +4,6 @@
     <file alias="qml/ChannelView.qml">../qml/ChannelView.qml</file>
     <file alias="qml/ServerTree.qml">../qml/ServerTree.qml</file>
     <file alias="qml/NickList.qml">../qml/NickList.qml</file>
-    <file alias="qml/NickListPanel.qml">../qml/NickListPanel.qml</file>
     <file alias="qml/EmojiPicker.qml">../qml/EmojiPicker.qml</file>
     <file alias="qml/SettingsDialog.qml">../qml/SettingsDialog.qml</file>
     <file alias="qml/NetworkListDialog.qml">../qml/NetworkListDialog.qml</file>

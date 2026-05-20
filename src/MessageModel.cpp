@@ -91,6 +91,8 @@ void MessageModel::clear() {
   beginResetModel();
   m_messages.clear();
   endResetModel();
+  m_eventGroups.clear();
+  m_nextEventGroupId = 0;
   emit cleared();
 }
 
@@ -809,7 +811,7 @@ static bool isCollapsibleEvent(const MessageModel::Message &msg) {
 }
 
 static QString makeEventGroupHtml(const QList<MessageModel::Message> &msgs,
-                                   int from, int count) {
+                                   int from, int count, int groupId) {
   QStringList joins, parts, quits, kicks, nicks;
   int modes = 0;
   for (int i = from; i < from + count; ++i) {
@@ -840,18 +842,34 @@ static QString makeEventGroupHtml(const QList<MessageModel::Message> &msgs,
       ? QStringLiteral("[") + t0.toString(fmt) + QStringLiteral("]")
       : QStringLiteral("[") + t0.toString(fmt) + QStringLiteral(" \u2013 ") + t1.toString(fmt) + QStringLiteral("]");
 
+  QString summaryText = summary.join(QStringLiteral(" \u00b7 ")) +
+                         QStringLiteral(" (") + QString::number(count) + QStringLiteral(" events)");
+
+  // Wrap in a clickable link so the user can expand the group
   return QStringLiteral("<font color=\"#888888\">") + tsStr +
-         QStringLiteral("</font> <font color=\"#888888\">*** \u21d4 ") +
-         summary.join(QStringLiteral(" \u00b7 ")) +
-         QStringLiteral(" (") + QString::number(count) + QStringLiteral(" events)</font>");
+         QStringLiteral("</font> <font color=\"#888888\">*** </font>"
+                        "<a href=\"eventgroup://") +
+         QString::number(groupId) +
+         QStringLiteral("\" style=\"color:#6a9955; text-decoration:none;\">"
+                        "\u21d4 ") +
+         summaryText +
+         QStringLiteral("</a>");
 }
 } // anonymous namespace
 // ─────────────────────────────────────────────────────────────────────────────
+
+QStringList MessageModel::eventGroupDetails(int groupId) const {
+  return m_eventGroups.value(groupId);
+}
 
 QString MessageModel::allFormattedText() const {
   static const int kCollapseThreshold = 3;
   const bool collapseEvents =
       QSettings().value(QStringLiteral("ui/collapseEvents"), true).toBool();
+
+  // Clear stale event group data from previous renders
+  m_eventGroups.clear();
+  m_nextEventGroupId = 0;
 
   QStringList result;
   result.reserve(m_messages.size());
@@ -863,11 +881,19 @@ QString MessageModel::allFormattedText() const {
       while (j < m_messages.size() && isCollapsibleEvent(m_messages.at(j)))
         ++j;
       const int count = j - i;
-      if (count >= kCollapseThreshold)
-        result.append(makeEventGroupHtml(m_messages, i, count));
-      else
+      if (count >= kCollapseThreshold) {
+        int gid = m_nextEventGroupId++;
+        // Store individual formatted lines for expansion
+        QStringList details;
+        details.reserve(count);
+        for (int k = i; k < j; ++k)
+          details.append(m_messages.at(k).formattedText);
+        m_eventGroups[gid] = details;
+        result.append(makeEventGroupHtml(m_messages, i, count, gid));
+      } else {
         for (int k = i; k < j; ++k)
           result.append(m_messages.at(k).formattedText);
+      }
       i = j;
     } else {
       result.append(m_messages.at(i).formattedText);

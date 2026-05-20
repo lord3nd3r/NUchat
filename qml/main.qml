@@ -68,6 +68,11 @@ ApplicationWindow {
     onActiveChanged: {
         if (active && messageInput) messageInput.forceActiveFocus()
         if (active && typeof notifyMgr !== "undefined") notifyMgr.clearUnreadState()
+        // When returning to the window, scroll to bottom if the user
+        // wasn't intentionally scrolled up before they left.
+        if (active && !root.userScrolledUpManual && chatArea) {
+            Qt.callLater(chatArea.scrollToBottom)
+        }
     }
 
     // ═══ Configurable Keyboard Shortcuts ═══
@@ -191,6 +196,7 @@ ApplicationWindow {
     // ── Marker line ("new messages" separator) ──
     property var lastSeenIndex: ({})  // { "server\nchannel": messageCount }
     property bool userScrolledUp: false  // true when user has scrolled up from bottom
+    property bool userScrolledUpManual: false  // true only when user *actively* scrolled up (not from unfocused content growth)
 
     // ── Preference-driven UI visibility ──
     property bool prefShowServerTree:  appSettings.value("ui/showServerTree", true) === true || appSettings.value("ui/showServerTree", true) === "true"
@@ -1172,6 +1178,13 @@ ApplicationWindow {
                             var ch = decodeURIComponent(link.substring(10))
                             channelJoinMenu.targetChannel = ch
                             channelJoinMenu.popup()
+                        } else if (link.startsWith("eventgroup://")) {
+                            var gid = parseInt(link.substring(13))
+                            var details = msgModel.eventGroupDetails(gid)
+                            if (details && details.length > 0) {
+                                eventGroupDialog.eventLines = details
+                                eventGroupDialog.open()
+                            }
                         } else {
                             Qt.openUrlExternally(link)
                         }
@@ -1227,66 +1240,93 @@ ApplicationWindow {
                             // Live incoming message — fast single-line append
                             chatArea.append(formattedLine)
                             if (!root.userScrolledUp) {
-                                Qt.callLater(chatArea.scrollToBottom)
+                                chatArea.startScrollSettle()
                             }
                         }
                         function onCleared() {
                             chatArea.text = ""
                         }
                         function onReloaded() {
-                            // Insert marker line if there are new messages since last visit
-                            var key = root.currentServer + "\n" + root.currentChannel
-                            var lastSeen = root.lastSeenIndex[key] || 0
                             var fullText = msgModel.allFormattedText()
                             // Channel switch: set entire text in one shot.
-                            chatArea.pendingScrollToBottom = true
                             chatArea.text = fullText
+                            // Immediately position cursor at end — prevents Qt's
+                            // internal ensureVisible(0) from scrolling to top
+                            // after the text assignment resets cursorPosition.
+                            chatArea.cursorPosition = chatArea.length
                             root.userScrolledUp = false
-                            // Deferred scroll for the common fast-render case
-                            Qt.callLater(chatArea.scrollToBottom)
+                            chatArea.startScrollSettle()
                         }
                     }
 
-                    // True while a channel-switch text load is still being laid out.
-                    // Cleared by scrollSettleTimer once content height stops changing.
+                    // True while a channel-switch text load or live append is
+                    // still being laid out.  Cleared by scrollSettleTimer once
+                    // content height has been stable long enough.
                     property bool pendingScrollToBottom: false
 
-                    // After each contentHeight change during a reload, scroll to the
-                    // current bottom and restart the settle timer.  Qt.callLater
-                    // is too early — it fires before the HTML layout is finished.
+                    // Keep scrolling on every contentHeight change while pending.
                     onContentHeightChanged: {
                         if (pendingScrollToBottom) {
                             scrollToBottom()
-                            scrollSettleTimer.restart()
                         }
                     }
 
-                    // Stop auto-scrolling once content height has been stable for
-                    // 500 ms.  Perform one final scroll when the timer fires to
-                    // guarantee we land at the true bottom even if late layout
-                    // passes snuck in after the last contentHeight signal.
+                    // Repeating timer: polls every 50 ms and forces scroll to
+                    // bottom until the content height has been stable for 500 ms
+                    // (10 consecutive ticks).  This is far more reliable than a
+                    // one-shot timer because Qt's rich-text engine can finish
+                    // layout across multiple event-loop iterations without
+                    // emitting intermediate contentHeight changes.
                     Timer {
                         id: scrollSettleTimer
-                        interval: 500
-                        repeat: false
+                        interval: 50
+                        repeat: true
+                        property int stableCount: 0
+                        property real lastHeight: -1
                         onTriggered: {
                             chatArea.scrollToBottom()
-                            chatArea.pendingScrollToBottom = false
+                            var f = chatScrollView.contentItem
+                            if (Math.abs(f.contentHeight - lastHeight) < 1) {
+                                stableCount++
+                                if (stableCount >= 10) { // stable for 500 ms
+                                    chatArea.pendingScrollToBottom = false
+                                    stableCount = 0
+                                    lastHeight = -1
+                                    stop()
+                                }
+                            } else {
+                                stableCount = 0
+                                lastHeight = f.contentHeight
+                            }
                         }
                     }
 
-                    // Scroll the Flickable to the absolute bottom rather than using
-                    // cursorPosition, which stops short of bottom padding and can
-                    // leave the last line partially clipped before the next scroll event.
+                    function startScrollSettle() {
+                        pendingScrollToBottom = true
+                        scrollSettleTimer.stableCount = 0
+                        scrollSettleTimer.lastHeight = -1
+                        scrollToBottom()
+                        scrollSettleTimer.restart()
+                    }
+
+                    // Scroll the Flickable to the absolute bottom.  Uses both
+                    // contentY (immediate) and cursorPosition (tells Qt's
+                    // internal layout to make the end visible).
                     function scrollToBottom() {
                         var f = chatScrollView.contentItem
                         f.contentY = Math.max(0, f.contentHeight - f.height)
+                        // Also position cursor at end — TextArea will try to
+                        // ensure the cursor is visible, which serves as a
+                        // second scroll mechanism.
+                        chatArea.cursorPosition = chatArea.length
                         root.userScrolledUp = false
+                        root.userScrolledUpManual = false
                     }
 
                     Component.onCompleted: {
-                        pendingScrollToBottom = true
                         text = msgModel.allFormattedText()
+                        cursorPosition = length
+                        startScrollSettle()
                     }
                 }
 
@@ -1294,9 +1334,20 @@ ApplicationWindow {
                 Connections {
                     target: chatScrollView.contentItem
                     function onContentYChanged() {
+                        // During a reload/channel-switch, ignore contentY
+                        // changes — the layout is still settling and these
+                        // intermediate positions are not user-initiated scrolls.
+                        if (chatArea.pendingScrollToBottom) return
+
                         var f = chatScrollView.contentItem
                         var atBottom = (f.contentY + f.height) >= (f.contentHeight - 20)
                         root.userScrolledUp = !atBottom
+                        // Only mark as "manually scrolled" when the window
+                        // is focused — prevents false positives from content
+                        // growing while tabbed away.
+                        if (root.active) {
+                            root.userScrolledUpManual = !atBottom
+                        }
                     }
                 }
 
@@ -2304,6 +2355,95 @@ ApplicationWindow {
                     onClicked: serverPassDialog.close()
                     background: Rectangle { color: parent.down ? theme.dialogBorder : theme.buttonDisabled; radius: 3 }
                     contentItem: Text { text: parent.text; color: theme.textSecondary; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                }
+            }
+        }
+    }
+
+    // ── Event group detail popup ──
+    Dialog {
+        id: eventGroupDialog
+        title: "Event Details"
+        width: Math.min(root.width * 0.6, 500)
+        height: Math.min(root.height * 0.5, 400)
+        modal: true
+        anchors.centerIn: parent
+        background: Rectangle {
+            color: theme.dialogBg
+            border.color: theme.dialogBorder
+            border.width: 1
+            radius: 6
+        }
+
+        property var eventLines: []
+
+        header: Rectangle {
+            height: 36
+            color: Qt.darker(theme.dialogBg, 1.15)
+            radius: 6
+            // Square off bottom corners
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 6; color: parent.color }
+            Text {
+                anchors.centerIn: parent
+                text: eventGroupDialog.eventLines.length + " Events"
+                color: theme.textPrimary
+                font.pixelSize: 13
+                font.bold: true
+            }
+        }
+
+        ScrollView {
+            anchors.fill: parent
+            clip: true
+
+            TextArea {
+                readOnly: true
+                textFormat: TextEdit.RichText
+                wrapMode: TextEdit.Wrap
+                color: theme.textPrimary
+                font.family: root.prefFontFamily
+                font.pixelSize: root.prefFontSize
+                background: Rectangle { color: "transparent" }
+                padding: 12
+                text: eventGroupDialog.eventLines.join("<br>")
+
+                onLinkActivated: function(link) {
+                    if (link.startsWith("nick://")) {
+                        var nick = decodeURIComponent(link.substring(7))
+                        nickContextMenu.targetNick = nick
+                        nickContextMenu.popup()
+                    } else {
+                        Qt.openUrlExternally(link)
+                    }
+                }
+
+                HoverHandler {
+                    cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+                }
+            }
+        }
+
+        footer: Rectangle {
+            height: 40
+            color: Qt.darker(theme.dialogBg, 1.1)
+            radius: 6
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 6; color: parent.color }
+            Button {
+                anchors.centerIn: parent
+                text: "Close"
+                onClicked: eventGroupDialog.close()
+                background: Rectangle {
+                    color: parent.down ? theme.buttonPressed : theme.buttonBg
+                    radius: 3
+                    implicitWidth: 80
+                    implicitHeight: 28
+                }
+                contentItem: Text {
+                    text: parent.text
+                    color: theme.buttonText
+                    font.pixelSize: 12
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
                 }
             }
         }

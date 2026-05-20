@@ -587,6 +587,9 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                 msgs.size() - 1; // last msg is our "Now talking in"
             bool hasScrollback = scrollbackEnd > 0;
 
+            // Use batch mode so QML receives a single reloaded() signal
+            // instead of per-message signals that fight with scroll tracking
+            m_msgModel->beginBatch();
             if (hasScrollback) {
               m_msgModel->addMessage(
                   "system", QString::fromUtf8(
@@ -600,6 +603,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             }
             // Show the current "Now talking in" message
             m_msgModel->addMessage(msgs.last().type, msgs.last().text);
+            m_msgModel->endBatch(); // emits reloaded() → QML does one scroll-to-bottom
           }
           // Request channel modes so we can display them
           conn->sendRaw("MODE " + channel);

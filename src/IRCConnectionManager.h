@@ -15,6 +15,7 @@ class MessageModel;
 class ServerChannelModel;
 class Logger;
 class Settings;
+class DccManager;
 
 class IRCConnectionManager : public QObject {
   Q_OBJECT
@@ -32,6 +33,7 @@ public:
   void setServerChannelModel(ServerChannelModel *model);
   void setLogger(Logger *logger);
   void setSettings(Settings *settings);
+  void setDccManager(DccManager *dcc) { m_dccManager = dcc; }
 
   // Connect to a server  (called from C++ or QML)
   Q_INVOKABLE void connectToServer(const QString &host, int port = 6697,
@@ -198,6 +200,9 @@ private:
 
   // ── Ignore list ──
   QStringList m_ignoreList; // nick!user@host masks (wildcards supported)
+
+  // ── DCC file transfer ──
+  DccManager *m_dccManager = nullptr;
 
   // ── Auto-reconnect state ──
   struct ReconnectInfo {

@@ -2,6 +2,7 @@
 // Called once lazily from handleSlashCommand.
 // Each entry maps a command name (uppercase) to a lambda handler.
 #include "IRCConnectionManager.h"
+#include "DccManager.h"
 #include "IrcConnection.h"
 #include "MessageModel.h"
 
@@ -308,6 +309,27 @@ void IRCConnectionManager::initCommandTable() {
     QString text = "* " + conn->nickname() + " " + info;
     if (m_msgModel) m_msgModel->addMessage("action", text);
     appendToChannel(m_activeServer, target, "action", text);
+    return true;
+  };
+
+  // ═══════════════════════════════════════════════════
+  //  DCC
+  // ═══════════════════════════════════════════════════
+
+  T["DCC"] = [this](IrcConnection *, const QString &, const QString &args) -> bool {
+    QString sub = args.section(' ', 0, 0).toUpper();
+    if (sub == "SEND") {
+      QString nick = args.section(' ', 1, 1);
+      QString path = args.section(' ', 2).trimmed();
+      if (nick.isEmpty() || path.isEmpty()) {
+        if (m_msgModel) m_msgModel->addMessage("system", "Usage: /DCC SEND <nick> <filepath>");
+      } else if (m_dccManager) {
+        m_dccManager->sendFile(nick, path);
+        if (m_msgModel) m_msgModel->addMessage("system", "DCC: Sending " + path + " to " + nick);
+      }
+    } else {
+      if (m_msgModel) m_msgModel->addMessage("system", "Usage: /DCC SEND <nick> <filepath>");
+    }
     return true;
   };
 }

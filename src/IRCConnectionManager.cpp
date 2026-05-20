@@ -1,4 +1,5 @@
 #include "IRCConnectionManager.h"
+#include "DccManager.h"
 #include "IrcConnection.h"
 #include "Logger.h"
 #include "MessageModel.h"
@@ -890,6 +891,40 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
               if (m_msgModel && m_activeServer == srv &&
                   m_activeChannel == channel) {
                 m_msgModel->addMessage("action", text);
+              }
+            } else if (command == "DCC" && m_dccManager) {
+              // ── DCC SEND parsing ──
+              // Format: DCC SEND <filename> <ip> <port> <filesize> [token]
+              // Filename may be quoted: DCC SEND "my file.txt" 123456 1024 5000
+              QString rest = args.trimmed();
+              if (rest.startsWith("SEND ", Qt::CaseInsensitive)) {
+                rest = rest.mid(5).trimmed();
+                QString fileName;
+                if (rest.startsWith('"')) {
+                  int closeQuote = rest.indexOf('"', 1);
+                  if (closeQuote > 0) {
+                    fileName = rest.mid(1, closeQuote - 1);
+                    rest = rest.mid(closeQuote + 1).trimmed();
+                  }
+                } else {
+                  fileName = rest.section(' ', 0, 0);
+                  rest = rest.section(' ', 1).trimmed();
+                }
+                QStringList parts = rest.split(' ', Qt::SkipEmptyParts);
+                if (parts.size() >= 3) {
+                  quint32 ip = parts[0].toUInt();
+                  quint16 port = parts[1].toUShort();
+                  qint64 size = parts[2].toLongLong();
+                  int token = parts.size() > 3 ? parts[3].toInt() : 0;
+                  m_dccManager->setConnection(conn);
+                  m_dccManager->handleDccSend(nick, fileName, ip, port, size, token);
+                  // Show in server buffer
+                  text = "DCC SEND offer from " + nick + ": " + fileName +
+                         " (" + DccTransfer::formatSize(size) + ")";
+                  appendToChannel(srv, srv, "system", text);
+                  if (m_msgModel && m_activeServer == srv && m_activeChannel == srv)
+                    m_msgModel->addMessage("system", text);
+                }
               }
             } else {
               text = "CTCP " + command + " from " + nick +

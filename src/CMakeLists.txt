@@ -5,6 +5,7 @@ set(CORE_SRC
     IrcConnection.cpp
     IRCConnectionManager.cpp
     CommandTable.cpp
+    DccManager.cpp
     MessageParser.cpp
     PluginManager.cpp
     Settings.cpp
@@ -20,6 +21,7 @@ set(CORE_SRC
 set(CORE_HEADERS
     IrcConnection.h
     IRCConnectionManager.h
+    DccManager.h
     MessageParser.h
     PluginInterface.h
     PluginManager.h

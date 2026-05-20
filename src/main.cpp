@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QDir>
 #include <QIcon>
 #include <QSize>
 #include <QStandardPaths>
@@ -11,6 +12,7 @@
 #include <windows.h>
 #endif
 
+#include "DccManager.h"
 #include "IRCConnectionManager.h"
 #include "ImageDownloader.h"
 #include "IrcConnection.h"
@@ -160,6 +162,15 @@ int main(int argc, char *argv[]) {
   engine.rootContext()->setContextProperty("notifyMgr", &notifyMgr);
   engine.rootContext()->setContextProperty("imgDownloader",
                                            ImageDownloader::instance());
+  // DCC file transfer manager
+  DccManager dccManager;
+  QString dccDownDir = appSettings.value("dcc/downloadDir", QDir::homePath() + "/Downloads").toString();
+  dccManager.setDownloadDir(dccDownDir);
+  dccManager.setAutoAccept(appSettings.value("dcc/autoAccept", false).toBool());
+  qint64 maxDcc = appSettings.value("dcc/maxFileSize", 100 * 1024 * 1024).toLongLong();
+  dccManager.setMaxFileSize(maxDcc);
+  manager.setDccManager(&dccManager);
+  engine.rootContext()->setContextProperty("dccManager", &dccManager);
   engine.rootContext()->setContextProperty("appVersion",
                                            QString(NUCHAT_VERSION));
 #endif

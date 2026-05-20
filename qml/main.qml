@@ -1114,11 +1114,34 @@ ApplicationWindow {
                             chatArea.text = ""
                         }
                         function onReloaded() {
-                            // Channel switch: set entire text in one shot instead of
-                            // N individual append() calls (each re-layouts the document)
+                            // Channel switch: set entire text in one shot.
+                            // Arm the height-change watcher so we scroll to bottom
+                            // as soon as the HTML layout engine finalises the content.
+                            chatArea.pendingScrollToBottom = true
                             chatArea.text = msgModel.allFormattedText()
-                            Qt.callLater(chatArea.scrollToBottom)
                         }
+                    }
+
+                    // True while a channel-switch text load is still being laid out.
+                    // Cleared by scrollSettleTimer once content height stops changing.
+                    property bool pendingScrollToBottom: false
+
+                    // After each contentHeight change during a reload, scroll to the
+                    // current bottom and restart the settle timer.  Qt.callLater
+                    // is too early — it fires before the HTML layout is finished.
+                    onContentHeightChanged: {
+                        if (pendingScrollToBottom) {
+                            scrollToBottom()
+                            scrollSettleTimer.restart()
+                        }
+                    }
+
+                    // Stop auto-scrolling once height has been stable for 300 ms.
+                    Timer {
+                        id: scrollSettleTimer
+                        interval: 300
+                        repeat: false
+                        onTriggered: chatArea.pendingScrollToBottom = false
                     }
 
                     // Scroll the Flickable to the absolute bottom rather than using
@@ -1130,8 +1153,8 @@ ApplicationWindow {
                     }
 
                     Component.onCompleted: {
+                        pendingScrollToBottom = true
                         text = msgModel.allFormattedText()
-                        Qt.callLater(scrollToBottom)
                     }
                 }
             }

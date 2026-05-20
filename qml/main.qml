@@ -188,6 +188,10 @@ ApplicationWindow {
     property int lastClickedNickIndex: -1  // for shift-click range select
     property string selectedNick: selectedNicks.length > 0 ? selectedNicks[0] : ""  // compat: first selected
 
+    // ── Marker line ("new messages" separator) ──
+    property var lastSeenIndex: ({})  // { "server\nchannel": messageCount }
+    property bool userScrolledUp: false  // true when user has scrolled up from bottom
+
     // ── Preference-driven UI visibility ──
     property bool prefShowServerTree:  appSettings.value("ui/showServerTree", true) === true || appSettings.value("ui/showServerTree", true) === "true"
     property bool prefShowUserList:    appSettings.value("ui/showUserList", true) === true || appSettings.value("ui/showUserList", true) === "true"
@@ -1222,17 +1226,22 @@ ApplicationWindow {
                         function onMessageAdded(formattedLine) {
                             // Live incoming message — fast single-line append
                             chatArea.append(formattedLine)
-                            Qt.callLater(chatArea.scrollToBottom)
+                            if (!root.userScrolledUp) {
+                                Qt.callLater(chatArea.scrollToBottom)
+                            }
                         }
                         function onCleared() {
                             chatArea.text = ""
                         }
                         function onReloaded() {
+                            // Insert marker line if there are new messages since last visit
+                            var key = root.currentServer + "\n" + root.currentChannel
+                            var lastSeen = root.lastSeenIndex[key] || 0
+                            var fullText = msgModel.allFormattedText()
                             // Channel switch: set entire text in one shot.
-                            // Arm the height-change watcher so we scroll to bottom
-                            // as soon as the HTML layout engine finalises the content.
                             chatArea.pendingScrollToBottom = true
-                            chatArea.text = msgModel.allFormattedText()
+                            chatArea.text = fullText
+                            root.userScrolledUp = false
                             // Deferred scroll for the common fast-render case
                             Qt.callLater(chatArea.scrollToBottom)
                         }
@@ -1272,11 +1281,49 @@ ApplicationWindow {
                     function scrollToBottom() {
                         var f = chatScrollView.contentItem
                         f.contentY = Math.max(0, f.contentHeight - f.height)
+                        root.userScrolledUp = false
                     }
 
                     Component.onCompleted: {
                         pendingScrollToBottom = true
                         text = msgModel.allFormattedText()
+                    }
+                }
+
+                // ── Scroll position tracking ──
+                Connections {
+                    target: chatScrollView.contentItem
+                    function onContentYChanged() {
+                        var f = chatScrollView.contentItem
+                        var atBottom = (f.contentY + f.height) >= (f.contentHeight - 20)
+                        root.userScrolledUp = !atBottom
+                    }
+                }
+
+                // ── Jump to bottom button ──
+                Rectangle {
+                    id: jumpToBottomBtn
+                    width: 140; height: 32
+                    radius: 16
+                    color: theme.buttonBg
+                    border.color: theme.accent; border.width: 1
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 8
+                    visible: root.userScrolledUp
+                    opacity: root.userScrolledUp ? 0.9 : 0.0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    z: 10
+
+                    Row {
+                        anchors.centerIn: parent; spacing: 6
+                        Text { text: "↓"; color: theme.accent; font.pixelSize: 14; font.bold: true }
+                        Text { text: "New messages"; color: theme.buttonText; font.pixelSize: 11 }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        onClicked: chatArea.scrollToBottom()
                     }
                 }
             }
@@ -1544,6 +1591,41 @@ ApplicationWindow {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
+                    }
+                }
+            }
+
+            // ── Lag meter / status bar ──
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 18
+                color: Qt.darker(theme.chatBg, 1.15)
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8; anchors.rightMargin: 8
+                    spacing: 12
+
+                    Text {
+                        text: currentChannel !== "" ? currentChannel : currentServer
+                        color: theme.textMuted; font.pixelSize: 10; elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: {
+                            var lag = ircManager.lagMs
+                            if (lag < 0) return "Lag: --"
+                            return "Lag: " + lag + "ms"
+                        }
+                        color: {
+                            var lag = ircManager.lagMs
+                            if (lag < 0) return theme.textMuted
+                            if (lag < 100) return "#6a9955"   // green
+                            if (lag < 300) return "#e5c07b"   // yellow
+                            return "#f44747"                   // red
+                        }
+                        font.pixelSize: 10; font.bold: true
                     }
                 }
             }
@@ -1923,9 +2005,25 @@ ApplicationWindow {
         }
     }
     // ── Send message function ──
+    property string pendingPasteText: ""
+
     function sendMessage() {
         var txt = messageInput.text
         if (txt === "") return
+
+        // ── Paste flood protection ──
+        var lines = txt.split(/\r?\n/).filter(function(l) { return l !== "" })
+        if (lines.length > 3 && !txt.startsWith("/")) {
+            root.pendingPasteText = txt
+            pasteFloodDialog.lineCount = lines.length
+            pasteFloodDialog.open()
+            return
+        }
+
+        doSendMessage(txt)
+    }
+
+    function doSendMessage(txt) {
         // Add to command history (avoid duplicating last entry)
         if (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== txt)
             commandHistory.push(txt)
@@ -1940,7 +2038,6 @@ ApplicationWindow {
             var line = lines[i]
             if (line === "") continue
             if (line.startsWith("/")) {
-                // Allow /commands even without a channel selected
                 ircManager.sendMessage(target, line)
             } else if (currentChannel !== "") {
                 ircManager.sendMessage(currentChannel, line)
@@ -1948,6 +2045,51 @@ ApplicationWindow {
         }
         messageInput.text = ""
         messageInput.forceActiveFocus()
+    }
+
+    // ── Paste flood confirmation dialog ──
+    Dialog {
+        id: pasteFloodDialog
+        title: "Paste Flood Warning"
+        modal: true; anchors.centerIn: parent
+        width: 400
+        property int lineCount: 0
+
+        background: Rectangle { color: theme.dialogBg; border.color: theme.dialogBorder; border.width: 1; radius: 6 }
+        header: Rectangle {
+            height: 36; color: theme.dialogHeaderBg; radius: 6
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 6; color: theme.dialogHeaderBg }
+            Text { anchors.centerIn: parent; text: "⚠ Paste Flood Warning"; color: "#e5c07b"; font.pixelSize: 14; font.bold: true }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent; anchors.margins: 16; spacing: 12
+            Text {
+                text: "You are about to send " + pasteFloodDialog.lineCount + " lines.\nThis may get you kicked for flooding."
+                color: theme.textPrimary; font.pixelSize: 13; wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Cancel"
+                    onClicked: { pasteFloodDialog.close(); root.pendingPasteText = "" }
+                    background: Rectangle { color: parent.down ? theme.buttonPressed : theme.buttonBg; radius: 3 }
+                    contentItem: Text { text: parent.text; color: theme.buttonText; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                }
+                Button {
+                    text: "Send Anyway"
+                    onClicked: {
+                        pasteFloodDialog.close()
+                        root.doSendMessage(root.pendingPasteText)
+                        root.pendingPasteText = ""
+                    }
+                    background: Rectangle { color: parent.down ? "#a02020" : "#802020"; radius: 3 }
+                    contentItem: Text { text: parent.text; color: "#fff"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                }
+            }
+        }
     }
 
     // ── IRC event handlers ──

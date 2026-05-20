@@ -1,14 +1,16 @@
 #pragma once
 
-#include <functional>
+#include <QElapsedTimer>
 #include <QHash>
 #include <QMap>
 #include <QObject>
 #include <QSet>
 #include <QStringList>
 #include <QTimer>
-#include <QVariant>
+#include <QVariantList>
+#include <QVariantMap>
 #include <QVector>
+#include <functional>
 
 class IrcConnection;
 class MessageModel;
@@ -24,6 +26,7 @@ class IRCConnectionManager : public QObject {
   Q_PROPERTY(
       QStringList channelUsers READ channelUsers NOTIFY channelUsersChanged)
   Q_PROPERTY(bool isAway READ isAway NOTIFY awayStateChanged)
+  Q_PROPERTY(int lagMs READ lagMs NOTIFY lagChanged)
 
 public:
   explicit IRCConnectionManager(QObject *parent = nullptr);
@@ -34,6 +37,7 @@ public:
   void setLogger(Logger *logger);
   void setSettings(Settings *settings);
   void setDccManager(DccManager *dcc) { m_dccManager = dcc; }
+  int lagMs() const { return m_lagMs; }
 
   // Connect to a server  (called from C++ or QML)
   Q_INVOKABLE void connectToServer(const QString &host, int port = 6697,
@@ -140,6 +144,7 @@ signals:
   // Desktop notification trigger: emitted for highlights/PMs on non-active channels
   void notifyUser(const QString &title, const QString &message,
                   bool isHighlight, bool isPrivate);
+  void lagChanged(int ms);
 
 private:
   void wireConnection(IrcConnection *conn);
@@ -203,6 +208,12 @@ private:
 
   // ── DCC file transfer ──
   DccManager *m_dccManager = nullptr;
+
+  // ── Lag meter ──
+  QTimer m_lagTimer;
+  QElapsedTimer m_lagPingSent;
+  bool m_lagPingPending = false;
+  int m_lagMs = -1; // -1 = unknown
 
   // ── Auto-reconnect state ──
   struct ReconnectInfo {

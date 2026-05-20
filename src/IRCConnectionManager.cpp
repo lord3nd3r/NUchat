@@ -23,7 +23,18 @@
 #include "LuaScriptEngine.h"
 #endif
 
-IRCConnectionManager::IRCConnectionManager(QObject *parent) : QObject(parent) {}
+IRCConnectionManager::IRCConnectionManager(QObject *parent) : QObject(parent) {
+  // ── Lag meter ──
+  m_lagTimer.setInterval(30000); // ping every 30s
+  connect(&m_lagTimer, &QTimer::timeout, this, [this]() {
+    if (m_connections.isEmpty()) return;
+    auto *conn = m_connections.first();
+    if (!conn) return;
+    m_lagPingSent.start();
+    m_lagPingPending = true;
+    conn->sendRaw("PING :LAG" + QString::number(m_lagPingSent.msecsSinceReference()));
+  });
+}
 
 IRCConnectionManager::~IRCConnectionManager() {
   for (auto *c : m_connections)
@@ -388,9 +399,17 @@ QStringList IRCConnectionManager::channelUsers() const {
 void IRCConnectionManager::wireConnection(IrcConnection *conn) {
   QString host = m_connToName[conn];
 
-  // Forward raw lines for Raw Log
+  // Forward raw lines for Raw Log + lag meter PONG detection
   connect(conn, &IrcConnection::rawLineReceived, this,
-          [this](const QString &line) { emit rawLineReceived("<<", line); });
+          [this](const QString &line) {
+            emit rawLineReceived("<<", line);
+            // Detect PONG response to our LAG ping
+            if (m_lagPingPending && line.contains("PONG") && line.contains("LAG")) {
+              m_lagMs = static_cast<int>(m_lagPingSent.elapsed());
+              m_lagPingPending = false;
+              emit lagChanged(m_lagMs);
+            }
+          });
 
   // Registered (001)
   connect(conn, &IrcConnection::registered, this, [this, conn]() {
@@ -413,6 +432,9 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
 
     // ── Execute perform-on-connect commands ──
     executePerformCommands(srv);
+
+    // ── Start lag meter ──
+    if (!m_lagTimer.isActive()) m_lagTimer.start();
   });
 
   // Disconnected
@@ -429,6 +451,13 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
       attemptReconnect(srv);
     }
     m_userDisconnect = false;
+
+    // ── Stop lag meter if no connections left ──
+    if (m_connections.size() <= 1) {
+      m_lagTimer.stop();
+      m_lagMs = -1;
+      emit lagChanged(m_lagMs);
+    }
   });
 
   // Error

@@ -110,6 +110,17 @@ void DccTransfer::startReceive(const QString &downloadDir) {
   // Convert 32-bit int IP to QHostAddress
   QHostAddress addr(peerAddress);
   m_socket->connectToHost(addr, peerPort);
+
+  // 30-second connection timeout
+  QTimer::singleShot(30000, this, [this]() {
+    if (state == Connecting) {
+      state = Failed;
+      errorString = "Connection timed out (30s)";
+      if (m_socket) m_socket->abort();
+      if (m_file.isOpen()) m_file.close();
+      emit stateChanged();
+    }
+  });
 }
 
 void DccTransfer::onConnected() {

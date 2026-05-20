@@ -1180,11 +1180,25 @@ ApplicationWindow {
                             channelJoinMenu.popup()
                         } else if (link.startsWith("eventgroup://")) {
                             var gid = parseInt(link.substring(13))
-                            var details = msgModel.eventGroupDetails(gid)
-                            if (details && details.length > 0) {
-                                eventGroupDialog.eventLines = details
-                                eventGroupDialog.open()
-                            }
+                            var oldContentY = chatScrollView.contentItem.contentY
+                            var oldCursor = chatArea.cursorPosition
+                            var wasAtBottom = !root.userScrolledUp
+                            
+                            // Temporarily suspend auto-scrolling
+                            chatArea.pendingScrollToBottom = true
+                            
+                            msgModel.toggleEventGroup(gid)
+                            chatArea.text = msgModel.allFormattedText()
+                            chatArea.cursorPosition = oldCursor
+                            
+                            Qt.callLater(function() {
+                                if (!wasAtBottom) {
+                                    chatScrollView.contentItem.contentY = oldContentY
+                                } else {
+                                    chatArea.startScrollSettle()
+                                }
+                                chatArea.pendingScrollToBottom = false
+                            })
                         } else {
                             Qt.openUrlExternally(link)
                         }
@@ -2360,92 +2374,4 @@ ApplicationWindow {
         }
     }
 
-    // ── Event group detail popup ──
-    Dialog {
-        id: eventGroupDialog
-        title: "Event Details"
-        width: Math.min(root.width * 0.6, 500)
-        height: Math.min(root.height * 0.5, 400)
-        modal: true
-        anchors.centerIn: parent
-        background: Rectangle {
-            color: theme.dialogBg
-            border.color: theme.dialogBorder
-            border.width: 1
-            radius: 6
-        }
-
-        property var eventLines: []
-
-        header: Rectangle {
-            height: 36
-            color: Qt.darker(theme.dialogBg, 1.15)
-            radius: 6
-            // Square off bottom corners
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 6; color: parent.color }
-            Text {
-                anchors.centerIn: parent
-                text: eventGroupDialog.eventLines.length + " Events"
-                color: theme.textPrimary
-                font.pixelSize: 13
-                font.bold: true
-            }
-        }
-
-        ScrollView {
-            anchors.fill: parent
-            clip: true
-
-            TextArea {
-                readOnly: true
-                textFormat: TextEdit.RichText
-                wrapMode: TextEdit.Wrap
-                color: theme.textPrimary
-                font.family: root.prefFontFamily
-                font.pixelSize: root.prefFontSize
-                background: Rectangle { color: "transparent" }
-                padding: 12
-                text: eventGroupDialog.eventLines.join("<br>")
-
-                onLinkActivated: function(link) {
-                    if (link.startsWith("nick://")) {
-                        var nick = decodeURIComponent(link.substring(7))
-                        nickContextMenu.targetNick = nick
-                        nickContextMenu.popup()
-                    } else {
-                        Qt.openUrlExternally(link)
-                    }
-                }
-
-                HoverHandler {
-                    cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
-                }
-            }
-        }
-
-        footer: Rectangle {
-            height: 40
-            color: Qt.darker(theme.dialogBg, 1.1)
-            radius: 6
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 6; color: parent.color }
-            Button {
-                anchors.centerIn: parent
-                text: "Close"
-                onClicked: eventGroupDialog.close()
-                background: Rectangle {
-                    color: parent.down ? theme.buttonPressed : theme.buttonBg
-                    radius: 3
-                    implicitWidth: 80
-                    implicitHeight: 28
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: theme.buttonText
-                    font.pixelSize: 12
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-        }
-    }
 }

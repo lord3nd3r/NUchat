@@ -1558,183 +1558,25 @@ ApplicationWindow {
         }
 
         // ═══ RIGHT: Nick List ═══
-        Rectangle {
+        NickListPanel {
             id: nickListPanel
             Layout.preferredWidth: 160
             Layout.fillHeight: true
-            color: theme.nickListBg
             visible: root.prefShowUserList && currentChannel !== "" && currentChannel.startsWith("#")
 
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 0
+            theme: root.theme
+            channelUsers: root.channelUsers
+            currentChannel: root.currentChannel
+            selectedNicks: root.selectedNicks
+            lastClickedNickIndex: root.lastClickedNickIndex
+            showModeButtons: root.prefShowModeButtons
+            messageInputRef: messageInput
 
-                // Header
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 28
-                    color: theme.nickListHeaderBg
-                    Text {
-                        anchors.centerIn: parent
-                        text: channelUsers ? channelUsers.length + " USERS" : "USERS"
-                        color: theme.textMuted
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1.5
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: theme.separator
-                }
-
-                // Nick list
-                ListView {
-                    id: nickList
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-                    model: channelUsers || []
-
-                    delegate: Rectangle {
-                        required property int index
-                        required property string modelData
-                        width: nickList.width
-                        height: 22
-                        property string bareN: modelData.replace(/^[@%+~&]/, '')
-                        property bool isSelected: root.selectedNicks.indexOf(bareN) !== -1
-                        color: isSelected ? theme.highlight : (nickMouse.containsMouse ? theme.hoverBg : "transparent")
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData
-                            color: {
-                                // Color by prefix: @ = op, + = voice, % = halfop
-                                if (modelData.startsWith("@")) return theme.nickOp
-                                if (modelData.startsWith("%")) return theme.nickHalfOp
-                                if (modelData.startsWith("+")) return theme.nickVoice
-                                if (modelData.startsWith("~")) return theme.nickOwner
-                                if (modelData.startsWith("&")) return theme.nickAdmin
-                                return theme.nickNormal
-                            }
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                            width: parent.width - 16
-                        }
-
-                        MouseArea {
-                            id: nickMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            onClicked: function(mouse) {
-                                if (mouse.button === Qt.LeftButton) {
-                                    var nick = bareN
-                                    var sel = root.selectedNicks.slice()
-                                    if (mouse.modifiers & Qt.ControlModifier) {
-                                        // Ctrl+click: toggle this nick
-                                        var idx = sel.indexOf(nick)
-                                        if (idx !== -1) sel.splice(idx, 1); else sel.push(nick)
-                                        root.selectedNicks = sel
-                                    } else if (mouse.modifiers & Qt.ShiftModifier) {
-                                        // Shift+click: range select from last clicked
-                                        var users = channelUsers || []
-                                        var from = root.lastClickedNickIndex
-                                        var to = index
-                                        if (from < 0) from = to
-                                        var lo = Math.min(from, to), hi = Math.max(from, to)
-                                        // keep existing selection from ctrl, add range
-                                        for (var r = lo; r <= hi; r++) {
-                                            var rn = root.bareNick(users[r])
-                                            if (sel.indexOf(rn) === -1) sel.push(rn)
-                                        }
-                                        root.selectedNicks = sel
-                                    } else {
-                                        // Plain click: select only this nick
-                                        root.selectedNicks = [nick]
-                                    }
-                                    root.lastClickedNickIndex = index
-                                }
-                            }
-                            onPressed: function(mouse) {
-                                if (mouse.button === Qt.RightButton) {
-                                    var nick = bareN
-                                    // If right-clicked nick isn't selected, select only it
-                                    if (root.selectedNicks.indexOf(nick) === -1)
-                                        root.selectedNicks = [nick]
-                                    root.lastClickedNickIndex = index
-                                    nickContextMenu.targetNick = nick
-                                    nickContextMenu.popup()
-                                }
-                            }
-                            onDoubleClicked: {
-                                var nick = bareN
-                                root.selectedNicks = [nick]
-                                root.lastClickedNickIndex = index
-                                messageInput.text = "/msg " + nick + " "
-                                messageInput.forceActiveFocus()
-                            }
-                        }
-                    }
-                }
-
-                // ── Channel mode buttons (HexChat-style) ──
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: theme.separator
-                    visible: root.prefShowModeButtons
-                }
-                GridLayout {
-                    visible: root.prefShowModeButtons
-                    Layout.fillWidth: true
-                    Layout.margins: 3
-                    columns: 3
-                    columnSpacing: 2
-                    rowSpacing: 2
-
-                    Repeater {
-                        model: [
-                            { label: "Op",   cmd: "+o" },
-                            { label: "DeOp", cmd: "-o" },
-                            { label: "Ban",  cmd: "ban" },
-                            { label: "Kick", cmd: "kick" },
-                            { label: "Voice",   cmd: "+v" },
-                            { label: "DeVoice", cmd: "-v" }
-                        ]
-                        delegate: Button {
-                            required property var modelData
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 24
-                            text: modelData.label
-                            enabled: root.selectedNicks.length > 0 && currentChannel.startsWith("#")
-                            onClicked: {
-                                root.forEachSelectedNick(function(nick) {
-                                    if (modelData.cmd === "kick")
-                                        ircManager.sendRawCommand("KICK " + currentChannel + " " + nick)
-                                    else if (modelData.cmd === "ban")
-                                        ircManager.sendRawCommand("MODE " + currentChannel + " +b " + nick + "!*@*")
-                                    else
-                                        ircManager.sendRawCommand("MODE " + currentChannel + " " + modelData.cmd + " " + nick)
-                                })
-                            }
-                            background: Rectangle {
-                                color: parent.enabled ? (parent.down ? theme.buttonPressed : theme.buttonBg) : theme.buttonDisabled
-                                radius: 2
-                            }
-                            contentItem: Text {
-                                text: parent.text; color: parent.enabled ? theme.buttonText : theme.buttonTextDisabled
-                                font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                            }
-                        }
-                    }
-                }
+            onSelectedNicksUpdated: function(nicks) { root.selectedNicks = nicks }
+            onLastClickedIndexUpdated: function(idx) { root.lastClickedNickIndex = idx }
+            onNickContextMenuRequested: function(nick) {
+                nickContextMenu.targetNick = nick
+                nickContextMenu.popup()
             }
         }
     }

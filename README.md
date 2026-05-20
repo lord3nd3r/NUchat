@@ -19,12 +19,18 @@ A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexCh
 - **Multi-server** — connect to multiple networks simultaneously
 - **SSL/TLS** on all connections with **per-network SASL** (PLAIN/EXTERNAL) and **NickServ auto-identify**
 - **25 built-in themes** — HexChat Dark, Monokai, Dracula, Nord, Gruvbox, Catppuccin, and more
-- **mIRC color codes** — full rendering (foreground, background, bold, italic, underline, hex colors) and input shortcuts (`Ctrl+K` color, `Ctrl+B` bold, `Ctrl+U` underline, `Ctrl+I` italic, `Ctrl+O` reset)
+- **mIRC color codes** — full rendering (foreground, background, bold, italic, underline, hex colors) and input shortcuts
 - **Clickable URLs** with inline image previews
+- **DCC file transfer** — send/receive files with progress, ETA, and speed metrics
 - **Nick list** with multi-select (Ctrl+click, Shift+click) and mode buttons (Op, DeOp, Ban, Kick, Voice, DeVoice)
 - **Tab nick-completion** with cycling
 - **Input history** — Up/Down arrow keys recall previous messages
+- **Paste flood protection** — confirmation dialog when pasting multiple lines
+- **Spell checker** — integrated Hunspell support with squiggly underlines and right-click suggestions
 - **Auto-focus input** — typing anywhere in the window goes to the input bar
+- **Smart chat area** — auto-scroll, jump-to-bottom button, and "new messages" marker line
+- **Collapsible event groups** — groups multiple joins/parts/quits into a single clickable summary line
+- **Lag meter** — visual PING/PONG RTT indicator in the status bar
 - **Scrollback** — loads last 200 lines from logs when rejoining a channel
 - **Channel logging** to `~/.config/NUchat/NUchat/logs/`
 - **60+ command aliases** — see [docs/COMMANDS.md](docs/COMMANDS.md)
@@ -34,10 +40,11 @@ A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexCh
 - **Per-network identity** override (nick, username, real name)
 - **Channel modes on join** — displays mode string when entering a channel
 - **Dynamic title bar** — shows channel, server, and topic (like HexChat)
-- **C++ plugin system**, **Python scripting engine**, and **Lua scripting engine** — HexChat-compatible API for all three (command hooks, print hooks, server hooks)
-- **Migrate from HexChat** — first-launch wizard imports your scripts, server list, and identity from `~/.config/hexchat/`
+- **C++ plugin system**, **Python scripting engine**, and **Lua scripting engine** — HexChat-compatible API
+- **Migrate from HexChat** — first-launch wizard imports your scripts, server list, and identity
 - **ZNC bouncer** support
-- **Desktop integration** — `.desktop` file, SVG icon, `make install` support
+- **Proxy support** — SOCKS4/5 and HTTP CONNECT
+- **Desktop integration** — `.desktop` file, SVG icon, system tray, notifications, `make install` support
 
 ---
 
@@ -98,6 +105,12 @@ Uses GNUInstallDirs — installs binary, desktop file, icon, and plugin/script d
 
 If your IRC server uses a self-signed certificate or one where the hostname doesn't match (common on self-hosted servers), you'll see an SSL error and the connection will be refused. To allow it:
 
+1. Open **Settings → Preferences → Connection**
+2. Check **"Accept self-signed / untrusted SSL certificates"**
+3. Reconnect
+
+This covers hostname mismatches, self-signed certs, and untrusted issuer chains. It does **not** suppress errors for expired certificates or other hard failures.
+
 ## Downloads
 
 Pre-built installers and binaries are available for Windows, macOS, and Linux:
@@ -132,13 +145,7 @@ To bundle the Qt DLLs, run `windeployqt --qmldir ..\qml --no-translations build\
 
 See `CMakeLists.txt` and `src/CMakeLists.txt` for the cross-platform setup. PRs welcome for improvements.
 
-1. Open **Settings → Preferences → Connection**
-2. Check **"Accept self-signed / untrusted SSL certificates"**
-3. Reconnect
 
-This covers hostname mismatches, self-signed certs, and untrusted issuer chains. It does **not** suppress errors for expired certificates or other hard failures.
-
----
 
 ## Migrating from HexChat
 
@@ -215,26 +222,17 @@ Place `.py` files in `~/.config/NUchat/scripts/`. Loaded automatically on startu
 
 ## TODO
 
-### High Priority
-- [ ] DCC file transfer (send/receive)
-- [x] Ignore list (message filtering)
-- [x] Auto-reconnect on disconnect
-- [x] SASL handshake completion (PLAIN/EXTERNAL)
-- [x] Per-network NickServ auto-identify
-- [x] Perform-on-connect commands
+### Planned Features
+- **`echo-message` CAP** — Server echoes your messages back with proper timestamp
+- **`account-notify` / `extended-join`** — Show account info in join messages
+- **Channel LIST improvements** — User count, topic, min/max filter
+- **Per-network auto-join list** — Explicit auto-join channels in Network List dialog
+- **Log rotation** — Configurable per-channel logging enable/disable
+- **SASL SCRAM-SHA-256** — Modern SASL mechanism
+- **Detach/attach tabs** — Float channel tabs into separate windows
+- **AppImage / Flatpak / .deb packaging**
 
-### Features
-- [x] Spell checking
-- [x] Away log
-- [x] URL Grabber
-- [x] Configurable keyboard shortcuts
-- [ ] Detach/attach tabs
-- [x] Proxy support (SOCKS4/5, HTTP CONNECT)
-
-### Packaging
-- [ ] CI/CD pipeline (GitHub Actions)
-- [ ] AppImage / Flatpak / .deb packaging
-- [x] Plugin & scripting API documentation
+See `TODO.md` for the full roadmap.
 
 ---
 

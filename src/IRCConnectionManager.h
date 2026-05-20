@@ -133,6 +133,9 @@ signals:
   void awayLogUpdated();
   void urlGrabbed(const QString &url, const QString &nick,
                   const QString &channel);
+  // Desktop notification trigger: emitted for highlights/PMs on non-active channels
+  void notifyUser(const QString &title, const QString &message,
+                  bool isHighlight, bool isPrivate);
 
 private:
   void wireConnection(IrcConnection *conn);

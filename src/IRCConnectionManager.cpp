@@ -1507,6 +1507,9 @@ void IRCConnectionManager::appendToChannel(const QString &server,
   if (!isActive && (type == "chat" || type == "action")) {
     QString ukey = unreadKey(server, channel);
     bool changed = false;
+    bool isNickHighlight = false;
+    bool isPrivateMsg = false;
+
     if (!m_unread.contains(ukey)) {
       m_unread.insert(ukey);
       changed = true;
@@ -1515,6 +1518,7 @@ void IRCConnectionManager::appendToChannel(const QString &server,
     if (auto *conn = connectionForServer(server)) {
       QString myNick = conn->nickname();
       if (!myNick.isEmpty() && text.contains(myNick, Qt::CaseInsensitive)) {
+        isNickHighlight = true;
         if (!m_highlighted.contains(ukey)) {
           m_highlighted.insert(ukey);
           changed = true;
@@ -1524,6 +1528,7 @@ void IRCConnectionManager::appendToChannel(const QString &server,
     // Also mark all PMs (non-channel targets) as highlighted
     if (!channel.startsWith('#') && !channel.startsWith('&') &&
         channel != server) {
+      isPrivateMsg = true;
       if (!m_highlighted.contains(ukey)) {
         m_highlighted.insert(ukey);
         changed = true;
@@ -1531,6 +1536,21 @@ void IRCConnectionManager::appendToChannel(const QString &server,
     }
     if (changed)
       emit unreadStateChanged();
+
+    // Fire desktop notification for highlights and PMs
+    if (isNickHighlight || isPrivateMsg) {
+      QString title = isPrivateMsg
+          ? QStringLiteral("PM from ") + channel
+          : QStringLiteral("Highlight in ") + channel;
+      // Strip formatting from the message body for notification text
+      QString body = text;
+      // Remove "<nick> " prefix for cleaner notification
+      if (body.startsWith('<')) {
+        int gt = body.indexOf('>');
+        if (gt > 0) body = body.mid(gt + 2);
+      }
+      emit notifyUser(title, body, isNickHighlight, isPrivateMsg);
+    }
   }
 
   // ── URL Grabber — extract URLs from chat/action messages ──

@@ -1,23 +1,59 @@
 #pragma once
 
 #include <QObject>
+#include <QSystemTrayIcon>
 
-class QSystemTrayIcon;
+class QMenu;
+class QAction;
+class QWindow;
+class Settings;
 
-class NotificationManager : public QObject
-{
+class NotificationManager : public QObject {
     Q_OBJECT
 public:
     explicit NotificationManager(QObject *parent = nullptr);
     ~NotificationManager();
 
-    // Show a desktop notification. Falls back to qDebug if tray is unavailable.
-    void notify(const QString &title, const QString &body);
+    /// Wire up settings for preference-aware notifications
+    void setSettings(Settings *settings);
 
-    // Provide an existing tray icon to use for notifications (optional).
-    void setTrayIcon(QSystemTrayIcon *tray);
+    /// Set the application window for show/hide toggle
+    void setWindow(QWindow *window);
+
+    /// Show a desktop notification balloon (respects user prefs)
+    void notify(const QString &title, const QString &body,
+                bool isHighlight = false, bool isPrivate = false);
+
+    /// Update the tray icon to indicate unread messages
+    void setUnreadState(bool hasUnread, bool hasHighlight);
+
+    /// Reset tray icon to normal (called when user reads messages)
+    Q_INVOKABLE void clearUnreadState();
+
+    /// Play a notification sound (respects user prefs)
+    void playSound(bool isHighlight, bool isPrivate);
+
+    /// Whether the system supports tray icons
+    static bool isAvailable() { return QSystemTrayIcon::isSystemTrayAvailable(); }
+
+signals:
+    void showWindowRequested();
+    void quitRequested();
+
+private slots:
+    void onTrayActivated(QSystemTrayIcon::ActivationReason reason);
+    void toggleWindowVisibility();
 
 private:
+    void buildTrayIcon();
+
     QSystemTrayIcon *m_tray = nullptr;
-    bool m_ownsTray = false;
+    QMenu *m_trayMenu = nullptr;
+    QAction *m_showHideAction = nullptr;
+    QAction *m_quitAction = nullptr;
+    QWindow *m_window = nullptr;
+    Settings *m_settings = nullptr;
+    QIcon m_normalIcon;
+    QIcon m_unreadIcon;
+    QIcon m_highlightIcon;
 };

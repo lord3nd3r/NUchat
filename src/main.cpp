@@ -1,7 +1,8 @@
-#include <QGuiApplication>
+#include <QApplication>
 #include <QIcon>
 #include <QSize>
 #include <QStandardPaths>
+#include <QWindow>
 #ifdef QT_QUICK_LIB
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -15,6 +16,7 @@
 #include "IrcConnection.h"
 #include "Logger.h"
 #include "MessageModel.h"
+#include "NotificationManager.h"
 #include "PluginManager.h"
 #include "ScriptManager.h"
 #include "ServerChannelModel.h"
@@ -33,7 +35,7 @@
 #endif
 
 int main(int argc, char *argv[]) {
-  QGuiApplication app(argc, argv);
+  QApplication app(argc, argv);
   app.setOrganizationName("NUchat");
   app.setApplicationName("NUchat");
   app.setApplicationVersion(NUCHAT_VERSION);
@@ -86,6 +88,35 @@ int main(int argc, char *argv[]) {
   manager.setLogger(&logger);
   manager.setSettings(&appSettings);
 
+  // ── System tray and notifications ──
+  NotificationManager notifyMgr;
+  notifyMgr.setSettings(&appSettings);
+
+  // Wire notifications: highlights and PMs trigger desktop notifications + sounds
+  QObject::connect(
+      &manager, &IRCConnectionManager::notifyUser,
+      [&notifyMgr](const QString &title, const QString &message,
+                   bool isHighlight, bool isPrivate) {
+        notifyMgr.notify(title, message, isHighlight, isPrivate);
+        notifyMgr.playSound(isHighlight, isPrivate);
+      });
+
+  // Update tray icon unread state when unread changes
+  QObject::connect(&manager, &IRCConnectionManager::unreadStateChanged,
+                   [&manager, &notifyMgr]() {
+    // Check if any channels have unread or highlights
+    // We use a simple approach: if there's any unread state signal, at least one is unread
+    Q_UNUSED(manager);
+    // The unreadStateChanged signal means something changed — the QML side
+    // manages the actual per-channel state, so just toggle the icon.
+    // For now, set highlight state since that's when we notify.
+    notifyMgr.setUnreadState(true, true);
+  });
+
+  // Quit from tray context menu
+  QObject::connect(&notifyMgr, &NotificationManager::quitRequested,
+                   &app, &QApplication::quit);
+
 #ifdef QT_QUICK_LIB
   QQmlApplicationEngine engine;
   // ensure resources compiled into static library are registered
@@ -126,6 +157,7 @@ int main(int argc, char *argv[]) {
   engine.rootContext()->setContextProperty("luaEngine", luaEngine);
 #endif
   engine.rootContext()->setContextProperty("appSettings", &appSettings);
+  engine.rootContext()->setContextProperty("notifyMgr", &notifyMgr);
   engine.rootContext()->setContextProperty("imgDownloader",
                                            ImageDownloader::instance());
   engine.rootContext()->setContextProperty("appVersion",
@@ -173,6 +205,13 @@ int main(int argc, char *argv[]) {
       },
       Qt::QueuedConnection);
   engine.load(url);
+
+  // Pass the top-level window to the notification manager for show/hide
+  if (!engine.rootObjects().isEmpty()) {
+    QWindow *win = qobject_cast<QWindow *>(engine.rootObjects().first());
+    if (win)
+      notifyMgr.setWindow(win);
+  }
 #endif
 
   // load default theme

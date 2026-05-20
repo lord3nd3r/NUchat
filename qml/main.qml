@@ -53,12 +53,21 @@ ApplicationWindow {
         appSettings.setValue("window/x", root.x)
         appSettings.setValue("window/y", root.y)
         appSettings.sync()
+
+        // If minimize-to-tray is enabled, hide instead of closing
+        var minToTray = appSettings.value("ui/minimizeToTray", false)
+        if ((minToTray === true || minToTray === "true") && typeof notifyMgr !== "undefined") {
+            root.hide()
+            close.accepted = false
+            return
+        }
         close.accepted = true
     }
 
     // ── Auto-focus input: refocus when window becomes active ──
     onActiveChanged: {
         if (active && messageInput) messageInput.forceActiveFocus()
+        if (active && typeof notifyMgr !== "undefined") notifyMgr.clearUnreadState()
     }
 
     // ═══ Configurable Keyboard Shortcuts ═══

@@ -1108,9 +1108,7 @@ ApplicationWindow {
                         function onMessageAdded(formattedLine) {
                             // Live incoming message — fast single-line append
                             chatArea.append(formattedLine)
-                            Qt.callLater(function() {
-                                chatArea.cursorPosition = chatArea.length
-                            })
+                            Qt.callLater(chatArea.scrollToBottom)
                         }
                         function onCleared() {
                             chatArea.text = ""
@@ -1119,17 +1117,21 @@ ApplicationWindow {
                             // Channel switch: set entire text in one shot instead of
                             // N individual append() calls (each re-layouts the document)
                             chatArea.text = msgModel.allFormattedText()
-                            Qt.callLater(function() {
-                                chatArea.cursorPosition = chatArea.length
-                            })
+                            Qt.callLater(chatArea.scrollToBottom)
                         }
+                    }
+
+                    // Scroll the Flickable to the absolute bottom rather than using
+                    // cursorPosition, which stops short of bottom padding and can
+                    // leave the last line partially clipped before the next scroll event.
+                    function scrollToBottom() {
+                        var f = chatScrollView.contentItem
+                        f.contentY = Math.max(0, f.contentHeight - f.height)
                     }
 
                     Component.onCompleted: {
                         text = msgModel.allFormattedText()
-                        Qt.callLater(function() {
-                            chatArea.cursorPosition = chatArea.length
-                        })
+                        Qt.callLater(scrollToBottom)
                     }
                 }
             }

@@ -1227,40 +1227,30 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         QString srv = serverNameFor(conn);
 
         // ── WHOIS replies (311–319, 330, 338, 378, 671) ──
+        // Accumulate all WHOIS lines into a buffer, then display as a
+        // structured block when RPL_ENDOFWHOIS (318) arrives.
         if (code == 311) {
           // RPL_WHOISUSER: <nick> <user> <host> * :<realname>
           QString nick = params.value(0);
           QString user = params.value(1);
           QString host = params.value(2);
-          QString text =
-              "[WHOIS] " + nick + " (" + user + "@" + host + ") : " + trailing;
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+          QString key = srv + "\n" + nick.toLower();
+          m_whoisBuffer[key].clear(); // start fresh
+          m_whoisBuffer[key] << nick + " (" + user + "@" + host + ")";
+          m_whoisBuffer[key] << "  Real name: " + trailing;
         } else if (code == 312) {
           // RPL_WHOISSERVER: <nick> <server> :<server info>
           QString nick = params.value(0);
           QString server = params.value(1);
-          QString text = "[WHOIS] " + nick + " using server " + server + " (" +
-                         trailing + ")";
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+          QString key = srv + "\n" + nick.toLower();
+          m_whoisBuffer[key] << "  Server: " + server + " (" + trailing + ")";
         } else if (code == 313) {
           // RPL_WHOISOPERATOR
           QString nick = params.value(0);
-          QString text = "[WHOIS] " + nick + " " + trailing;
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+          QString key = srv + "\n" + nick.toLower();
+          m_whoisBuffer[key] << "  " + trailing;
         } else if (code == 317) {
-          // RPL_WHOISIDLE: <nick> <seconds> <signon> :seconds idle, signon time
+          // RPL_WHOISIDLE: <nick> <seconds> <signon> :seconds idle
           QString nick = params.value(0);
           int idleSecs = params.value(1).toInt();
           int d = idleSecs / 86400, h = (idleSecs % 86400) / 3600,
@@ -1279,95 +1269,65 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             signonTime = QDateTime::fromSecsSinceEpoch(ts).toString(
                 "yyyy-MM-dd hh:mm:ss");
           }
-          QString text = "[WHOIS] " + nick + " idle " + idle;
+          QString key = srv + "\n" + nick.toLower();
+          QString line = "  Idle: " + idle;
           if (!signonTime.isEmpty())
-            text += ", signed on " + signonTime;
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+            line += " | Signed on: " + signonTime;
+          m_whoisBuffer[key] << line;
         } else if (code == 318) {
-          // RPL_ENDOFWHOIS
+          // RPL_ENDOFWHOIS — flush the accumulated WHOIS block
           QString nick = params.value(0);
-          QString text = "[WHOIS] End of WHOIS for " + nick;
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+          QString key = srv + "\n" + nick.toLower();
+          QString ch = m_activeChannel.isEmpty() ? srv : m_activeChannel;
+
+          if (m_whoisBuffer.contains(key) && !m_whoisBuffer[key].isEmpty()) {
+            // Display as a structured block with separator
+            QString sep = "━━━━━━━━ WHOIS " + nick + " ━━━━━━━━";
+            if (m_msgModel) m_msgModel->addMessage("system", sep);
+            appendToChannel(srv, ch, "system", sep);
+
+            for (const QString &line : m_whoisBuffer[key]) {
+              if (m_msgModel) m_msgModel->addMessage("system", line);
+              appendToChannel(srv, ch, "system", line);
+            }
+
+            QString endSep = "━━━━━━━━ End of WHOIS ━━━━━━━━";
+            if (m_msgModel) m_msgModel->addMessage("system", endSep);
+            appendToChannel(srv, ch, "system", endSep);
+            m_whoisBuffer.remove(key);
+          } else {
+            // No data accumulated (shouldn't happen normally)
+            QString text = "[WHOIS] No information for " + nick;
+            if (m_msgModel) m_msgModel->addMessage("system", text);
+            appendToChannel(srv, ch, "system", text);
+          }
         } else if (code == 319) {
           // RPL_WHOISCHANNELS: <nick> :<channels>
           QString nick = params.value(0);
-          // Build clickable channel links
-          QStringList tokens = trailing.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-          QString channelsHtml;
-          for (const QString &token : tokens) {
-            if (!channelsHtml.isEmpty()) channelsHtml += QLatin1Char(' ');
-            int nameStart = 0;
-            while (nameStart < token.length() &&
-                   QStringLiteral("@%+~&").contains(token[nameStart]))
-              nameStart++;
-            QString modePrefix = token.left(nameStart).toHtmlEscaped();
-            QString chanName   = token.mid(nameStart);
-            if (chanName.isEmpty()) { channelsHtml += modePrefix; continue; }
-            QString href = QStringLiteral("channel://") + chanName;
-            href.replace(QLatin1String("#"), QLatin1String("%23"));
-            channelsHtml += modePrefix +
-                QStringLiteral("<a href=\"") + href +
-                QStringLiteral("\" style=\"color:#4fc3f7;text-decoration:underline;\">") +
-                chanName.toHtmlEscaped() + QStringLiteral("</a>");
-          }
-          QString ts = QStringLiteral("<font color=\"#888888\">[") +
-                       QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss")) +
-                       QStringLiteral("]</font> ");
-          QString html = ts +
-              QStringLiteral("<font color=\"#888888\">*** </font>") +
-              QStringLiteral("[WHOIS] ") + nick.toHtmlEscaped() +
-              QStringLiteral(" channels: ") + channelsHtml;
-          if (m_msgModel)
-            m_msgModel->addMessage("embed", html);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "embed", html);
+          QString key = srv + "\n" + nick.toLower();
+          m_whoisBuffer[key] << "  Channels: " + trailing;
         } else if (code == 330) {
           // RPL_WHOISACCOUNT: <nick> <account> :is logged in as
           QString nick = params.value(0);
           QString acct = params.value(1);
-          QString text = "[WHOIS] " + nick + " " + trailing + " " + acct;
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+          QString key = srv + "\n" + nick.toLower();
+          m_whoisBuffer[key] << "  Account: " + acct;
         } else if (code == 338) {
           // RPL_WHOISACTUALLY: <nick> <ip> :actually using host
           QString nick = params.value(0);
           QString ip = params.value(1);
-          QString text = "[WHOIS] " + nick + " actually using host " + ip;
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+          QString key = srv + "\n" + nick.toLower();
+          m_whoisBuffer[key] << "  Actual host: " + ip;
         } else if (code == 378) {
           // RPL_WHOISHOST: connecting from
           QString nick = params.value(0);
-          QString text = "[WHOIS] " + nick + " " + trailing;
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+          QString key = srv + "\n" + nick.toLower();
+          m_whoisBuffer[key] << "  " + trailing;
         } else if (code == 671) {
           // RPL_WHOISSECURE
           QString nick = params.value(0);
-          QString text = "[WHOIS] " + nick + " " + trailing;
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+          QString key = srv + "\n" + nick.toLower();
+          m_whoisBuffer[key] << "  " + trailing;
         } else if (code == 324) {
           // RPL_CHANNELMODEIS: <channel> <modes> [<mode params>]
           QString channel = params.value(1);

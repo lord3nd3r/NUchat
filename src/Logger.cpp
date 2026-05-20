@@ -37,17 +37,42 @@ QVector<Logger::LogEntry> Logger::loadScrollback(const QString &network,
   QVector<LogEntry> result;
   QString filePath = logFilePath(network, channel);
   QFile file(filePath);
-  if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+  if (!file.open(QIODevice::ReadOnly))
     return result;
 
-  // Read all lines (could be optimised for huge files, but fine for IRC logs)
-  QStringList allLines;
-  QTextStream in(&file);
-  while (!in.atEnd())
-    allLines.append(in.readLine());
+  qint64 fileSize = file.size();
+  if (fileSize == 0) {
+    file.close();
+    return result;
+  }
+
+  // ── Seek from EOF: read backwards in chunks to find enough lines ──
+  // We read 8 KB chunks from the end, accumulating raw bytes until we
+  // have at least maxLines+1 newlines (to guarantee maxLines full lines).
+  constexpr int kChunkSize = 8192;
+  QByteArray tail;
+  qint64 readPos = fileSize;
+  int newlineCount = 0;
+  int targetNewlines = maxLines + 1; // +1 because the last line may not end with \n
+
+  while (readPos > 0 && newlineCount < targetNewlines) {
+    qint64 chunkStart = qMax(qint64(0), readPos - kChunkSize);
+    qint64 toRead = readPos - chunkStart;
+    file.seek(chunkStart);
+    QByteArray chunk = file.read(toRead);
+    tail.prepend(chunk);
+    readPos = chunkStart;
+    // Count newlines in this chunk
+    for (char c : chunk) {
+      if (c == '\n') ++newlineCount;
+    }
+  }
   file.close();
 
-  // Take last maxLines
+  // Split the tail into lines and take the last maxLines
+  QString text = QString::fromUtf8(tail);
+  QStringList allLines = text.split('\n', Qt::SkipEmptyParts);
+
   int start = qMax(0, allLines.size() - maxLines);
   for (int i = start; i < allLines.size(); ++i) {
     const QString &line = allLines[i];

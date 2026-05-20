@@ -307,16 +307,28 @@ void IrcConnection::processLine(const QString &line) {
   emit rawLineReceived(line);
   qDebug() << "[IRC <]" << line;
 
+  // ── IRCv3 message-tags: strip @tags prefix ──
+  // Format: @tag1=val;tag2;tag3=val :prefix COMMAND ...
+  QString rest = line;
+  m_lastTags.clear();
+  if (rest.startsWith('@')) {
+    int sp = rest.indexOf(' ');
+    if (sp > 0) {
+      m_lastTags = parseTags(rest.mid(1, sp - 1));
+      rest = rest.mid(sp + 1).trimmed();
+      emit taggedMessageReceived(m_lastTags);
+    }
+  }
+
   // PING/PONG (no prefix)
-  if (line.startsWith("PING ")) {
-    sendRawImmediate("PONG " + line.mid(5));  // PONG must not be queued
+  if (rest.startsWith("PING ")) {
+    sendRawImmediate("PONG " + rest.mid(5));  // PONG must not be queued
     return;
   }
 
   // Parse: [:prefix] command [params...] [:trailing]
   QString prefix, command, trailing;
   QStringList params;
-  QString rest = line;
 
   if (rest.startsWith(':')) {
     int sp = rest.indexOf(' ');
@@ -370,10 +382,18 @@ void IrcConnection::processLine(const QString &line) {
       bool serverHasSasl = capList.contains("sasl", Qt::CaseInsensitive);
       bool wantSasl = !m_saslMethod.isEmpty() && m_saslMethod != "None";
 
-      if (serverHasSasl && wantSasl) {
-        m_saslInProgress = true;
-        sendRawImmediate("CAP REQ :sasl");
-        qDebug() << "[IRC] Requesting SASL capability";
+      // Build list of IRCv3 capabilities to request
+      QStringList capsToReq;
+      if (capList.contains("server-time", Qt::CaseInsensitive))
+        capsToReq << "server-time";
+      if (serverHasSasl && wantSasl)
+        capsToReq << "sasl";
+
+      if (!capsToReq.isEmpty()) {
+        if (capsToReq.contains("sasl"))
+          m_saslInProgress = true;
+        sendRawImmediate("CAP REQ :" + capsToReq.join(' '));
+        qDebug() << "[IRC] Requesting capabilities:" << capsToReq;
       } else {
         sendRawImmediate("CAP END");
       }
@@ -631,4 +651,28 @@ void IrcConnection::processLine(const QString &line) {
   } else if (command == "ERROR") {
     emit errorOccurred(params.isEmpty() ? "Unknown error" : params.join(" "));
   }
+}
+
+// ── IRCv3 message-tags parser ──
+// Parse "tag1=val;tag2;tag3=escaped\\svalue" into QMap
+QMap<QString, QString> IrcConnection::parseTags(const QString &tagStr) {
+  QMap<QString, QString> tags;
+  const auto parts = tagStr.split(';', Qt::SkipEmptyParts);
+  for (const QString &part : parts) {
+    int eq = part.indexOf('=');
+    if (eq >= 0) {
+      QString key = part.left(eq);
+      QString val = part.mid(eq + 1);
+      // IRCv3 tag value unescaping: \: = ; \s = space \\ = \ \r \n
+      val.replace("\\:", ";");
+      val.replace("\\s", " ");
+      val.replace("\\r", "\r");
+      val.replace("\\n", "\n");
+      val.replace("\\\\", "\\");
+      tags[key] = val;
+    } else {
+      tags[part] = QString();  // boolean tag (no value)
+    }
+  }
+  return tags;
 }

@@ -87,6 +87,10 @@ signals:
     void namesReceived(const QString &channel, const QStringList &names);
     void errorOccurred(const QString &error);
 
+    // IRCv3 message-tags: emitted when a tagged message with a server-time
+    // is received.  tags is the parsed @tag map from the line.
+    void taggedMessageReceived(const QMap<QString, QString> &tags);
+
 private slots:
     void onReadyRead();
     void onSocketConnected();
@@ -133,6 +137,10 @@ private:
 
     // ── Multi-line CAP LS accumulation ──
     QString m_pendingCapLs;  // caps seen so far when server sends CAP * LS *
+
+    // ── IRCv3 message-tags ──
+    QMap<QString, QString> m_lastTags;  // tags from the most recently parsed line
+    static QMap<QString, QString> parseTags(const QString &tagStr);
 
     void processLine(const QString &line);
     void sendRawImmediate(const QString &line);  // bypass flood queue

@@ -183,6 +183,10 @@ private:
     return server + "\n" + channel;
   }
 
+  // ── Structured WHOIS accumulation ──
+  // Key: "server\nnick", Value: accumulated formatted lines
+  QMap<QString, QStringList> m_whoisBuffer;
+
   // ── Ignore list ──
   QStringList m_ignoreList; // nick!user@host masks (wildcards supported)
 

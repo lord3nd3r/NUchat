@@ -1043,16 +1043,20 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            // ── Topic bar ──
+            // ── Topic bar (double-click to edit) ──
             Rectangle {
                 id: topicBarRect
                 Layout.fillWidth: true
                 Layout.minimumHeight: 30
                 Layout.maximumHeight: 60
-                Layout.preferredHeight: topicText.implicitHeight + 12
+                Layout.preferredHeight: topicEditing ? topicEditField.implicitHeight + 12
+                                                     : topicText.implicitHeight + 12
                 color: theme.topicBg
                 visible: root.prefShowTopicBar
 
+                property bool topicEditing: false
+
+                // ── Display mode ──
                 Text {
                     id: topicText
                     anchors.left: parent.left
@@ -1060,6 +1064,7 @@ ApplicationWindow {
                     anchors.leftMargin: 12
                     anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
+                    visible: !topicBarRect.topicEditing
                     text: {
                         if (currentChannel === "") return "No channel selected"
                         var t = root.channelTopic
@@ -1075,6 +1080,54 @@ ApplicationWindow {
                     wrapMode: Text.Wrap
                     maximumLineCount: 3
                     elide: Text.ElideRight
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onDoubleClicked: {
+                            if (currentChannel === "" || !currentChannel.startsWith('#')) return
+                            topicBarRect.topicEditing = true
+                            topicEditField.text = root.channelTopic || ""
+                            topicEditField.forceActiveFocus()
+                            topicEditField.selectAll()
+                        }
+                    }
+                }
+
+                // ── Edit mode ──
+                TextField {
+                    id: topicEditField
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: topicBarRect.topicEditing
+                    color: theme.textPrimary
+                    font.pixelSize: 12
+                    placeholderText: "Enter new topic..."
+                    placeholderTextColor: theme.textMuted
+                    background: Rectangle {
+                        color: Qt.darker(theme.topicBg, 1.2)
+                        border.color: theme.accent
+                        border.width: 1
+                        radius: 3
+                    }
+
+                    Keys.onReturnPressed: {
+                        if (text.trim() !== "") {
+                            ircManager.sendCommand(currentServer, "/topic " + currentChannel + " " + text)
+                        }
+                        topicBarRect.topicEditing = false
+                        messageInput.forceActiveFocus()
+                    }
+                    Keys.onEnterPressed: Keys.onReturnPressed(event)
+                    Keys.onEscapePressed: {
+                        topicBarRect.topicEditing = false
+                        messageInput.forceActiveFocus()
+                    }
+                    onActiveFocusChanged: {
+                        if (!activeFocus) topicBarRect.topicEditing = false
+                    }
                 }
             }
 

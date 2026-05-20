@@ -194,12 +194,7 @@ void IRCConnectionManager::sendMessage(const QString &target,
   ChannelKey key{m_activeServer, target};
   if (m_users.contains(key)) {
     for (const QString &u : m_users[key]) {
-      QString bare = u;
-      QString pfx;
-      while (!bare.isEmpty() && QString("~&@%+").contains(bare[0])) {
-        pfx += bare[0];
-        bare = bare.mid(1);
-      }
+      auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
       if (bare.compare(nick, Qt::CaseInsensitive) == 0) {
         if (!pfx.isEmpty())
           displayNick = pfx[0] + nick;
@@ -253,12 +248,7 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
           ChannelKey key{m_activeServer, ch};
           if (m_users.contains(key)) {
             for (const QString &u : m_users[key]) {
-              QString bare = u;
-              QString pfx;
-              while (!bare.isEmpty() && QString("~&@%+").contains(bare[0])) {
-                pfx += bare[0];
-                bare = bare.mid(1);
-              }
+              auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
               if (bare.compare(nick, Qt::CaseInsensitive) == 0) {
                 if (!pfx.isEmpty())
                   displayNick = pfx[0] + nick;
@@ -776,12 +766,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             ChannelKey key{srv, channel};
             if (m_users.contains(key)) {
               for (const QString &u : m_users[key]) {
-                QString bare = u;
-                QString pfx;
-                while (!bare.isEmpty() && QString("~&@%+").contains(bare[0])) {
-                  pfx += bare[0];
-                  bare = bare.mid(1);
-                }
+                auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
                 if (bare.compare(nick, Qt::CaseInsensitive) == 0) {
                   if (!pfx.isEmpty())
                     displayNick = pfx[0] + nick;
@@ -929,10 +914,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           users.erase(std::remove_if(
                           users.begin(), users.end(),
                           [&](const QString &u) {
-                            QString bare = u;
-                            while (!bare.isEmpty() &&
-                                   QString("~&@%+").contains(bare[0]))
-                              bare = bare.mid(1);
+                            auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
                             return bare.compare(nick, Qt::CaseInsensitive) == 0;
                           }),
                       users.end());
@@ -961,10 +943,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           users.erase(std::remove_if(
                           users.begin(), users.end(),
                           [&](const QString &u) {
-                            QString bare = u;
-                            while (!bare.isEmpty() &&
-                                   QString("~&@%+").contains(bare[0]))
-                              bare = bare.mid(1);
+                            auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
                             return bare.compare(nick, Qt::CaseInsensitive) == 0;
                           }),
                       users.end());
@@ -1004,10 +983,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           users.erase(
               std::remove_if(users.begin(), users.end(),
                              [&](const QString &u) {
-                               QString bare = u;
-                               while (!bare.isEmpty() &&
-                                      QString("~&@%+").contains(bare[0]))
-                                 bare = bare.mid(1);
+                               auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
                                return bare.compare(kicked,
                                                    Qt::CaseInsensitive) == 0;
                              }),
@@ -1035,12 +1011,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
               auto &users = it.value();
               for (int i = 0; i < users.size(); i++) {
                 QString entry = users[i];
-                QString prefix;
-                QString bare = entry;
-                while (!bare.isEmpty() && QString("~&@%+").contains(bare[0])) {
-                  prefix += bare[0];
-                  bare = bare.mid(1);
-                }
+                auto [prefix, bare] = IrcConnection::stripNickPrefix(entry);
                 if (bare.compare(oldNick, Qt::CaseInsensitive) == 0) {
                   users[i] = prefix + newNick;
                   appendToChannel(srv, it.key().channel, "system", text);
@@ -1505,7 +1476,14 @@ void IRCConnectionManager::appendToChannel(const QString &server,
   msg.type = type;
   msg.text = text;
   msg.timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
-  m_history[key].append(msg);
+  auto &hist = m_history[key];
+  hist.append(msg);
+
+  // Enforce per-channel history cap to prevent unbounded memory growth
+  if (hist.size() > kMaxHistoryPerChannel) {
+    int excess = hist.size() - kMaxHistoryPerChannel;
+    hist.remove(0, excess);
+  }
 
   // Log to file
   if (m_logger)

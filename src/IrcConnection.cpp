@@ -11,6 +11,10 @@ IrcConnection::IrcConnection(QObject *parent)
           &IrcConnection::onDisconnectedSlot);
   connect(m_socket, qOverload<const QList<QSslError> &>(&QSslSocket::sslErrors),
           this, &IrcConnection::onSslErrors);
+
+  // Flood protection: drain one queued message per timer tick
+  m_sendTimer.setInterval(kDrainIntervalMs);
+  connect(&m_sendTimer, &QTimer::timeout, this, &IrcConnection::drainSendQueue);
 }
 
 IrcConnection::~IrcConnection() = default;
@@ -49,14 +53,52 @@ void IrcConnection::disconnectFromServer(const QString &quitMsg) {
 }
 
 void IrcConnection::sendRaw(const QString &line) {
-  if (m_socket->state() == QAbstractSocket::ConnectedState ||
-      m_socket->state() == QAbstractSocket::BoundState) {
-    QByteArray data = line.toUtf8();
-    data.append("\r\n");
-    m_socket->write(data);
-    m_socket->flush();
-    qDebug() << "[IRC >]" << line;
+  if (m_socket->state() != QAbstractSocket::ConnectedState &&
+      m_socket->state() != QAbstractSocket::BoundState)
+    return;
+
+  // Flood protection: burst-then-throttle.
+  // Allow kBurst messages instantly, then queue the rest.
+  if (m_burstRemaining > 0) {
+    --m_burstRemaining;
+    sendRawImmediate(line);
+    if (!m_sendTimer.isActive())
+      m_sendTimer.start();
+  } else {
+    m_sendQueue.enqueue(line);
+    if (!m_sendTimer.isActive())
+      m_sendTimer.start();
   }
+}
+
+void IrcConnection::sendRawImmediate(const QString &line) {
+  QByteArray data = line.toUtf8();
+  data.append("\r\n");
+  m_socket->write(data);
+  m_socket->flush();
+  qDebug() << "[IRC >]" << line;
+}
+
+void IrcConnection::drainSendQueue() {
+  if (m_sendQueue.isEmpty()) {
+    // Nothing queued — replenish burst tokens and stop the timer
+    m_burstRemaining = kBurst;
+    m_sendTimer.stop();
+    return;
+  }
+  // Send one queued message
+  QString line = m_sendQueue.dequeue();
+  sendRawImmediate(line);
+}
+
+QPair<QString, QString> IrcConnection::stripNickPrefix(const QString &nick) {
+  static const QString prefixes = QStringLiteral("~&@%+");
+  QString pfx, bare = nick;
+  while (!bare.isEmpty() && prefixes.contains(bare[0])) {
+    pfx += bare[0];
+    bare = bare.mid(1);
+  }
+  return {pfx, bare};
 }
 
 void IrcConnection::setNickname(const QString &nick) {
@@ -113,7 +155,34 @@ void IrcConnection::partChannel(const QString &channel, const QString &reason) {
 }
 
 void IrcConnection::sendMessage(const QString &target, const QString &message) {
-  sendRaw(QString("PRIVMSG %1 :%2").arg(target, message));
+  // IRC line limit: 512 bytes including CRLF.  The server prepends our
+  // prefix (:nick!user@host) which can be up to ~70 bytes.  Leave room:
+  // 512 - 2(CRLF) - 70(prefix) - len("PRIVMSG  :") = ~430 usable bytes.
+  // For safety we use 400 as the max payload per chunk.
+  constexpr int kMaxPayload = 400;
+  QByteArray targetUtf8 = target.toUtf8();
+  int overhead = QByteArray("PRIVMSG  :").size() + targetUtf8.size();
+  int maxMsg = kMaxPayload - overhead;
+  if (maxMsg < 50) maxMsg = 50;  // safety floor
+
+  QByteArray msgUtf8 = message.toUtf8();
+  if (msgUtf8.size() <= maxMsg) {
+    sendRaw(QString("PRIVMSG %1 :%2").arg(target, message));
+    return;
+  }
+
+  // Split at UTF-8 safe boundaries
+  int pos = 0;
+  while (pos < msgUtf8.size()) {
+    int end = qMin(pos + maxMsg, (int)msgUtf8.size());
+    // Don't split in the middle of a multi-byte UTF-8 sequence
+    while (end > pos && (msgUtf8[end] & 0xC0) == 0x80)
+      --end;
+    if (end == pos) end = pos + maxMsg; // pathological: force advance
+    QByteArray chunk = msgUtf8.mid(pos, end - pos);
+    sendRaw(QString("PRIVMSG %1 :%2").arg(target, QString::fromUtf8(chunk)));
+    pos = end;
+  }
 }
 
 void IrcConnection::sendNotice(const QString &target, const QString &notice) {
@@ -215,17 +284,18 @@ void IrcConnection::onSslErrors(const QList<QSslError> &errors) {
 // ── IRC Protocol ──
 
 void IrcConnection::sendRegistration() {
-  // CAP negotiation — request sasl if configured
-  sendRaw("CAP LS 302");
+  // Registration messages bypass the flood queue — they must go immediately
+  // or the server will time us out.
+  sendRawImmediate("CAP LS 302");
 
   if (!m_password.isEmpty()) {
-    sendRaw("PASS " + m_password);
+    sendRawImmediate("PASS " + m_password);
     m_password.fill('\0');
     m_password.clear();
   }
 
-  sendRaw("NICK " + m_nickname);
-  sendRaw("USER " + m_username + " 0 * :" + m_realname);
+  sendRawImmediate("NICK " + m_nickname);
+  sendRawImmediate("USER " + m_username + " 0 * :" + m_realname);
 }
 
 QString IrcConnection::nickFromPrefix(const QString &prefix) {
@@ -239,7 +309,7 @@ void IrcConnection::processLine(const QString &line) {
 
   // PING/PONG (no prefix)
   if (line.startsWith("PING ")) {
-    sendRaw("PONG " + line.mid(5));
+    sendRawImmediate("PONG " + line.mid(5));  // PONG must not be queued
     return;
   }
 
@@ -278,38 +348,55 @@ void IrcConnection::processLine(const QString &line) {
     // params: [nick] [subcommand] ... [trailing]
     QString sub = (params.size() >= 2) ? params[1].toUpper() : "";
     if (sub == "LS") {
-      // Check if server supports sasl and we want it
+      // Multi-line CAP LS: if the second param (after nick) is "*", more
+      // lines follow.  Accumulate until the final line (no "*").
+      bool more = (params.size() >= 3 && params[2] == "*");
       QString capList = params.last();
+
+      if (more) {
+        // Continuation line — accumulate caps
+        if (!m_pendingCapLs.isEmpty())
+          m_pendingCapLs += " ";
+        m_pendingCapLs += capList;
+        return;  // wait for more lines
+      }
+
+      // Final line (or single-line LS)
+      if (!m_pendingCapLs.isEmpty()) {
+        capList = m_pendingCapLs + " " + capList;
+        m_pendingCapLs.clear();
+      }
+
       bool serverHasSasl = capList.contains("sasl", Qt::CaseInsensitive);
       bool wantSasl = !m_saslMethod.isEmpty() && m_saslMethod != "None";
 
       if (serverHasSasl && wantSasl) {
         m_saslInProgress = true;
-        sendRaw("CAP REQ :sasl");
+        sendRawImmediate("CAP REQ :sasl");
         qDebug() << "[IRC] Requesting SASL capability";
       } else {
-        sendRaw("CAP END");
+        sendRawImmediate("CAP END");
       }
     } else if (sub == "ACK") {
       QString acked = params.last();
       if (acked.contains("sasl", Qt::CaseInsensitive)) {
         // Start SASL authentication
         if (m_saslMethod == "PLAIN") {
-          sendRaw("AUTHENTICATE PLAIN");
+          sendRawImmediate("AUTHENTICATE PLAIN");
         } else if (m_saslMethod == "EXTERNAL") {
-          sendRaw("AUTHENTICATE EXTERNAL");
+          sendRawImmediate("AUTHENTICATE EXTERNAL");
         } else {
           // Unsupported method, just end
           qDebug() << "[IRC] Unsupported SASL method:" << m_saslMethod;
           m_saslInProgress = false;
-          sendRaw("CAP END");
+          sendRawImmediate("CAP END");
         }
       } else {
-        sendRaw("CAP END");
+        sendRawImmediate("CAP END");
       }
     } else if (sub == "NAK") {
       m_saslInProgress = false;
-      sendRaw("CAP END");
+      sendRawImmediate("CAP END");
     }
     return;
   }
@@ -322,7 +409,7 @@ void IrcConnection::processLine(const QString &line) {
         QString authStr =
             m_saslUser + QChar('\0') + m_saslUser + QChar('\0') + m_saslPass;
         QByteArray encoded = authStr.toUtf8().toBase64();
-        sendRaw("AUTHENTICATE " + QString::fromLatin1(encoded));
+        sendRawImmediate("AUTHENTICATE " + QString::fromLatin1(encoded));
         qDebug() << "[IRC] Sent SASL PLAIN credentials for" << m_saslUser;
         // Zero credentials from memory immediately after use
         m_saslPass.fill('\0');
@@ -330,7 +417,7 @@ void IrcConnection::processLine(const QString &line) {
         m_saslUser.fill('\0');
         m_saslUser.clear();
       } else if (m_saslMethod == "EXTERNAL") {
-        sendRaw("AUTHENTICATE +");
+        sendRawImmediate("AUTHENTICATE +");
         qDebug() << "[IRC] Sent SASL EXTERNAL (empty)";
       }
     }
@@ -399,7 +486,7 @@ void IrcConnection::processLine(const QString &line) {
     else if (numeric == 903) {
       m_saslInProgress = false;
       qDebug() << "[IRC] SASL authentication successful";
-      sendRaw("CAP END");
+      sendRawImmediate("CAP END");
     }
     // ERR_SASLFAIL (904), ERR_SASLTOOLONG (905), ERR_SASLABORTED (906),
     // ERR_SASLALREADY (907)
@@ -409,7 +496,7 @@ void IrcConnection::processLine(const QString &line) {
       qDebug() << "[IRC] SASL authentication failed (" << numeric << ")";
       emit errorOccurred("SASL authentication failed (" +
                          QString::number(numeric) + "): " + numTrailing);
-      sendRaw("CAP END");
+      sendRawImmediate("CAP END");
     }
     // RPL_TOPIC (332)
     else if (numeric == 332 && numParams.size() >= 2) {

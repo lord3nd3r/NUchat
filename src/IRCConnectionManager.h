@@ -161,6 +161,7 @@ private:
   QString m_activeChannel;
 
   // Per-channel message history
+  static constexpr int kMaxHistoryPerChannel = 5000;
   QMap<ChannelKey, QVector<StoredMessage>> m_history;
 
   // Per-channel topic and user lists

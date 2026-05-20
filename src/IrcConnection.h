@@ -1,9 +1,11 @@
 #pragma once
 
 #include <QObject>
+#include <QQueue>
 #include <QSet>
 #include <QStringList>
 #include <QMap>
+#include <QTimer>
 #include <QtNetwork/QSslSocket>
 #include <QtNetwork/QNetworkProxy>
 
@@ -22,6 +24,9 @@ public:
     void connectToServer(const QString &host, quint16 port = 6697, bool useSsl = true);
     void disconnectFromServer(const QString &quitMsg = "NUchat");
     Q_INVOKABLE void sendRaw(const QString &line);
+
+    // Strip IRC mode prefixes (~&@%+) from a nick; returns {prefix, bare_nick}
+    static QPair<QString, QString> stripNickPrefix(const QString &nick);
 
     // Identity
     QString nickname() const { return m_nickname; }
@@ -87,6 +92,7 @@ private slots:
     void onSocketConnected();
     void onDisconnectedSlot();
     void onSslErrors(const QList<QSslError> &errors);
+    void drainSendQueue();
 
 private:
     QSslSocket *m_socket;
@@ -116,7 +122,20 @@ private:
     QMap<QString, QStringList> m_channelNames;
     QSet<QString> m_namesStarted;   // channels with an in-progress 353 sequence
 
+    // ── Flood protection ──
+    // Burst-then-throttle: allow up to kBurst messages instantly, then
+    // drain the queue at kDrainIntervalMs.
+    static constexpr int kBurst = 5;
+    static constexpr int kDrainIntervalMs = 1000;  // 1 message per second
+    QQueue<QString> m_sendQueue;
+    QTimer m_sendTimer;
+    int m_burstRemaining = kBurst;
+
+    // ── Multi-line CAP LS accumulation ──
+    QString m_pendingCapLs;  // caps seen so far when server sends CAP * LS *
+
     void processLine(const QString &line);
+    void sendRawImmediate(const QString &line);  // bypass flood queue
 
     // Allow unit tests to drive processLine() directly
     friend class IrcConnectionTestable;

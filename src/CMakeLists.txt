@@ -4,6 +4,7 @@
 set(CORE_SRC
     IrcConnection.cpp
     IRCConnectionManager.cpp
+    CommandTable.cpp
     MessageParser.cpp
     PluginManager.cpp
     Settings.cpp

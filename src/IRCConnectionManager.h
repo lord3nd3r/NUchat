@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+#include <QHash>
 #include <QMap>
 #include <QObject>
 #include <QSet>
@@ -151,6 +153,13 @@ private:
   void attemptReconnect(const QString &host);
   void applyProxySettings(IrcConnection *conn);
   void ensureScrollbackLoaded(const QString &server, const QString &channel);
+  // ── Command dispatch table ──
+  // Each handler receives (conn, target, args) and returns true if consumed.
+  using CommandHandler = std::function<bool(IrcConnection *conn,
+                                            const QString &target,
+                                            const QString &args)>;
+  QHash<QString, CommandHandler> m_commandTable;
+  void initCommandTable();
   // Dispatch /command input — returns true if the message was consumed.
   bool handleSlashCommand(IrcConnection *conn, const QString &target,
                           const QString &cmd, const QString &args);

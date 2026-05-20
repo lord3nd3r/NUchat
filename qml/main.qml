@@ -1564,7 +1564,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             visible: root.prefShowUserList && currentChannel !== "" && currentChannel.startsWith("#")
 
-            theme: root.theme
+            theme: theme
             channelUsers: root.channelUsers
             currentChannel: root.currentChannel
             selectedNicks: root.selectedNicks

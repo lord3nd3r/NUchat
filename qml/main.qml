@@ -173,6 +173,7 @@ ApplicationWindow {
     property int historyIndex: -1
     property string historyStash: ""  // stash current input when browsing history
     property string channelTopic: ircManager.channelTopic
+    property string channelModes: ""
     property var channelUsers: ircManager.channelUsers
     property var selectedNicks: []       // multi-select nick list (bare nicks, no prefix)
     property int lastClickedNickIndex: -1  // for shift-click range select
@@ -212,6 +213,7 @@ ApplicationWindow {
             currentServer = srv; currentChannel = entry.name
             ircManager.switchToChannel(srv, entry.name)
             channelTopic = ircManager.channelTopic; channelUsers = ircManager.channelUsers
+            channelModes = ircManager.channelModes()
         } else {
             currentServer = entry.name; currentChannel = ""
             ircManager.switchToChannel(entry.name, entry.name)
@@ -281,6 +283,10 @@ ApplicationWindow {
             if (noScripts)
                 Qt.callLater(function() { hexchatMigrateDialog.open() })
         }
+
+        // Apply saved timestamp format (default: "hh:mm:ss")
+        var tsFmt = appSettings.value("ui/timestampFormat", "hh:mm:ss")
+        if (tsFmt) msgModel.setTimestampFormat(tsFmt)
     }
 
     // ── Menu Bar ──
@@ -715,6 +721,49 @@ ApplicationWindow {
                     clip: true
                     currentIndex: -1
                     boundsBehavior: Flickable.StopAtBounds
+                    focus: false  // don't steal focus from input by default
+                    keyNavigationEnabled: false  // we handle keys ourselves
+
+                    // ── Keyboard navigation for sidebar ──
+                    Keys.onUpPressed: function(event) {
+                        if (currentIndex > 0) {
+                            currentIndex--
+                            sidebarClickAt(currentIndex)
+                        }
+                        event.accepted = true
+                    }
+                    Keys.onDownPressed: function(event) {
+                        if (currentIndex < channelListModel.count - 1) {
+                            currentIndex++
+                            sidebarClickAt(currentIndex)
+                        }
+                        event.accepted = true
+                    }
+                    Keys.onPressed: function(event) {
+                        if (event.key === Qt.Key_PageUp) {
+                            var newIdx = Math.max(0, currentIndex - 10)
+                            currentIndex = newIdx
+                            sidebarClickAt(currentIndex)
+                            event.accepted = true
+                        } else if (event.key === Qt.Key_PageDown) {
+                            var newIdx2 = Math.min(channelListModel.count - 1, currentIndex + 10)
+                            currentIndex = newIdx2
+                            sidebarClickAt(currentIndex)
+                            event.accepted = true
+                        } else if (event.key === Qt.Key_Home) {
+                            currentIndex = 0
+                            sidebarClickAt(currentIndex)
+                            event.accepted = true
+                        } else if (event.key === Qt.Key_End) {
+                            currentIndex = channelListModel.count - 1
+                            sidebarClickAt(currentIndex)
+                            event.accepted = true
+                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                            // Enter returns focus to the message input
+                            messageInput.forceActiveFocus()
+                            event.accepted = true
+                        }
+                    }
 
                     // ── Drag-and-drop state for channel reordering ──
                     property int dragFromIndex: -1
@@ -1005,8 +1054,11 @@ ApplicationWindow {
                     text: {
                         if (currentChannel === "") return "No channel selected"
                         var t = root.channelTopic
-                        if (t && t !== "") return currentChannel + " — " + t
-                        return currentChannel
+                        var m = root.channelModes
+                        var header = currentChannel
+                        if (m && m !== "") header += " <font color='" + theme.textMuted + "'>(" + m + ")</font>"
+                        if (t && t !== "") header += " — " + t
+                        return header
                     }
                     textFormat: Text.RichText
                     color: theme.textMuted
@@ -1889,6 +1941,9 @@ ApplicationWindow {
         }
         function onChannelUsersChanged(users) {
             root.channelUsers = users
+        }
+        function onChannelModesChanged(modes) {
+            root.channelModes = modes
         }
     }
 

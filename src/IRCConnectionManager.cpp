@@ -319,6 +319,8 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
         emit awayStateChanged(false);
       } else if (cmd == "WHOIS" || cmd == "W" || cmd == "WI") {
         conn->whois(args.trimmed());
+      } else if (cmd == "WHOWAS" || cmd == "WW") {
+        conn->sendRaw("WHOWAS " + args.trimmed());
       } else if (cmd == "RAW" || cmd == "QUOTE") {
         conn->sendRaw(args);
       } else if (cmd == "TOPIC" || cmd == "T") {
@@ -610,6 +612,7 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
   emit currentNickChanged(currentNick());
   emit channelTopicChanged(channelTopic());
   emit channelUsersChanged(channelUsers());
+  emit channelModesChanged(channelModes());
 }
 
 void IRCConnectionManager::openQuery(const QString &serverName,
@@ -646,6 +649,11 @@ QString IRCConnectionManager::currentNick() const {
 QString IRCConnectionManager::channelTopic() const {
   ChannelKey key{m_activeServer, m_activeChannel};
   return MessageModel::ircToHtml(m_topics.value(key));
+}
+
+QString IRCConnectionManager::channelModes() const {
+  ChannelKey key{m_activeServer, m_activeChannel};
+  return m_modes.value(key);
 }
 
 static int prefixRank(const QString &nick) {
@@ -1368,6 +1376,11 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           QString text = "Channel modes for " + channel + ": " + modes;
           if (!modeParams.isEmpty())
             text += " " + modeParams.join(" ");
+          // Store the mode string for display in the topic bar
+          ChannelKey key{srv, channel};
+          m_modes[key] = modes;
+          if (m_activeServer == srv && m_activeChannel == channel)
+            emit channelModesChanged(modes);
           appendToChannel(srv, channel, "system", text);
           if (m_msgModel && m_activeServer == srv && m_activeChannel == channel)
             m_msgModel->addMessage("system", text);

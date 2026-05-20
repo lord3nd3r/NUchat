@@ -638,6 +638,10 @@ void MessageModel::setHighlightEnabled(bool enabled) {
   m_highlightEnabled = enabled;
 }
 
+void MessageModel::setTimestampFormat(const QString &fmt) {
+  m_timestampFormat = fmt.isEmpty() ? QStringLiteral("hh:mm:ss") : fmt;
+}
+
 QString MessageModel::nickColor(const QString &nick) {
   // DJB2 hash for consistent color assignment
   uint hash = 5381;
@@ -735,7 +739,7 @@ QString MessageModel::formatLine(const Message &msg) const {
     return msg.text;
 
   QString ts = QStringLiteral("<font color=\"#888888\">[") +
-               msg.timestamp.toString(QStringLiteral("hh:mm:ss")) +
+               msg.timestamp.toString(m_timestampFormat) +
                QStringLiteral("]</font> ");
   QString prefix;
   if (msg.type == QLatin1String("system"))

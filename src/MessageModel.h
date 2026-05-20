@@ -41,6 +41,7 @@ public:
                                         const QString &timestamp) const;
   Q_INVOKABLE void setNickname(const QString &nick);
   Q_INVOKABLE void setHighlightEnabled(bool enabled);
+  Q_INVOKABLE void setTimestampFormat(const QString &fmt);
   // Batch-load mode: suppresses per-message signals during a channel switch.
   // Call beginBatch() before inserting, endBatch() when done; QML receives a
   // single reloaded() signal instead of N messageAdded() signals.
@@ -67,4 +68,5 @@ private:
   QString m_nickname;
   bool m_highlightEnabled = false;
   bool m_batchMode = false;
+  QString m_timestampFormat = QStringLiteral("hh:mm:ss");
 };

@@ -346,9 +346,15 @@ Dialog {
                         Text { text: "Timestamp format:"; color: "#ccc"; font.pixelSize: 12 }
                         ComboBox {
                             id: cboTimestampFmt
-                            model: ["[HH:mm:ss]", "[HH:mm]", "[h:mm AP]", "HH:mm:ss"]
-                            Layout.preferredWidth: 160
-                            onCurrentIndexChanged: saveSetting("ui/timestampFmtIndex", currentIndex)
+                            model: ["hh:mm:ss", "hh:mm", "h:mm AP", "yyyy-MM-dd hh:mm:ss"]
+                            Layout.preferredWidth: 200
+                            onCurrentIndexChanged: {
+                                saveSetting("ui/timestampFmtIndex", currentIndex)
+                                var fmt = model[currentIndex]
+                                appSettings.setValue("ui/timestampFormat", fmt)
+                                appSettings.sync()
+                                msgModel.setTimestampFormat(fmt)
+                            }
                         }
                     }
                     RowLayout {

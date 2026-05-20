@@ -94,6 +94,7 @@ public:
   QString currentNick() const;
   QString channelTopic() const;
   QStringList channelUsers() const;
+  Q_INVOKABLE QString channelModes() const;
 
   // Channel message history
   struct ChannelKey {
@@ -124,6 +125,7 @@ signals:
   void serverRegistered(const QString &host);
   void channelTopicChanged(const QString &topic);
   void channelUsersChanged(const QStringList &users);
+  void channelModesChanged(const QString &modes);
   void rawLineReceived(const QString &direction, const QString &line);
   void unreadStateChanged();
   void ignoreListChanged();
@@ -167,6 +169,7 @@ private:
   // Per-channel topic and user lists
   QMap<ChannelKey, QString> m_topics;
   QMap<ChannelKey, QStringList> m_users;
+  QMap<ChannelKey, QString> m_modes;  // per-channel mode string (+nst etc.)
 
   // Unread / highlight tracking
   QSet<QString> m_unread;      // "server\nchannel" keys with new messages

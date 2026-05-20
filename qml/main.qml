@@ -1119,6 +1119,8 @@ ApplicationWindow {
                             // as soon as the HTML layout engine finalises the content.
                             chatArea.pendingScrollToBottom = true
                             chatArea.text = msgModel.allFormattedText()
+                            // Deferred scroll for the common fast-render case
+                            Qt.callLater(chatArea.scrollToBottom)
                         }
                     }
 
@@ -1136,12 +1138,18 @@ ApplicationWindow {
                         }
                     }
 
-                    // Stop auto-scrolling once height has been stable for 300 ms.
+                    // Stop auto-scrolling once content height has been stable for
+                    // 500 ms.  Perform one final scroll when the timer fires to
+                    // guarantee we land at the true bottom even if late layout
+                    // passes snuck in after the last contentHeight signal.
                     Timer {
                         id: scrollSettleTimer
-                        interval: 300
+                        interval: 500
                         repeat: false
-                        onTriggered: chatArea.pendingScrollToBottom = false
+                        onTriggered: {
+                            chatArea.scrollToBottom()
+                            chatArea.pendingScrollToBottom = false
+                        }
                     }
 
                     // Scroll the Flickable to the absolute bottom rather than using

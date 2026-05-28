@@ -109,12 +109,17 @@ public:
     QString server;
     QString channel;
     bool operator<(const ChannelKey &o) const {
-      if (server != o.server)
-        return server < o.server;
-      return channel < o.channel;
+      int cmp = server.compare(o.server, Qt::CaseInsensitive);
+      if (cmp != 0)
+        return cmp < 0;
+      return channel.compare(o.channel, Qt::CaseInsensitive) < 0;
     }
     bool operator==(const ChannelKey &o) const {
-      return server == o.server && channel == o.channel;
+      return server.compare(o.server, Qt::CaseInsensitive) == 0 &&
+             channel.compare(o.channel, Qt::CaseInsensitive) == 0;
+    }
+    friend size_t qHash(const ChannelKey &k, size_t seed = 0) {
+      return qHash(k.server.toLower(), seed) ^ qHash(k.channel.toLower(), seed);
     }
   };
 
@@ -163,6 +168,7 @@ private:
   void attemptReconnect(const QString &host);
   void applyProxySettings(IrcConnection *conn);
   void ensureScrollbackLoaded(const QString &server, const QString &channel);
+  void cleanupChannelState(const QString &server, const QString &channel);
   // ── Command dispatch table ──
   // Each handler receives (conn, target, args) and returns true if consumed.
   using CommandHandler = std::function<bool(IrcConnection *conn,
@@ -213,10 +219,15 @@ private:
   DccManager *m_dccManager = nullptr;
 
   // ── Lag meter ──
+  // Per-connection lag tracking for multi-server support
+  struct LagState {
+    QElapsedTimer pingSent;
+    bool pending = false;
+    int lagMs = -1;
+  };
   QTimer m_lagTimer;
-  QElapsedTimer m_lagPingSent;
-  bool m_lagPingPending = false;
-  int m_lagMs = -1; // -1 = unknown
+  QMap<IrcConnection *, LagState> m_lagState;
+  int m_lagMs = -1; // -1 = unknown (aggregate / active connection)
 
   // ── Auto-reconnect state ──
   struct ReconnectInfo {
@@ -255,5 +266,8 @@ private:
     QString channel;
     QString timestamp;
   };
+  static constexpr int kMaxGrabbedUrls = 500;
   QVector<GrabbedUrl> m_grabbedUrls;
+
+  static constexpr int kMaxAwayLogEntries = 500;
 };

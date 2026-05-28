@@ -74,15 +74,32 @@ int main(int argc, char *argv[]) {
   ServerChannelModel treeModel;
   MessageModel msgModel;
   Settings appSettings;
-  // allocate script manager on heap to avoid destructor crash
+  // Scripting engines must be destroyed before the manager, but after the
+  // event loop ends.  Using QObject parent=&manager would crash because
+  // QObject children are destroyed in reverse order and the engines
+  // reference manager internals.  Instead, destroy them explicitly on
+  // aboutToQuit (which fires before stack-allocated objects unwind).
   ScriptManager *scriptMgr = new ScriptManager(&manager);
   PluginManager pluginMgr;
 #ifdef HAVE_PYTHON
-  PythonScriptEngine *pyEngine = new PythonScriptEngine(&manager, &manager);
+  PythonScriptEngine *pyEngine = new PythonScriptEngine(&manager, nullptr);
 #endif
 #ifdef HAVE_LUA
-  LuaScriptEngine *luaEngine = new LuaScriptEngine(&manager, &manager);
+  LuaScriptEngine *luaEngine = new LuaScriptEngine(&manager, nullptr);
 #endif
+
+  QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
+#ifdef HAVE_LUA
+    delete luaEngine;
+    luaEngine = nullptr;
+#endif
+#ifdef HAVE_PYTHON
+    delete pyEngine;
+    pyEngine = nullptr;
+#endif
+    delete scriptMgr;
+    scriptMgr = nullptr;
+  });
 
   // Wire the manager to our models
   manager.setMessageModel(&msgModel);

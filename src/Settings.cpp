@@ -8,7 +8,7 @@
 #include <QVariantMap>
 
 Settings::Settings(QObject *parent)
-    : QObject(parent), settings("NUchat", "NUchat")
+    : QObject(parent), settings()
 {
 }
 

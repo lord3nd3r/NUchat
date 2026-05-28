@@ -24,15 +24,16 @@
 #endif
 
 IRCConnectionManager::IRCConnectionManager(QObject *parent) : QObject(parent) {
-  // ── Lag meter ──
-  m_lagTimer.setInterval(30000); // ping every 30s
+  // ── Lag meter ── ping every connected server every 30s
+  m_lagTimer.setInterval(30000);
   connect(&m_lagTimer, &QTimer::timeout, this, [this]() {
-    if (m_connections.isEmpty()) return;
-    auto *conn = m_connections.first();
-    if (!conn) return;
-    m_lagPingSent.start();
-    m_lagPingPending = true;
-    conn->sendRaw("PING :LAG" + QString::number(m_lagPingSent.msecsSinceReference()));
+    for (auto *conn : m_connections) {
+      if (!conn || !conn->isConnected()) continue;
+      auto &state = m_lagState[conn];
+      state.pingSent.start();
+      state.pending = true;
+      conn->sendRaw("PING :LAG" + QString::number(state.pingSent.msecsSinceReference()));
+    }
   });
 }
 
@@ -40,6 +41,7 @@ IRCConnectionManager::~IRCConnectionManager() {
   for (auto *c : m_connections)
     c->disconnectFromServer("NUchat shutting down");
   qDeleteAll(m_connections);
+  m_lagState.clear();
 }
 
 void IRCConnectionManager::setMessageModel(MessageModel *model) {
@@ -182,6 +184,7 @@ void IRCConnectionManager::closeChannel(const QString &serverName,
     m_treeModel->removeChannel(serverName, channelName);
   }
   emit channelParted(serverName, channelName);
+  cleanupChannelState(serverName, channelName);
 }
 
 void IRCConnectionManager::sendMessage(const QString &target,
@@ -401,13 +404,19 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
 
   // Forward raw lines for Raw Log + lag meter PONG detection
   connect(conn, &IrcConnection::rawLineReceived, this,
-          [this](const QString &line) {
+          [this, conn](const QString &line) {
             emit rawLineReceived("<<", line);
             // Detect PONG response to our LAG ping
-            if (m_lagPingPending && line.contains("PONG") && line.contains("LAG")) {
-              m_lagMs = static_cast<int>(m_lagPingSent.elapsed());
-              m_lagPingPending = false;
-              emit lagChanged(m_lagMs);
+            if (m_lagState.contains(conn) && m_lagState[conn].pending &&
+                line.contains("PONG") && line.contains("LAG")) {
+              auto &state = m_lagState[conn];
+              state.lagMs = static_cast<int>(state.pingSent.elapsed());
+              state.pending = false;
+              // Report the active connection's lag
+              if (conn == activeConnection()) {
+                m_lagMs = state.lagMs;
+                emit lagChanged(m_lagMs);
+              }
             }
           });
 
@@ -451,6 +460,9 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
       attemptReconnect(srv);
     }
     m_userDisconnect = false;
+
+    // Clean up lag state for this connection
+    m_lagState.remove(conn);
 
     // ── Stop lag meter if no connections left ──
     if (m_connections.size() <= 1) {
@@ -1316,6 +1328,11 @@ void IRCConnectionManager::appendToChannel(const QString &server,
       entry.channel = channel;
       entry.message = text;
       m_awayLog.append(entry);
+      // Evict oldest entries when over the cap
+      if (m_awayLog.size() > kMaxAwayLogEntries) {
+        int excess = m_awayLog.size() - kMaxAwayLogEntries;
+        m_awayLog.remove(0, excess);
+      }
       emit awayLogUpdated();
     }
   }
@@ -1372,6 +1389,18 @@ void IRCConnectionManager::ensureScrollbackLoaded(const QString &server,
 
   m_history[key] = prependedHistory;
 }
+
+void IRCConnectionManager::cleanupChannelState(const QString &server,
+                                                const QString &channel) {
+  ChannelKey key{server, channel};
+  m_history.remove(key);
+  m_users.remove(key);
+  m_topics.remove(key);
+  m_modes.remove(key);
+  // Also remove the scrollback-loaded marker so it reloads if re-joined
+  m_scrollbackLoaded.remove(unreadKey(server, channel));
+}
+
 QString IRCConnectionManager::serverNameFor(IrcConnection *conn) const {
   return m_connToName.value(conn, "unknown");
 }
@@ -1792,6 +1821,11 @@ void IRCConnectionManager::extractUrls(const QString &text, const QString &nick,
     entry.timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
     m_grabbedUrls.append(entry);
     emit urlGrabbed(entry.url, nick, channel);
+  }
+  // Evict oldest entries when over the cap
+  if (m_grabbedUrls.size() > kMaxGrabbedUrls) {
+    int excess = m_grabbedUrls.size() - kMaxGrabbedUrls;
+    m_grabbedUrls.remove(0, excess);
   }
 }
 

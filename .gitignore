@@ -45,3 +45,7 @@ Thumbs.db
 
 # Personal TODO lists
 TODO.md
+
+# AI project scaffolding
+CLAUDE.md
+.claude/

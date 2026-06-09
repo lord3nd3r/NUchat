@@ -61,6 +61,7 @@ public:
                                const QString &reason = QString());
   Q_INVOKABLE void closeChannel(const QString &serverName,
                                 const QString &channelName);
+  Q_INVOKABLE void closeServer(const QString &serverName);
   Q_INVOKABLE void sendMessage(const QString &target, const QString &message);
   Q_INVOKABLE void sendRawCommand(const QString &raw);
   Q_INVOKABLE void changeNick(const QString &newNick);

@@ -187,6 +187,43 @@ void IRCConnectionManager::closeChannel(const QString &serverName,
   cleanupChannelState(serverName, channelName);
 }
 
+void IRCConnectionManager::closeServer(const QString &serverName) {
+  m_userDisconnect = true;
+
+  // Cancel any pending reconnect timer and remove stored info for this server
+  if (m_reconnectInfo.contains(serverName) && m_reconnectInfo[serverName].timer) {
+    m_reconnectInfo[serverName].timer->stop();
+    m_reconnectInfo[serverName].timer->deleteLater();
+    m_reconnectInfo[serverName].timer = nullptr;
+    m_reconnectInfo[serverName].attempts = 0;
+  }
+  m_reconnectInfo.remove(serverName);
+
+  // Disconnect and clean up the live connection (if any)
+  if (auto *conn = connectionForServer(serverName)) {
+    if (conn->isConnected()) {
+      conn->disconnectFromServer("Closing server tab");
+    }
+    m_connections.removeOne(conn);
+    m_connToName.remove(conn);
+    conn->deleteLater();
+  }
+
+  // Remove the top-level server entry from the tree (this is what "close tab" means for servers)
+  if (m_treeModel) {
+    m_treeModel->removeServer(serverName);
+  }
+
+  // If this was the active server, clear the active context (UI will react via bindings)
+  if (m_activeServer == serverName) {
+    m_activeServer = QString();
+    m_activeChannel = QString();
+  }
+
+  // Best-effort cleanup of any per-channel state that might be lingering
+  cleanupChannelState(serverName, serverName);
+}
+
 void IRCConnectionManager::sendMessage(const QString &target,
                                        const QString &message) {
   auto *conn = activeConnection();

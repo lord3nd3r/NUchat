@@ -167,7 +167,9 @@ QVariantList Settings::importHexChatNetworks() const
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
         return networks;
 
-    // Parse each network block (blocks separated by blank lines)
+    // Parse servlist.conf (HexChat format). Each network begins with an "N=..." line;
+    // subsequent keys (S=, P=, I=, R=, J=, C=, F=, etc.) belong to that network until the next N= or EOF.
+    // We flush the prior network when we encounter a new N= (key-driven, not blank-line based).
     QVariantMap current;
     QString firstName, firstServer;
     bool firstSsl = false;
@@ -210,17 +212,16 @@ QVariantList Settings::importHexChatNetworks() const
     QTextStream in(&f);
     while (!in.atEnd()) {
         QString line = in.readLine();
-        if (line.trimmed().isEmpty()) {
-            flushNetwork();
-            startNetwork();
-            continue;
-        }
         int eq = line.indexOf('=');
         if (eq < 0) continue;
         QString key = line.left(eq).trimmed();
         QString val = line.mid(eq + 1).trimmed();
 
         if (key == "N") {
+            if (!current.isEmpty() && current.contains("network")) {
+                flushNetwork();
+            }
+            startNetwork();
             current["network"] = val;
         } else if (key == "S" && firstServer.isEmpty()) {
             // Server format: host/port  or  host/+port  or  host
@@ -250,8 +251,10 @@ QVariantList Settings::importHexChatNetworks() const
         } else if (key == "R") {
             current["customReal"] = val;
         }
+        // Other keys (E, F, D, J, C, L, A, B, v, etc.) are ignored for now.
+        // J= (fav channels) and C= (perform) have no corresponding fields in NUchat's network model.
     }
-    flushNetwork(); // handle last block without trailing blank line
+    flushNetwork(); // final network (no trailing N= after it)
 
     return networks;
 }

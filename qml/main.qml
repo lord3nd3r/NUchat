@@ -82,8 +82,10 @@ ApplicationWindow {
     Shortcut {
         sequence: appSettings.value("shortcut/closeTab", "Ctrl+W")
         onActivated: {
-            if (currentChannel !== "" && currentChannel.startsWith("#"))
+            if (currentChannel !== "" && (currentChannel.startsWith("#") || currentChannel.startsWith("&")))
                 ircManager.partChannel(currentChannel, "")
+            else if (currentServer !== "")
+                ircManager.closeServer(currentServer)
         }
     }
     Shortcut {
@@ -351,8 +353,10 @@ ApplicationWindow {
             }
             MenuSeparator {}
             Action { text: "Close Tab";               onTriggered: {
-                    if (currentChannel !== "" && currentChannel.startsWith("#")) {
+                    if (currentChannel !== "" && (currentChannel.startsWith("#") || currentChannel.startsWith("&"))) {
                         ircManager.partChannel(currentChannel, "")
+                    } else if (currentServer !== "") {
+                        ircManager.closeServer(currentServer)
                     }
                 }
             }
@@ -497,8 +501,10 @@ ApplicationWindow {
             Action { text: "Attach Tab";              onTriggered: msgModel.addMessage("system", "Tab attach not yet implemented") }
             MenuSeparator {}
             Action { text: "Close Tab";               onTriggered: {
-                    if (currentChannel !== "" && currentChannel.startsWith("#")) {
+                    if (currentChannel !== "" && (currentChannel.startsWith("#") || currentChannel.startsWith("&"))) {
                         ircManager.partChannel(currentChannel, "")
+                    } else if (currentServer !== "") {
+                        ircManager.closeServer(currentServer)
                     }
                 }
             }
@@ -1985,6 +1991,7 @@ ApplicationWindow {
                 }
             }
         }
+        Action { text: "Close"; onTriggered: { if (treeServerMenu.targetServer !== "") ircManager.closeServer(treeServerMenu.targetServer) } }
     }
 
     // ── Sidebar Channel right-click menu ──

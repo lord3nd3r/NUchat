@@ -253,32 +253,23 @@ void IrcConnection::setAllowSelfSignedCerts(bool allow) {
 }
 
 void IrcConnection::onSslErrors(const QList<QSslError> &errors) {
-  QList<QSslError> ignorable;
-  for (const QSslError &e : errors) {
-    switch (e.error()) {
-    case QSslError::SelfSignedCertificate:
-    case QSslError::SelfSignedCertificateInChain:
-    case QSslError::HostNameMismatch:
-    case QSslError::UnableToVerifyFirstCertificate:
-    case QSslError::CertificateUntrusted:
-    case QSslError::UnableToGetLocalIssuerCertificate:
-      if (m_allowSelfSignedCerts) {
-        ignorable << e;
-        qDebug() << "[IRC] Ignoring SSL error (user-approved):" << e.errorString();
-      } else {
-        emit errorOccurred(tr("SSL error: %1").arg(e.errorString()));
-        m_socket->abort();
-        return;
-      }
-      break;
-    default:
-      emit errorOccurred(tr("SSL error: %1").arg(e.errorString()));
-      m_socket->abort();
-      return;
+  // If the user has explicitly allowed self-signed / untrusted certs (global pref),
+  // ignore all errors reported for this handshake so the connection can proceed.
+  // This makes the "Accept self-signed / untrusted SSL certificates" setting effective
+  // for any cert validation failure (not just a hard-coded list of 6 codes).
+  if (m_allowSelfSignedCerts) {
+    for (const QSslError &e : errors) {
+      qDebug() << "[IRC] Ignoring SSL error (user-approved):" << e.errorString();
     }
+    m_socket->ignoreSslErrors();
+    return;
   }
-  if (!ignorable.isEmpty())
-    m_socket->ignoreSslErrors(ignorable);
+
+  // Secure default: fail on any SSL error.
+  if (!errors.isEmpty()) {
+    emit errorOccurred(tr("SSL error: %1").arg(errors.first().errorString()));
+    m_socket->abort();
+  }
 }
 
 // ── IRC Protocol ──

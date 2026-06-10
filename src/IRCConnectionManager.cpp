@@ -72,6 +72,22 @@ void IRCConnectionManager::connectToServer(
   qDebug() << "[Manager] connectToServer called:" << host << port << ssl << nick
            << "sasl:" << saslMethod << "nickserv:" << (!nickServPass.isEmpty());
 
+  // If a connection for this host label already exists (e.g. prior failed attempt
+  // from network list, or user re-clicked Connect), evict it so we replace under
+  // the existing tree row instead of stacking a duplicate. Also clear any stale
+  // reconnect timer/info for this host (will be overwritten below).
+  if (auto *old = connectionForServer(host)) {
+    m_connections.removeOne(old);
+    m_connToName.remove(old);
+    old->deleteLater();
+  }
+  if (m_reconnectInfo.contains(host) && m_reconnectInfo[host].timer) {
+    m_reconnectInfo[host].timer->stop();
+    m_reconnectInfo[host].timer->deleteLater();
+    m_reconnectInfo[host].timer = nullptr;
+  }
+  m_reconnectInfo.remove(host);
+
   auto *conn = new IrcConnection(this);
   conn->setNickname(nick);
   conn->setUser(user, realname);

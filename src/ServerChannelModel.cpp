@@ -7,6 +7,12 @@ ServerChannelModel::ServerChannelModel(QObject *parent)
 }
 
 void ServerChannelModel::addServer(const QString &name) {
+  // Don't add duplicate server entries (top-level rows)
+  QList<QStandardItem *> existing = findItems(name);
+  for (QStandardItem *it : existing) {
+    if (it && it->parent() == nullptr)  // top-level server row
+      return;
+  }
   QStandardItem *item = new QStandardItem(name);
   appendRow(item);
 }
@@ -53,9 +59,21 @@ void ServerChannelModel::removeChannel(const QString &serverName,
 }
 
 void ServerChannelModel::removeServer(const QString &serverName) {
-  QList<QStandardItem *> items = findItems(serverName);
-  if (!items.isEmpty()) {
-    removeRow(items.first()->row());
+  while (true) {
+    QList<QStandardItem *> items = findItems(serverName);
+    if (items.isEmpty())
+      break;
+    // Only consider top-level server rows (parent == nullptr)
+    bool removed = false;
+    for (QStandardItem *it : items) {
+      if (it && it->parent() == nullptr) {
+        removeRow(it->row());
+        removed = true;
+        break;  // re-find after structural change
+      }
+    }
+    if (!removed)
+      break;
   }
 }
 

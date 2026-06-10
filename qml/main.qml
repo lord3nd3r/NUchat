@@ -1907,28 +1907,28 @@ ApplicationWindow {
         palette.highlight: theme.menuHighlight
         palette.highlightedText: theme.menuHighlightText
 
-        Action { text: "Open Query"; onTriggered: { ircManager.openQuery(currentServer, nickContextMenu.targetNick); messageInput.forceActiveFocus() } }
+        MenuItem { text: "Open Query"; onTriggered: { ircManager.openQuery(currentServer, nickContextMenu.targetNick); messageInput.forceActiveFocus() } }
         MenuSeparator {}
-        Action { text: "WHOIS"; onTriggered: ircManager.sendRawCommand("WHOIS " + nickContextMenu.targetNick) }
-        Action { text: "CTCP Version"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01VERSION\x01") }
-        Action { text: "CTCP Ping"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01PING " + Date.now() + "\x01") }
-        Action { text: "CTCP Time"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01TIME\x01") }
-        Action { text: "CTCP Finger"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01FINGER\x01") }
+        MenuItem { text: "WHOIS"; onTriggered: ircManager.sendRawCommand("WHOIS " + nickContextMenu.targetNick) }
+        MenuItem { text: "CTCP Version"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01VERSION\x01") }
+        MenuItem { text: "CTCP Ping"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01PING " + Date.now() + "\x01") }
+        MenuItem { text: "CTCP Time"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01TIME\x01") }
+        MenuItem { text: "CTCP Finger"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01FINGER\x01") }
         MenuSeparator {}
-        Action { text: "Op"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +o " + n) }) }
-        Action { text: "DeOp"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -o " + n) }) }
-        Action { text: "HalfOp"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +h " + n) }) }
-        Action { text: "DeHalfOp"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -h " + n) }) }
-        Action { text: "Voice"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +v " + n) }) }
-        Action { text: "DeVoice"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -v " + n) }) }
+        MenuItem { text: "Op"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +o " + n) }) }
+        MenuItem { text: "DeOp"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -o " + n) }) }
+        MenuItem { text: "HalfOp"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +h " + n) }) }
+        MenuItem { text: "DeHalfOp"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -h " + n) }) }
+        MenuItem { text: "Voice"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +v " + n) }) }
+        MenuItem { text: "DeVoice"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -v " + n) }) }
         MenuSeparator { visible: currentChannel.startsWith("#") || currentChannel.startsWith("&") }
-        Action { text: "Invite..."; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: { inviteNickField.text = nickContextMenu.targetNick; inviteDialog.open() } }
-        Action { text: "Slap"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendMessage(currentChannel !== "" ? currentChannel : nickContextMenu.targetNick, "/me slaps " + n + " around a bit with a large trout") }) }
+        MenuItem { text: "Invite..."; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: { inviteNickField.text = nickContextMenu.targetNick; inviteDialog.open() } }
+        MenuItem { text: "Slap"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendMessage(currentChannel !== "" ? currentChannel : nickContextMenu.targetNick, "/me slaps " + n + " around a bit with a large trout") }) }
         MenuSeparator { visible: currentChannel.startsWith("#") || currentChannel.startsWith("&") }
-        Action { text: "Kick"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
-        Action { text: "Ban"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*") }) }
-        Action { text: "Kick + Ban"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*"); ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
-        Action { text: "Ignore"; onTriggered: forEachSelectedNick(function(n) { ircManager.addIgnore(n); msgModel.addMessage("system", "Now ignoring: " + n) }) }
+        MenuItem { text: "Kick"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
+        MenuItem { text: "Ban"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*") }) }
+        MenuItem { text: "Kick + Ban"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*"); ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
+        MenuItem { text: "Ignore"; onTriggered: forEachSelectedNick(function(n) { ircManager.addIgnore(n); msgModel.addMessage("system", "Now ignoring: " + n) }) }
         MenuSeparator { visible: currentChannel.startsWith("#") || currentChannel.startsWith("&") }
 
         // ── ChanServ nick operations ──

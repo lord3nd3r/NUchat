@@ -27,7 +27,7 @@ Dialog {
     function updateScriptList() {
         combinedScripts.clear()
         
-        if (typeof pyEngine !== 'undefined') {
+        if (typeof pyEngine !== 'undefined' && pyEngine !== null) {
             var pyScripts = pyEngine.loadedScripts
             for (var i = 0; i < pyScripts.length; i++) {
                 combinedScripts.append({
@@ -38,7 +38,7 @@ Dialog {
             }
         }
         
-        if (typeof luaEngine !== 'undefined') {
+        if (typeof luaEngine !== 'undefined' && luaEngine !== null) {
             var luaScripts = luaEngine.loadedScripts
             for (var j = 0; j < luaScripts.length; j++) {
                 combinedScripts.append({
@@ -53,12 +53,12 @@ Dialog {
     Component.onCompleted: updateScriptList()
 
     Connections {
-        target: typeof pyEngine !== 'undefined' ? pyEngine : null
+        target: (typeof pyEngine !== 'undefined' && pyEngine !== null) ? pyEngine : null
         function onLoadedScriptsChanged() { updateScriptList() }
     }
 
     Connections {
-        target: typeof luaEngine !== 'undefined' ? luaEngine : null
+        target: (typeof luaEngine !== 'undefined' && luaEngine !== null) ? luaEngine : null
         function onLoadedScriptsChanged() { updateScriptList() }
     }
 
@@ -71,16 +71,16 @@ Dialog {
         Text {
             text: {
                 var parts = []
-                if (typeof pyEngine !== 'undefined')
+                if (typeof pyEngine !== 'undefined' && pyEngine !== null)
                     parts.push("Python")
-                if (typeof luaEngine !== 'undefined')
+                if (typeof luaEngine !== 'undefined' && luaEngine !== null)
                     parts.push("Lua")
                 
                 if (parts.length === 0)
                     return "No scripting engines available (python3-dev and/or lua not installed)"
                 
-                var dir = typeof pyEngine !== 'undefined' ? pyEngine.scriptsDirectory
-                         : typeof luaEngine !== 'undefined' ? luaEngine.scriptsDirectory : ""
+                var dir = (typeof pyEngine !== 'undefined' && pyEngine !== null) ? pyEngine.scriptsDirectory
+                         : (typeof luaEngine !== 'undefined' && luaEngine !== null) ? luaEngine.scriptsDirectory : ""
                 return "Scripts directory: " + dir + " (" + parts.join(", ") + ")"
             }
             color: "#999"; font.pixelSize: 11; wrapMode: Text.Wrap
@@ -174,7 +174,7 @@ Dialog {
         Text {
             text: {
                 var total = 0
-                if (typeof pyEngine !== 'undefined')
+                if (typeof pyEngine !== 'undefined' && pyEngine !== null)
                     total += pyEngine.hookCount()
                 // Note: Lua engine doesn't expose hookCount() yet
                 return total > 0 ? total + " active hooks" : ""
@@ -192,7 +192,7 @@ Dialog {
             wrapMode: Text.Wrap
 
             Connections {
-                target: typeof pyEngine !== 'undefined' ? pyEngine : null
+                target: (typeof pyEngine !== 'undefined' && pyEngine !== null) ? pyEngine : null
                 function onScriptMessage(msg) { scriptStatus.text = msg }
             }
         }
@@ -214,9 +214,9 @@ Dialog {
                 onClicked: {
                     if (scriptList.currentIndex >= 0 && scriptList.currentIndex < combinedScripts.count) {
                         var item = combinedScripts.get(scriptList.currentIndex)
-                        if (item.engine === "python" && typeof pyEngine !== 'undefined') {
+                        if (item.engine === "python" && typeof pyEngine !== 'undefined' && pyEngine !== null) {
                             pyEngine.unloadScript(item.filename)
-                        } else if (item.engine === "lua" && typeof luaEngine !== 'undefined') {
+                        } else if (item.engine === "lua" && typeof luaEngine !== 'undefined' && luaEngine !== null) {
                             luaEngine.unloadScript(item.filename)
                         }
                     }
@@ -230,9 +230,9 @@ Dialog {
                 onClicked: {
                     if (scriptList.currentIndex >= 0 && scriptList.currentIndex < combinedScripts.count) {
                         var item = combinedScripts.get(scriptList.currentIndex)
-                        if (item.engine === "python" && typeof pyEngine !== 'undefined') {
+                        if (item.engine === "python" && typeof pyEngine !== 'undefined' && pyEngine !== null) {
                             pyEngine.reloadScript(item.filename)
-                        } else if (item.engine === "lua" && typeof luaEngine !== 'undefined') {
+                        } else if (item.engine === "lua" && typeof luaEngine !== 'undefined' && luaEngine !== null) {
                             // Lua doesn't have reloadScript, use unload + load
                             luaEngine.unloadScript(item.filename)
                             luaEngine.loadScript(luaEngine.scriptsDirectory + "/" + item.filename)
@@ -245,8 +245,8 @@ Dialog {
             Button {
                 text: "Reload All"
                 onClicked: {
-                    if (typeof pyEngine !== 'undefined') pyEngine.reloadAll()
-                    if (typeof luaEngine !== 'undefined') luaEngine.reloadAll()
+                    if (typeof pyEngine !== 'undefined' && pyEngine !== null) pyEngine.reloadAll()
+                    if (typeof luaEngine !== 'undefined' && luaEngine !== null) luaEngine.reloadAll()
                 }
                 background: Rectangle { color: parent.down ? "#1177bb" : "#0e639c"; radius: 3 }
                 contentItem: Text { text: parent.text; color: "#fff"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
@@ -257,9 +257,9 @@ Dialog {
             Button {
                 text: "Open Folder"
                 onClicked: {
-                    if (typeof pyEngine !== 'undefined')
+                    if (typeof pyEngine !== 'undefined' && pyEngine !== null)
                         pyEngine.openScriptsFolder()
-                    else if (typeof luaEngine !== 'undefined')
+                    else if (typeof luaEngine !== 'undefined' && luaEngine !== null)
                         luaEngine.openScriptsFolder()
                 }
                 background: Rectangle { color: parent.down ? "#555" : "#444"; radius: 3 }

@@ -16,7 +16,7 @@ class IrcConnection;
 // The engine exposes a `hexchat` module with the standard HexChat Python API.
 
 struct PyHook {
-    enum Type { Command, Server, Print, Timer };
+    enum Type { Command, Server, Print, Timer, Unload };
     Type type;
     QString name;        // command name / server numeric / print event
     void *pyCallback;    // borrowed PyObject* (callable)
@@ -66,6 +66,7 @@ public:
     int hookServer(const QString &name, void *callback, void *userdata, int priority);
     int hookPrint(const QString &name, void *callback, void *userdata, int priority);
     int hookTimer(int timeout, void *callback, void *userdata);
+    int hookUnload(void *callback, void *userdata);
     void unhook(int hookId);
 
     static PythonScriptEngine *instance();

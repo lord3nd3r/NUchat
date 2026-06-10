@@ -111,7 +111,7 @@ Dialog {
 
             // Empty state
             Text {
-                visible: dccManager.count === 0
+                visible: (typeof dccManager !== 'undefined' && dccManager !== null) ? dccManager.count === 0 : false
                 anchors.centerIn: parent
                 text: "No active transfers"
                 color: theme.textMuted; font.pixelSize: 13
@@ -132,7 +132,7 @@ Dialog {
                 text: "Accept"
                 enabled: dccList.currentIndex >= 0 && dccList.currentItem && dccList.currentItem.status === "Pending"
                 onClicked: {
-                    if (dccList.currentItem)
+                    if (dccList.currentItem && dccManager)
                         dccManager.acceptTransfer(dccList.currentItem.transferId)
                 }
                 background: Rectangle { color: parent.enabled ? (parent.down ? "#28a745" : "#218838") : theme.buttonDisabled; radius: 3 }
@@ -144,7 +144,7 @@ Dialog {
                          && dccList.currentItem.status !== "Complete"
                          && dccList.currentItem.status !== "Cancelled"
                 onClicked: {
-                    if (dccList.currentItem)
+                    if (dccList.currentItem && dccManager)
                         dccManager.cancelTransfer(dccList.currentItem.transferId)
                 }
                 background: Rectangle { color: parent.enabled ? (parent.down ? "#a02020" : "#802020") : theme.buttonDisabled; radius: 3 }
@@ -153,7 +153,7 @@ Dialog {
             Item { Layout.fillWidth: true }
             Button {
                 text: "Clear Finished"
-                onClicked: dccManager.clearFinished()
+                onClicked: { if (dccManager) dccManager.clearFinished() }
                 background: Rectangle { color: parent.down ? theme.buttonPressed : theme.buttonBg; radius: 3 }
                 contentItem: Text { text: parent.text; color: theme.buttonText; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
             }
@@ -168,7 +168,7 @@ Dialog {
         RowLayout {
             Layout.fillWidth: true; spacing: 4
             Text { text: "Download to:"; color: theme.textMuted; font.pixelSize: 11 }
-            Text { text: dccManager.downloadDir; color: theme.textSecondary; font.pixelSize: 11; elide: Text.ElideMiddle; Layout.fillWidth: true }
+            Text { text: (typeof dccManager !== 'undefined' && dccManager !== null) ? dccManager.downloadDir : ""; color: theme.textSecondary; font.pixelSize: 11; elide: Text.ElideMiddle; Layout.fillWidth: true }
         }
     }
 
@@ -184,7 +184,8 @@ Dialog {
                 return
             }
             var path = selectedFile.toString().replace("file://", "")
-            dccManager.sendFile(targetNick, path)
+            if (dccManager)
+                dccManager.sendFile(targetNick, path)
         }
     }
 }

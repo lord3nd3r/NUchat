@@ -315,6 +315,28 @@ static PyObject *py_hexchat_get_prefs(PyObject * /*self*/, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *py_hexchat_hook_unload(PyObject * /*self*/, PyObject *args)
+{
+    PyObject *callback;
+    PyObject *userdata = Py_None;
+
+    if (!PyArg_ParseTuple(args, "O|O", &callback, &userdata))
+        return nullptr;
+
+    if (!PyCallable_Check(callback)) {
+        PyErr_SetString(PyExc_TypeError, "callback must be callable");
+        return nullptr;
+    }
+
+    if (PythonScriptEngine::instance()) {
+        Py_INCREF(callback);
+        Py_INCREF(userdata);
+        int id = PythonScriptEngine::instance()->hookUnload((void*)callback, (void*)userdata);
+        return PyLong_FromLong(id);
+    }
+    Py_RETURN_NONE;
+}
+
 // ──────────────────────────────────────────────────────────────
 //  hexchat module definition
 // ──────────────────────────────────────────────────────────────
@@ -335,6 +357,7 @@ static PyMethodDef hexchat_methods[] = {
     {"find_context",  (PyCFunction)py_hexchat_find_context,  METH_VARARGS | METH_KEYWORDS, "Find a context"},
     {"set_context",   py_hexchat_set_context,   METH_VARARGS, "Set current context"},
     {"get_prefs",     py_hexchat_get_prefs,     METH_VARARGS, "Get preference value"},
+    {"hook_unload",   py_hexchat_hook_unload,   METH_VARARGS, "Hook script unload event"},
     {nullptr, nullptr, 0, nullptr}
 };
 
@@ -465,6 +488,21 @@ void PythonScriptEngine::initPython()
 void PythonScriptEngine::shutdownPython()
 {
     if (!m_pyInited) return;
+
+    // Fire unload hooks
+    for (auto &hook : m_hooks) {
+        if (hook.type == PyHook::Unload && hook.pyCallback) {
+            PyObject *ud = hook.pyUserdata ? (PyObject*)hook.pyUserdata : Py_None;
+            PyObject *args = PyTuple_Pack(1, ud);
+            PyObject *result = PyObject_CallObject((PyObject*)hook.pyCallback, args);
+            Py_XDECREF(args);
+            if (result) {
+                Py_DECREF(result);
+            } else {
+                PyErr_Print();
+            }
+        }
+    }
 
     // Clean up hooks
     for (auto &hook : m_hooks) {
@@ -854,6 +892,21 @@ void PythonScriptEngine::unhook(int hookId)
     }
 }
 
+int PythonScriptEngine::hookUnload(void *callback, void *userdata)
+{
+    PyHook hook;
+    hook.type = PyHook::Unload;
+    hook.name = "UNLOAD";
+    hook.pyCallback = callback;
+    hook.pyUserdata = userdata;
+    hook.priority = PRI_NORM;
+    hook.timer = nullptr;
+    hook.id = m_nextHookId++;
+    m_hooks.append(hook);
+    qDebug() << "[PythonScriptEngine] Hooked unload, id:" << hook.id;
+    return hook.id;
+}
+
 // ──────────────────────────────────────────────────────────────
 //  QML-accessible script management
 // ──────────────────────────────────────────────────────────────
@@ -884,28 +937,46 @@ void PythonScriptEngine::unloadScript(const QString &filename)
         return;
     }
 
-    // Remove all hooks whose callback was defined in this script file
+    // Fire unload hooks belonging to this script, then remove all hooks for it
     for (int i = m_hooks.size() - 1; i >= 0; --i) {
         PyObject *cb = (PyObject*)m_hooks[i].pyCallback;
-        if (cb && PyFunction_Check(cb)) {
-            PyObject *code = PyFunction_GetCode(cb);
-            if (code) {
-                PyObject *pyFilename = PyObject_GetAttrString(code, "co_filename");
-                if (pyFilename && PyUnicode_Check(pyFilename)) {
-                    const char *fn = PyUnicode_AsUTF8(pyFilename);
-                    if (fn && QString::fromUtf8(fn) == filename) {
-                        if (m_hooks[i].timer) {
-                            m_hooks[i].timer->stop();
-                            delete m_hooks[i].timer;
-                        }
-                        Py_XDECREF((PyObject*)m_hooks[i].pyCallback);
-                        Py_XDECREF((PyObject*)m_hooks[i].pyUserdata);
-                        m_hooks.removeAt(i);
-                    }
-                }
-                Py_XDECREF(pyFilename);
+        if (!cb || !PyFunction_Check(cb)) continue;
+
+        PyObject *code = PyFunction_GetCode(cb);
+        if (!code) continue;
+
+        PyObject *pyFilename = PyObject_GetAttrString(code, "co_filename");
+        if (!pyFilename || !PyUnicode_Check(pyFilename)) {
+            Py_XDECREF(pyFilename);
+            continue;
+        }
+
+        const char *fn = PyUnicode_AsUTF8(pyFilename);
+        bool match = fn && QString::fromUtf8(fn) == filename;
+        Py_XDECREF(pyFilename);
+
+        if (!match) continue;
+
+        // Fire unload callbacks before removing
+        if (m_hooks[i].type == PyHook::Unload) {
+            PyObject *ud = m_hooks[i].pyUserdata ? (PyObject*)m_hooks[i].pyUserdata : Py_None;
+            PyObject *args = PyTuple_Pack(1, ud);
+            PyObject *result = PyObject_CallObject(cb, args);
+            Py_XDECREF(args);
+            if (result) {
+                Py_DECREF(result);
+            } else {
+                PyErr_Print();
             }
         }
+
+        if (m_hooks[i].timer) {
+            m_hooks[i].timer->stop();
+            delete m_hooks[i].timer;
+        }
+        Py_XDECREF((PyObject*)m_hooks[i].pyCallback);
+        Py_XDECREF((PyObject*)m_hooks[i].pyUserdata);
+        m_hooks.removeAt(i);
     }
 
     m_loadedScripts.removeAll(filename);

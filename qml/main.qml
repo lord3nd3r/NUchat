@@ -2311,7 +2311,7 @@ ApplicationWindow {
         id: scriptFileDialog
         title: "Load Python Script"
         nameFilters: ["Python scripts (*.py)", "All files (*)"]
-        currentFolder: typeof pyEngine !== 'undefined' ? "file://" + pyEngine.scriptsDirectory : ""
+        currentFolder: (typeof pyEngine !== 'undefined' && pyEngine !== null) ? "file://" + pyEngine.scriptsDirectory : ""
         onAccepted: {
             if (typeof pyEngine !== 'undefined') {
                 var path = selectedFile.toString()

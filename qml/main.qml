@@ -1249,8 +1249,13 @@ ApplicationWindow {
                                 return
                             }
 
-                            // If not over nick or link, show channel options
-                            channelContextMenu.popup()
+                            // If not over nick or link, show appropriate options
+                            if (currentChannel !== "" && !currentChannel.startsWith("#") && !currentChannel.startsWith("&")) {
+                                queryContextMenu.targetNick = currentChannel
+                                queryContextMenu.popup()
+                            } else {
+                                channelContextMenu.popup()
+                            }
                         }
                     }
 
@@ -1910,25 +1915,26 @@ ApplicationWindow {
         Action { text: "CTCP Time"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01TIME\x01") }
         Action { text: "CTCP Finger"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + nickContextMenu.targetNick + " :\x01FINGER\x01") }
         MenuSeparator {}
-        Action { text: "Op"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +o " + n) }) }
-        Action { text: "DeOp"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -o " + n) }) }
-        Action { text: "HalfOp"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +h " + n) }) }
-        Action { text: "DeHalfOp"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -h " + n) }) }
-        Action { text: "Voice"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +v " + n) }) }
-        Action { text: "DeVoice"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -v " + n) }) }
-        MenuSeparator {}
-        Action { text: "Invite..."; onTriggered: { inviteNickField.text = nickContextMenu.targetNick; inviteDialog.open() } }
-        Action { text: "Slap"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendMessage(currentChannel, "/me slaps " + n + " around a bit with a large trout") }) }
-        MenuSeparator {}
-        Action { text: "Kick"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
-        Action { text: "Ban"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*") }) }
-        Action { text: "Kick + Ban"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*"); ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
+        Action { text: "Op"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +o " + n) }) }
+        Action { text: "DeOp"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -o " + n) }) }
+        Action { text: "HalfOp"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +h " + n) }) }
+        Action { text: "DeHalfOp"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -h " + n) }) }
+        Action { text: "Voice"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +v " + n) }) }
+        Action { text: "DeVoice"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " -v " + n) }) }
+        MenuSeparator { visible: currentChannel.startsWith("#") || currentChannel.startsWith("&") }
+        Action { text: "Invite..."; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: { inviteNickField.text = nickContextMenu.targetNick; inviteDialog.open() } }
+        Action { text: "Slap"; onTriggered: forEachSelectedNick(function(n) { ircManager.sendMessage(currentChannel !== "" ? currentChannel : nickContextMenu.targetNick, "/me slaps " + n + " around a bit with a large trout") }) }
+        MenuSeparator { visible: currentChannel.startsWith("#") || currentChannel.startsWith("&") }
+        Action { text: "Kick"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
+        Action { text: "Ban"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*") }) }
+        Action { text: "Kick + Ban"; visible: currentChannel.startsWith("#") || currentChannel.startsWith("&"); onTriggered: forEachSelectedNick(function(n) { ircManager.sendRawCommand("MODE " + currentChannel + " +b " + n + "!*@*"); ircManager.sendRawCommand("KICK " + currentChannel + " " + n) }) }
         Action { text: "Ignore"; onTriggered: forEachSelectedNick(function(n) { ircManager.addIgnore(n); msgModel.addMessage("system", "Now ignoring: " + n) }) }
-        MenuSeparator {}
+        MenuSeparator { visible: currentChannel.startsWith("#") || currentChannel.startsWith("&") }
 
         // ── ChanServ nick operations ──
         Menu {
             title: "ChanServ"
+            visible: currentChannel.startsWith("#") || currentChannel.startsWith("&")
             Action { text: "Op";      onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :OP " + currentChannel + " " + n) }) } }
             Action { text: "DeOp";    onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :DEOP " + currentChannel + " " + n) }) } }
             Action { text: "HalfOp";  onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :HALFOP " + currentChannel + " " + n) }) } }
@@ -2076,6 +2082,29 @@ ApplicationWindow {
             }
         }
     }
+
+    // ── Query right-click menu (PM tabs) ──
+    Menu {
+        id: queryContextMenu
+        property string targetNick: ""
+
+        palette.base: theme.menuBg
+        palette.text: theme.menuText
+        palette.highlight: theme.menuHighlight
+        palette.highlightedText: theme.menuHighlightText
+
+        Action { text: "WHOIS"; onTriggered: ircManager.sendRawCommand("WHOIS " + queryContextMenu.targetNick) }
+        Action { text: "CTCP Version"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + queryContextMenu.targetNick + " :\x01VERSION\x01") }
+        Action { text: "CTCP Ping"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + queryContextMenu.targetNick + " :\x01PING " + Date.now() + "\x01") }
+        Action { text: "CTCP Time"; onTriggered: ircManager.sendRawCommand("PRIVMSG " + queryContextMenu.targetNick + " :\x01TIME\x01") }
+        MenuSeparator {}
+        Action { text: "Slap"; onTriggered: ircManager.sendMessage(queryContextMenu.targetNick, "/me slaps " + queryContextMenu.targetNick + " around a bit with a large trout") }
+        Action { text: "Ignore"; onTriggered: { ircManager.addIgnore(queryContextMenu.targetNick); msgModel.addMessage("system", "Now ignoring: " + queryContextMenu.targetNick) } }
+        MenuSeparator {}
+        Action { text: "Clear Buffer"; onTriggered: msgModel.clear() }
+        Action { text: "Close Query"; onTriggered: ircManager.closeChannel(currentServer, queryContextMenu.targetNick) }
+    }
+
     // ── Send message function ──
     property string pendingPasteText: ""
 

@@ -184,6 +184,8 @@ ApplicationWindow {
     property string currentServer: ""
     property string pendingAutoJoin: ""
 
+    onCurrentChannelChanged: { if (messageInput) messageInput.forceActiveFocus() }
+
     // ── Command history (Up/Down arrow) ──
     property var commandHistory: []
     property int historyIndex: -1
@@ -1934,7 +1936,7 @@ ApplicationWindow {
         // ── ChanServ nick operations ──
         Menu {
             title: "ChanServ"
-            visible: currentChannel.startsWith("#") || currentChannel.startsWith("&")
+            enabled: currentChannel.startsWith("#") || currentChannel.startsWith("&")
             Action { text: "Op";      onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :OP " + currentChannel + " " + n) }) } }
             Action { text: "DeOp";    onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :DEOP " + currentChannel + " " + n) }) } }
             Action { text: "HalfOp";  onTriggered: { if (currentChannel) forEachSelectedNick(function(n) { ircManager.sendRawCommand("PRIVMSG ChanServ :HALFOP " + currentChannel + " " + n) }) } }

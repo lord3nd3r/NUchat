@@ -113,11 +113,23 @@ This covers hostname mismatches, self-signed certs, and untrusted issuer chains.
 
 ## Downloads
 
-Pre-built installers and binaries are available for Windows, macOS, and Linux:
+Pre-built binaries and installers for **NUchat 1.5.0** are available on the [GitHub Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.5.0).
 
-- **Windows**: Download NSIS installer from [GitHub Actions artifacts](https://github.com/lord3nd3r/NUchat/actions/workflows/build.yml) (select latest successful run → Artifacts → Windows-Installer)
-- **macOS**: Download `.dmg` installer from [GitHub Actions artifacts](https://github.com/lord3nd3r/NUchat/actions/workflows/build-macos.yml) (select latest successful run)
-- **Linux/FreeBSD**: Compile from source (see Build & Run section below) or download from [GitHub Actions artifacts](https://github.com/lord3nd3r/NUchat/actions)
+| Platform   | Archive                        | Approx. Size | Contents |
+|------------|--------------------------------|--------------|----------|
+| Linux      | `nuchat-linux.zip`             | 480 KiB      | Single `nuchat` executable (extract + `chmod +x ./nuchat`) |
+| FreeBSD    | `nuchat-freebsd.zip`           | 420 KiB      | Single `nuchat` executable |
+| macOS      | `nuchat-macos.zip`             | 54 MiB       | `nuchat-macos.dmg` — open the DMG and drag NUchat to Applications |
+| Windows    | `nuchat-windows-installer.zip` | 21 MiB       | `NUchat_1.0.0_Windows_x64.exe` (NSIS installer; note the 1.0.0 filename inside the archive) |
+
+**Direct download links** (or visit the [Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.5.0) for all assets and release notes):
+
+- Linux: https://github.com/lord3nd3r/NUchat/releases/download/v1.5.0/nuchat-linux.zip
+- FreeBSD: https://github.com/lord3nd3r/NUchat/releases/download/v1.5.0/nuchat-freebsd.zip
+- macOS: https://github.com/lord3nd3r/NUchat/releases/download/v1.5.0/nuchat-macos.zip
+- Windows: https://github.com/lord3nd3r/NUchat/releases/download/v1.5.0/nuchat-windows-installer.zip
+
+Older / CI builds are still available from the GitHub Actions artifacts if needed.
 
 ---
 

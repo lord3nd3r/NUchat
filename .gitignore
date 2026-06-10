@@ -49,3 +49,7 @@ TODO.md
 # AI project scaffolding
 CLAUDE.md
 .claude/
+
+# Pre-built release binaries (large files — do not commit to git history)
+# These are uploaded as GitHub Release assets instead (see README Downloads).
+binary/

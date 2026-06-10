@@ -2206,6 +2206,27 @@ ApplicationWindow {
                 }
             }
         }
+        function onServerClosed(serverName) {
+            refreshChannelList()
+            if (root.currentServer === serverName) {
+                root.currentChannel = ""
+                // Select a fallback server row if available (mirrors onChannelParted)
+                var selected = false
+                for (var i = 0; i < channelListModel.count; i++) {
+                    if (channelListModel.get(i).entryType === "server") {
+                        var next = channelListModel.get(i).name
+                        root.currentServer = next
+                        ircManager.switchToChannel(next, next)
+                        serverTree.currentIndex = i
+                        selected = true
+                        break
+                    }
+                }
+                if (!selected) {
+                    root.currentServer = ""
+                }
+            }
+        }
         function onUnreadStateChanged() {
             updateUnreadStates()
         }

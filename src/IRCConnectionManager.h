@@ -137,6 +137,7 @@ signals:
   void channelAdded(const QString &server, const QString &channel);
   void channelParted(const QString &server, const QString &channel);
   void serverRegistered(const QString &host);
+  void serverClosed(const QString &serverName);
   void channelTopicChanged(const QString &topic);
   void channelUsersChanged(const QStringList &users);
   void channelModesChanged(const QString &modes);

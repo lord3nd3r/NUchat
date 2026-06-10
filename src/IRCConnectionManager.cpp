@@ -238,6 +238,9 @@ void IRCConnectionManager::closeServer(const QString &serverName) {
 
   // Best-effort cleanup of any per-channel state that might be lingering
   cleanupChannelState(serverName, serverName);
+
+  // Notify QML so the sidebar list model can refresh and selection can be cleaned up
+  emit serverClosed(serverName);
 }
 
 void IRCConnectionManager::sendMessage(const QString &target,

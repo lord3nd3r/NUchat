@@ -1521,12 +1521,12 @@ QString IRCConnectionManager::gatherSysInfo() {
     }
   }
   if (!prettyName.isEmpty())
-    parts << "OS: " + prettyName;
+    parts << "\x02\x0310OS:\x03\x02 " + prettyName;
   else
-    parts << "OS: " + QSysInfo::prettyProductName();
+    parts << "\x02\x0310OS:\x03\x02 " + QSysInfo::prettyProductName();
 
   // Kernel
-  parts << "Kernel: " + QSysInfo::kernelType() + " " +
+  parts << "\x02\x0310Kernel:\x03\x02 " + QSysInfo::kernelType() + " " +
                QSysInfo::kernelVersion();
 
   // CPU — use readAll() since /proc files report size 0, breaking
@@ -1544,7 +1544,7 @@ QString IRCConnectionManager::gatherSysInfo() {
           cores++;
       }
       if (!model.isEmpty())
-        parts << "CPU: " + model + " (" + QString::number(cores) + " threads)";
+        parts << "\x02\x0310CPU:\x03\x02 " + model + " (" + QString::number(cores) + " threads)";
     }
   }
 
@@ -1566,7 +1566,7 @@ QString IRCConnectionManager::gatherSysInfo() {
       if (totalKb > 0) {
         qint64 usedMb = (totalKb - availKb) / 1024;
         qint64 totalMb = totalKb / 1024;
-        parts << "RAM: " + QString::number(usedMb) + "/" +
+        parts << "\x02\x0310RAM:\x03\x02 " + QString::number(usedMb) + "/" +
                      QString::number(totalMb) + " MB";
       }
     }
@@ -1584,7 +1584,7 @@ QString IRCConnectionManager::gatherSysInfo() {
       if (days > 0)
         up += QString::number(days) + "d ";
       up += QString::number(hours) + "h " + QString::number(mins) + "m";
-      parts << "Uptime: " + up;
+      parts << "\x02\x0310Uptime:\x03\x02 " + up;
     }
   }
 
@@ -1596,7 +1596,7 @@ QString IRCConnectionManager::gatherSysInfo() {
         if (line.contains("VGA") || line.contains("3D controller")) {
           QString name = line.section(':', 2).trimmed();
           if (!name.isEmpty()) {
-            parts << "GPU: " + name;
+            parts << "\x02\x0310GPU:\x03\x02 " + name;
             break;
           }
         }
@@ -1608,7 +1608,7 @@ QString IRCConnectionManager::gatherSysInfo() {
   {
     QString shell = qEnvironmentVariable("SHELL");
     if (!shell.isEmpty())
-      parts << "Shell: " + shell.section('/', -1);
+      parts << "\x02\x0310Shell:\x03\x02 " + shell.section('/', -1);
   }
 
   // Desktop
@@ -1617,16 +1617,16 @@ QString IRCConnectionManager::gatherSysInfo() {
     if (de.isEmpty())
       de = qEnvironmentVariable("DESKTOP_SESSION");
     if (!de.isEmpty())
-      parts << "DE: " + de;
+      parts << "\x02\x0310DE:\x03\x02 " + de;
   }
 
   // Qt version
-  parts << "Qt: " + QString::fromLatin1(qVersion());
+  parts << "\x02\x0310Qt:\x03\x02 " + QString::fromLatin1(qVersion());
 
   // NUchat version
-  parts << "NUchat " NUCHAT_VERSION;
+  parts << "\x02\x0310NUchat\x03\x02 " NUCHAT_VERSION;
 
-  return "SysInfo: " + parts.join(" | ");
+  return "\x02\x0306SysInfo:\x03\x02 " + parts.join(" | ");
 }
 
 IrcConnection *

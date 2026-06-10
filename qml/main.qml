@@ -2170,6 +2170,14 @@ ApplicationWindow {
         function onServerRegistered(serverName) {
             root.currentServer = serverName
             refreshChannelList()
+            // Auto-select the server row in the sidebar (mirrors onChannelJoined / onChannelParted)
+            for (var i = 0; i < channelListModel.count; i++) {
+                if (channelListModel.get(i).name === serverName &&
+                    channelListModel.get(i).entryType === "server") {
+                    serverTree.currentIndex = i
+                    break
+                }
+            }
             // Auto-join pending channel after registration
             if (root.pendingAutoJoin !== "") {
                 ircManager.joinChannel(root.pendingAutoJoin, "")
@@ -2210,6 +2218,7 @@ ApplicationWindow {
             refreshChannelList()
             if (root.currentServer === serverName) {
                 root.currentChannel = ""
+                root.pendingAutoJoin = ""  // Discard any pending auto-join for a server that is now gone
                 // Select a fallback server row if available (mirrors onChannelParted)
                 var selected = false
                 for (var i = 0; i < channelListModel.count; i++) {

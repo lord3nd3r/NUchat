@@ -70,25 +70,28 @@ void IRCConnectionManager::connectToServer(
     const QString &user, const QString &realname, const QString &password,
     const QString &saslMethod, const QString &saslUser, const QString &saslPass,
     const QString &nickServCmd, const QString &nickServPass,
-    const QString &autojoin, const QString &perform) {
+    const QString &autojoin, const QString &perform,
+    const QString &displayName) {
+  QString name = displayName.isEmpty() ? host : displayName;
   qDebug() << "[Manager] connectToServer called:" << host << port << ssl << nick
-           << "sasl:" << saslMethod << "nickserv:" << (!nickServPass.isEmpty());
+           << "sasl:" << saslMethod << "nickserv:" << (!nickServPass.isEmpty())
+           << "displayName:" << displayName;
 
   // If a connection for this host label already exists (e.g. prior failed attempt
   // from network list, or user re-clicked Connect), evict it so we replace under
   // the existing tree row instead of stacking a duplicate. Also clear any stale
   // reconnect timer/info for this host (will be overwritten below).
-  if (auto *old = connectionForServer(host)) {
+  if (auto *old = connectionForServer(name)) {
     m_connections.removeOne(old);
     m_connToName.remove(old);
     old->deleteLater();
   }
-  if (m_reconnectInfo.contains(host) && m_reconnectInfo[host].timer) {
-    m_reconnectInfo[host].timer->stop();
-    m_reconnectInfo[host].timer->deleteLater();
-    m_reconnectInfo[host].timer = nullptr;
+  if (m_reconnectInfo.contains(name) && m_reconnectInfo[name].timer) {
+    m_reconnectInfo[name].timer->stop();
+    m_reconnectInfo[name].timer->deleteLater();
+    m_reconnectInfo[name].timer = nullptr;
   }
-  m_reconnectInfo.remove(host);
+  m_reconnectInfo.remove(name);
 
   auto *conn = new IrcConnection(this);
   conn->setNickname(nick);
@@ -107,11 +110,11 @@ void IRCConnectionManager::connectToServer(
   }
 
   m_connections.append(conn);
-  m_connToName[conn] = host;
+  m_connToName[conn] = name;
 
   // Add to tree model
   if (m_treeModel) {
-    m_treeModel->addServer(host);
+    m_treeModel->addServer(name);
   }
 
   wireConnection(conn);
@@ -133,14 +136,15 @@ void IRCConnectionManager::connectToServer(
   ri.nickServPass = nickServPass;
   ri.autojoin = autojoin;
   ri.perform = perform;
+  ri.displayName = displayName;
   ri.attempts = 0;
   ri.timer = nullptr;
-  m_reconnectInfo[host] = ri;
-  m_userDisconnected.remove(host);
+  m_reconnectInfo[name] = ri;
+  m_userDisconnected.remove(name);
 
   // Set as active server
-  m_activeServer = host;
-  m_activeChannel = host; // server tab
+  m_activeServer = name;
+  m_activeChannel = name; // server tab
 
   // Record a system message
   if (m_msgModel) {
@@ -148,7 +152,7 @@ void IRCConnectionManager::connectToServer(
                                          QString::number(port) +
                                          (ssl ? " (SSL)" : "") + "...");
   }
-  appendToChannel(host, host, "system",
+  appendToChannel(name, name, "system",
                   "Connecting to " + host + ":" + QString::number(port) +
                       "...");
 
@@ -1839,7 +1843,7 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
   }
 
   ri.attempts++;
-  QString msg = "Auto-reconnect: attempting to reconnect to " + host + " in " +
+  QString msg = "Auto-reconnect: attempting to reconnect to " + ri.host + " in " +
                 QString::number(delay) + "s (attempt " +
                 QString::number(ri.attempts) + "/" +
                 (maxAttempts > 0 ? QString::number(maxAttempts) : "∞") + ")";
@@ -1892,7 +1896,7 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
     m_activeChannel = host;
 
     QString reconnMsg =
-        "Reconnecting to " + host + ":" + QString::number(info.port) + "...";
+        "Reconnecting to " + info.host + ":" + QString::number(info.port) + "...";
     appendToChannel(host, host, "system", reconnMsg);
     if (m_msgModel)
       m_msgModel->addMessage("system", reconnMsg);
@@ -1901,7 +1905,7 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
     if (m_settings)
       conn->setAllowSelfSignedCerts(
           m_settings->getBool("conn/allowSelfSignedCerts", false));
-    conn->connectToServer(host, static_cast<quint16>(info.port), info.ssl);
+    conn->connectToServer(info.host, static_cast<quint16>(info.port), info.ssl);
   });
   ri.timer->start(delay * 1000);
 }

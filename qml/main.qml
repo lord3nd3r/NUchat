@@ -201,6 +201,7 @@ ApplicationWindow {
     property var lastSeenIndex: ({})  // { "server\nchannel": messageCount }
     property bool userScrolledUp: false  // true when user has scrolled up from bottom
     property bool userScrolledUpManual: false  // true only when user *actively* scrolled up (not from unfocused content growth)
+    property var collapsedServers: ({})  // { "serverName": true }
 
     // ── Preference-driven UI visibility ──
     property bool prefShowServerTree:  appSettings.value("ui/showServerTree", true) === true || appSettings.value("ui/showServerTree", true) === "true"
@@ -261,15 +262,17 @@ ApplicationWindow {
             var sIdx = treeModel.index(i, 0)
             var sName = treeModel.data(sIdx)
             channelListModel.append({name: sName, entryType: "server", hasUnread: false, hasHighlight: false})
-            var cc = treeModel.rowCount(sIdx)
-            for (var j = 0; j < cc; j++) {
-                var cIdx = treeModel.index(j, 0, sIdx)
-                var chName = treeModel.data(cIdx)
-                channelListModel.append({
-                    name: chName, entryType: "channel",
-                    hasUnread: ircManager.hasUnread(sName, chName),
-                    hasHighlight: ircManager.hasHighlight(sName, chName)
-                })
+            if (!root.collapsedServers[sName]) {
+                var cc = treeModel.rowCount(sIdx)
+                for (var j = 0; j < cc; j++) {
+                    var cIdx = treeModel.index(j, 0, sIdx)
+                    var chName = treeModel.data(cIdx)
+                    channelListModel.append({
+                        name: chName, entryType: "channel",
+                        hasUnread: ircManager.hasUnread(sName, chName),
+                        hasHighlight: ircManager.hasHighlight(sName, chName)
+                    })
+                }
             }
         }
     }
@@ -951,9 +954,24 @@ ApplicationWindow {
                             Text {
                                 visible: entryType === "server"
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: "\u25BE"
+                                text: root.collapsedServers[name] ? "\u25B8" : "\u25BE"
                                 color: theme.textMuted
                                 font.pixelSize: 10
+                                MouseArea {
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        var c = root.collapsedServers
+                                        if (c[name]) {
+                                            delete c[name]
+                                        } else {
+                                            c[name] = true
+                                        }
+                                        root.collapsedServers = c
+                                        root.refreshChannelList()
+                                    }
+                                }
                             }
                             Text {
                                 visible: entryType === "channel"

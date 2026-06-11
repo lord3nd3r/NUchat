@@ -150,7 +150,8 @@ void IRCConnectionManager::initCommandTable() {
   T["CYCLE"] = cycleHandler; T["REJOIN"] = cycleHandler;
 
   T["CLEAR"] = [this](IrcConnection *, const QString &, const QString &) -> bool {
-    if (m_msgModel) m_msgModel->clear(); return true;
+    if (m_msgModel) m_msgModel->clear();
+    return true;
   };
   T["CLOSE"] = [](IrcConnection *conn, const QString &target, const QString &args) -> bool {
     conn->partChannel(args.isEmpty() ? target : args.trimmed()); return true;
@@ -205,7 +206,7 @@ void IRCConnectionManager::initCommandTable() {
   };
 
   auto quitHandler = [this](IrcConnection *conn, const QString &, const QString &args) -> bool {
-    m_userDisconnect = true;
+    m_userDisconnected.insert(serverNameFor(conn));
     conn->disconnectFromServer(args.isEmpty() ? "NUchat" : args);
     return true;
   };
@@ -250,10 +251,12 @@ void IRCConnectionManager::initCommandTable() {
   };
 
   // Simple raw passthrough commands
-  for (const QString &c : {"LINKS", "LUSERS", "MOTD", "ADMIN", "STATS", "TRACE",
-                            "USERHOST", "VERSION", "TIME", "MAP", "LIST",
-                            "OPER", "SQUIT"})
-    T[c] = rawCmd(c);
+  for (const char *c : {"LINKS", "LUSERS", "MOTD", "ADMIN", "STATS", "TRACE",
+                        "USERHOST", "VERSION", "TIME", "MAP", "LIST",
+                        "OPER", "SQUIT"}) {
+    const QString cmd = QString::fromLatin1(c);
+    T[cmd] = rawCmd(cmd);
+  }
 
   // Special raw commands
   T["WALLOPS"] = [](IrcConnection *conn, const QString &, const QString &args) -> bool {
@@ -266,8 +269,10 @@ void IRCConnectionManager::initCommandTable() {
     QString who = args.section(' ', 0, 0), reason = args.section(' ', 1);
     conn->sendRaw("KILL " + who + (reason.isEmpty() ? "" : " :" + reason)); return true;
   };
-  for (const QString &c : {"GLINE", "KLINE", "ZLINE", "DLINE"})
-    T[c] = rawCmd(c);
+  for (const char *c : {"GLINE", "KLINE", "ZLINE", "DLINE"}) {
+    const QString cmd = QString::fromLatin1(c);
+    T[cmd] = rawCmd(cmd);
+  }
 
   // ═══════════════════════════════════════════════════
   //  Ignore
@@ -316,7 +321,7 @@ void IRCConnectionManager::initCommandTable() {
   //  DCC
   // ═══════════════════════════════════════════════════
 
-  T["DCC"] = [this](IrcConnection *, const QString &, const QString &args) -> bool {
+  T["DCC"] = [this](IrcConnection *conn, const QString &, const QString &args) -> bool {
     QString sub = args.section(' ', 0, 0).toUpper();
     if (sub == "SEND") {
       QString nick = args.section(' ', 1, 1);
@@ -324,6 +329,8 @@ void IRCConnectionManager::initCommandTable() {
       if (nick.isEmpty() || path.isEmpty()) {
         if (m_msgModel) m_msgModel->addMessage("system", "Usage: /DCC SEND <nick> <filepath>");
       } else if (m_dccManager) {
+        // Wire the active connection so the CTCP offer is actually sent
+        m_dccManager->setConnection(conn);
         m_dccManager->sendFile(nick, path);
         if (m_msgModel) m_msgModel->addMessage("system", "DCC: Sending " + path + " to " + nick);
       }

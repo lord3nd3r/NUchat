@@ -341,20 +341,28 @@ static PyObject *py_hexchat_hook_unload(PyObject * /*self*/, PyObject *args)
 //  hexchat module definition
 // ──────────────────────────────────────────────────────────────
 
+// CPython's documented idiom for METH_KEYWORDS handlers: cast through
+// void(*)(void) so the compiler doesn't warn about incompatible
+// function-pointer types (the interpreter calls them with the right ABI).
+template <typename F>
+static PyCFunction pyCFunctionCast(F f) {
+    return reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)(void)>(f));
+}
+
 static PyMethodDef hexchat_methods[] = {
     {"command",       py_hexchat_command,       METH_VARARGS, "Execute an IRC command"},
     {"prnt",          py_hexchat_prnt,          METH_VARARGS, "Print text to the chat window"},
     {"emit_print",    py_hexchat_emit_print,    METH_VARARGS, "Emit a print event"},
     {"get_info",      py_hexchat_get_info,      METH_VARARGS, "Get info by name"},
-    {"hook_command",  (PyCFunction)py_hexchat_hook_command,  METH_VARARGS | METH_KEYWORDS, "Hook a command"},
-    {"hook_server",   (PyCFunction)py_hexchat_hook_server,   METH_VARARGS | METH_KEYWORDS, "Hook a server event"},
-    {"hook_print",    (PyCFunction)py_hexchat_hook_print,    METH_VARARGS | METH_KEYWORDS, "Hook a print event"},
-    {"hook_timer",    (PyCFunction)py_hexchat_hook_timer,    METH_VARARGS | METH_KEYWORDS, "Hook a timer"},
+    {"hook_command",  pyCFunctionCast(py_hexchat_hook_command),  METH_VARARGS | METH_KEYWORDS, "Hook a command"},
+    {"hook_server",   pyCFunctionCast(py_hexchat_hook_server),   METH_VARARGS | METH_KEYWORDS, "Hook a server event"},
+    {"hook_print",    pyCFunctionCast(py_hexchat_hook_print),    METH_VARARGS | METH_KEYWORDS, "Hook a print event"},
+    {"hook_timer",    pyCFunctionCast(py_hexchat_hook_timer),    METH_VARARGS | METH_KEYWORDS, "Hook a timer"},
     {"unhook",        py_hexchat_unhook,        METH_VARARGS, "Remove a hook"},
     {"nickcmp",       py_hexchat_nickcmp,       METH_VARARGS, "Compare nicks (IRC-aware)"},
     {"get_list",      py_hexchat_get_list,      METH_VARARGS, "Get list"},
     {"get_context",   py_hexchat_get_context,   METH_NOARGS,  "Get current context"},
-    {"find_context",  (PyCFunction)py_hexchat_find_context,  METH_VARARGS | METH_KEYWORDS, "Find a context"},
+    {"find_context",  pyCFunctionCast(py_hexchat_find_context),  METH_VARARGS | METH_KEYWORDS, "Find a context"},
     {"set_context",   py_hexchat_set_context,   METH_VARARGS, "Set current context"},
     {"get_prefs",     py_hexchat_get_prefs,     METH_VARARGS, "Get preference value"},
     {"hook_unload",   py_hexchat_hook_unload,   METH_VARARGS, "Hook script unload event"},
@@ -366,7 +374,11 @@ static struct PyModuleDef hexchat_module = {
     "hexchat",
     "HexChat-compatible IRC scripting API for NUchat",
     -1,
-    hexchat_methods
+    hexchat_methods,
+    nullptr,  // m_slots
+    nullptr,  // m_traverse
+    nullptr,  // m_clear
+    nullptr   // m_free
 };
 
 static PyObject *PyInit_hexchat(void)
@@ -396,7 +408,11 @@ static struct PyModuleDef xchat_module = {
     "xchat",
     "Legacy XChat-compatible scripting API (alias for hexchat)",
     -1,
-    hexchat_methods
+    hexchat_methods,
+    nullptr,  // m_slots
+    nullptr,  // m_traverse
+    nullptr,  // m_clear
+    nullptr   // m_free
 };
 
 static PyObject *PyInit_xchat(void)
@@ -587,9 +603,6 @@ void PythonScriptEngine::loadSingleScript(const QString &path)
     PyObject *localDict = PyDict_Copy(globalDict);
     PyDict_SetItemString(localDict, "__file__", PyUnicode_FromString(path.toUtf8().constData()));
     PyDict_SetItemString(localDict, "__name__", PyUnicode_FromString(filename.toUtf8().constData()));
-
-    // Track hooks registered by this script
-    int hooksBefore = m_nextHookId;
 
     PyObject *result = PyEval_EvalCode(compiled, localDict, localDict);
     if (!result) {

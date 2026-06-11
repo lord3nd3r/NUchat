@@ -120,16 +120,11 @@ int main(int argc, char *argv[]) {
         notifyMgr.playSound(isHighlight, isPrivate);
       });
 
-  // Update tray icon unread state when unread changes
+  // Update tray icon unread state when unread changes — reflect the real
+  // aggregate state so the dot clears when the last unread channel is read
   QObject::connect(&manager, &IRCConnectionManager::unreadStateChanged,
                    [&manager, &notifyMgr]() {
-    // Check if any channels have unread or highlights
-    // We use a simple approach: if there's any unread state signal, at least one is unread
-    Q_UNUSED(manager);
-    // The unreadStateChanged signal means something changed — the QML side
-    // manages the actual per-channel state, so just toggle the icon.
-    // For now, set highlight state since that's when we notify.
-    notifyMgr.setUnreadState(true, true);
+    notifyMgr.setUnreadState(manager.anyUnread(), manager.anyHighlight());
   });
 
   // Quit from tray context menu

@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QtNetwork/QSslSocket>
 #include <QtNetwork/QNetworkProxy>
+#include <QtNetwork/QHostAddress>
 
 class IrcConnection : public QObject
 {
@@ -49,6 +50,12 @@ public:
 
     QString serverHost() const { return m_host; }
     bool isConnected() const { return m_registered; }
+
+    // Local address of the connected socket (used for DCC SEND offers)
+    QHostAddress localAddress() const { return m_socket->localAddress(); }
+
+    // Send a PING immediately, bypassing the flood queue (lag measurement)
+    void sendPing(const QString &token);
 
     // IRC commands
     Q_INVOKABLE void joinChannel(const QString &channel, const QString &key = QString());
@@ -134,6 +141,12 @@ private:
     QQueue<QString> m_sendQueue;
     QTimer m_sendTimer;
     int m_burstRemaining = kBurst;
+
+    // ── Registration / CAP negotiation timeout ──
+    // If the CAP/SASL dance stalls (server ACKs sasl but never completes),
+    // bail out with CAP END so registration can finish instead of hanging.
+    static constexpr int kRegistrationTimeoutMs = 30000;
+    QTimer m_regTimeoutTimer;
 
     // ── Multi-line CAP LS accumulation ──
     QString m_pendingCapLs;  // caps seen so far when server sends CAP * LS *

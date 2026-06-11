@@ -432,10 +432,16 @@ void DccManager::sendFile(const QString &nick, const QString &filePath) {
 
   // Send DCC SEND CTCP to the remote user
   if (m_connection && t->peerPort > 0) {
-    // Get our external IP (TODO: use configured IP or UPnP)
-    // For now use 0 (passive DCC — remote should connect back)
+    // Advertise the local address of the IRC connection's socket.
+    // (TODO: configurable external IP / UPnP for NAT traversal)
     quint32 myIp = 0;
-    QString ctcp = "DCC SEND " + t->fileName + " " +
+    const QHostAddress local = m_connection->localAddress();
+    if (local.protocol() == QAbstractSocket::IPv4Protocol)
+      myIp = local.toIPv4Address();
+    // Quote filenames containing spaces (matches our receive-side parsing)
+    QString offerName = t->fileName.contains(' ')
+        ? "\"" + t->fileName + "\"" : t->fileName;
+    QString ctcp = "DCC SEND " + offerName + " " +
                    QString::number(myIp) + " " +
                    QString::number(t->peerPort) + " " +
                    QString::number(t->fileSize);

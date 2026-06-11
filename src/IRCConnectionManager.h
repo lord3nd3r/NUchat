@@ -83,6 +83,8 @@ public:
   Q_INVOKABLE bool hasHighlight(const QString &server,
                                 const QString &channel) const;
   Q_INVOKABLE void clearUnread(const QString &server, const QString &channel);
+  Q_INVOKABLE bool anyUnread() const { return !m_unread.isEmpty(); }
+  Q_INVOKABLE bool anyHighlight() const { return !m_highlighted.isEmpty(); }
 
   // ── Ignore list ──
   Q_INVOKABLE void addIgnore(const QString &mask);
@@ -249,7 +251,9 @@ private:
     QTimer *timer = nullptr;
   };
   QMap<QString, ReconnectInfo> m_reconnectInfo; // host -> reconnect params
-  bool m_userDisconnect = false;                // true if user typed /quit
+  // Hosts the user intentionally disconnected (suppresses auto-reconnect
+  // for that host only — a global flag would break multi-server semantics)
+  QSet<QString> m_userDisconnected;
 
   // ── Away log ──
   bool m_isAway = false;

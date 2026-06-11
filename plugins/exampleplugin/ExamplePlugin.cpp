@@ -10,6 +10,7 @@ void ExamplePlugin::initialize(QObject *parent)
 
 bool ExamplePlugin::handleCommand(const QString &command, const QStringList &args, IrcConnection *connection)
 {
+    Q_UNUSED(args)
     if (command == "hello") {
         if (connection) {
             QMetaObject::invokeMethod(connection, "sendMessage",

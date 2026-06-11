@@ -32,7 +32,8 @@ IRCConnectionManager::IRCConnectionManager(QObject *parent) : QObject(parent) {
       auto &state = m_lagState[conn];
       state.pingSent.start();
       state.pending = true;
-      conn->sendRaw("PING :LAG" + QString::number(state.pingSent.msecsSinceReference()));
+      // Bypass the flood queue so the measurement excludes queue latency
+      conn->sendPing("LAG" + QString::number(state.pingSent.msecsSinceReference()));
     }
   });
 }
@@ -132,7 +133,7 @@ void IRCConnectionManager::connectToServer(
   ri.attempts = 0;
   ri.timer = nullptr;
   m_reconnectInfo[host] = ri;
-  m_userDisconnect = false;
+  m_userDisconnected.remove(host);
 
   // Set as active server
   m_activeServer = host;
@@ -156,7 +157,7 @@ void IRCConnectionManager::connectToServer(
 }
 
 void IRCConnectionManager::disconnectFromServer(const QString &host) {
-  m_userDisconnect = true;
+  m_userDisconnected.insert(host);
   // Cancel any pending reconnect timer
   if (m_reconnectInfo.contains(host) && m_reconnectInfo[host].timer) {
     m_reconnectInfo[host].timer->stop();
@@ -170,7 +171,8 @@ void IRCConnectionManager::disconnectFromServer(const QString &host) {
 }
 
 void IRCConnectionManager::disconnectAll() {
-  m_userDisconnect = true;
+  for (auto *c : m_connections)
+    m_userDisconnected.insert(serverNameFor(c));
   for (auto *c : m_connections)
     c->disconnectFromServer();
 }
@@ -204,7 +206,7 @@ void IRCConnectionManager::closeChannel(const QString &serverName,
 }
 
 void IRCConnectionManager::closeServer(const QString &serverName) {
-  m_userDisconnect = true;
+  m_userDisconnected.insert(serverName);
 
   // Cancel any pending reconnect timer and remove stored info for this server
   if (m_reconnectInfo.contains(serverName) && m_reconnectInfo[serverName].timer) {
@@ -512,10 +514,10 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
     }
 
     // ── Auto-reconnect ──
-    if (!m_userDisconnect) {
+    // Only suppress reconnect if THIS host was intentionally disconnected
+    if (!m_userDisconnected.remove(srv)) {
       attemptReconnect(srv);
     }
-    m_userDisconnect = false;
 
     // Clean up lag state for this connection
     m_lagState.remove(conn);
@@ -643,7 +645,9 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           }
 
           appendToChannel(srv, channel, "system", "Now talking in " + channel);
-          // Auto-switch to the new channel
+          // Auto-switch to the new channel (server too — the join may have
+          // happened on a non-active connection, e.g. auto-join on reconnect)
+          m_activeServer = srv;
           m_activeChannel = channel;
           if (m_msgModel) {
             m_msgModel->clear();
@@ -1323,10 +1327,10 @@ void IRCConnectionManager::appendToChannel(const QString &server,
       m_unread.insert(ukey);
       changed = true;
     }
-    // Check for nick highlight (mention of our nick in the message)
+    // Check for nick highlight (whole-word mention of our nick)
     if (auto *conn = connectionForServer(server)) {
       QString myNick = conn->nickname();
-      if (!myNick.isEmpty() && text.contains(myNick, Qt::CaseInsensitive)) {
+      if (!myNick.isEmpty() && MessageModel::containsNickWord(text, myNick)) {
         isNickHighlight = true;
         if (!m_highlighted.contains(ukey)) {
           m_highlighted.insert(ukey);

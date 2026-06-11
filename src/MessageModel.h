@@ -50,6 +50,9 @@ public:
   void beginBatch();
   void endBatch();
   static QString ircToHtml(const QString &text);
+  // Whole-word nick match honoring IRC nick characters — avoids false
+  // highlights like nick "ed" matching "edited".
+  static bool containsNickWord(const QString &text, const QString &nick);
 
 signals:
   void messageAdded(const QString &formattedLine);

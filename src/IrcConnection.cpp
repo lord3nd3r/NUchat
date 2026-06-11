@@ -15,6 +15,21 @@ IrcConnection::IrcConnection(QObject *parent)
   // Flood protection: drain one queued message per timer tick
   m_sendTimer.setInterval(kDrainIntervalMs);
   connect(&m_sendTimer, &QTimer::timeout, this, &IrcConnection::drainSendQueue);
+
+  // CAP/SASL negotiation timeout — if registration stalls, force CAP END
+  m_regTimeoutTimer.setSingleShot(true);
+  m_regTimeoutTimer.setInterval(kRegistrationTimeoutMs);
+  connect(&m_regTimeoutTimer, &QTimer::timeout, this, [this]() {
+    if (m_registered ||
+        m_socket->state() != QAbstractSocket::ConnectedState)
+      return;
+    qWarning() << "[IRC] CAP/SASL negotiation timed out on" << m_host
+               << "— sending CAP END to complete registration";
+    m_saslInProgress = false;
+    emit errorOccurred(
+        tr("CAP/SASL negotiation timed out — completing registration"));
+    sendRawImmediate("CAP END");
+  });
 }
 
 IrcConnection::~IrcConnection() = default;
@@ -46,7 +61,9 @@ void IrcConnection::connectToServer(const QString &host, quint16 port,
 
 void IrcConnection::disconnectFromServer(const QString &quitMsg) {
   if (m_socket->isOpen()) {
-    sendRaw("QUIT :" + quitMsg);
+    // Bypass the flood queue — the socket closes immediately after, so a
+    // queued QUIT would be silently dropped.
+    sendRawImmediate("QUIT :" + quitMsg);
     m_socket->flush();
     m_socket->disconnectFromHost();
   }
@@ -176,7 +193,8 @@ void IrcConnection::sendMessage(const QString &target, const QString &message) {
   while (pos < msgUtf8.size()) {
     int end = qMin(pos + maxMsg, (int)msgUtf8.size());
     // Don't split in the middle of a multi-byte UTF-8 sequence
-    while (end > pos && (msgUtf8[end] & 0xC0) == 0x80)
+    while (end > pos && end < msgUtf8.size() &&
+           (msgUtf8[end] & 0xC0) == 0x80)
       --end;
     if (end == pos) end = pos + maxMsg; // pathological: force advance
     QByteArray chunk = msgUtf8.mid(pos, end - pos);
@@ -206,6 +224,12 @@ void IrcConnection::sendCtcp(const QString &target, const QString &command,
     msg += " " + args;
   msg += "\x01";
   sendMessage(target, msg);
+}
+
+void IrcConnection::sendPing(const QString &token) {
+  // Bypass the flood queue so lag measurement doesn't include queue latency
+  if (m_socket->state() == QAbstractSocket::ConnectedState)
+    sendRawImmediate("PING :" + token);
 }
 
 void IrcConnection::who(const QString &mask) { sendRaw("WHO " + mask); }
@@ -240,6 +264,7 @@ void IrcConnection::onSocketConnected() {
 }
 
 void IrcConnection::onDisconnectedSlot() {
+  m_regTimeoutTimer.stop();
   bool wasRegistered = m_registered;
   m_registered = false;
   if (wasRegistered)
@@ -275,6 +300,9 @@ void IrcConnection::onSslErrors(const QList<QSslError> &errors) {
 // ── IRC Protocol ──
 
 void IrcConnection::sendRegistration() {
+  // Watchdog: if CAP/SASL negotiation stalls, force CAP END (see ctor)
+  m_regTimeoutTimer.start();
+
   // Registration messages bypass the flood queue — they must go immediately
   // or the server will time us out.
   sendRawImmediate("CAP LS 302");
@@ -450,6 +478,7 @@ void IrcConnection::processLine(const QString &line) {
 
     // RPL_WELCOME (001) — registration complete
     if (numeric == 1) {
+      m_regTimeoutTimer.stop();
       m_registered = true;
       m_saslInProgress = false;
       m_nickRetries = 0;
@@ -553,7 +582,11 @@ void IrcConnection::processLine(const QString &line) {
     // ERR_NICKNAMEINUSE (433)
     else if (numeric == 433) {
       static const int kMaxNickRetries = 3;
-      if (m_nickRetries < kMaxNickRetries) {
+      if (m_registered) {
+        // A manual /nick collided — the server keeps our current nick, so
+        // don't mutate m_nickname or auto-retry; just surface the error.
+        emit errorOccurred(tr("Nickname is already in use."));
+      } else if (m_nickRetries < kMaxNickRetries) {
         ++m_nickRetries;
         m_nickname += "_";
         sendRaw("NICK " + m_nickname);

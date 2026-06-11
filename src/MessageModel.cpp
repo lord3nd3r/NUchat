@@ -92,6 +92,10 @@ void MessageModel::clear() {
   m_messages.clear();
   endResetModel();
   m_expandedGroups.clear();
+  // Drop pending image downloads — otherwise an image requested in the
+  // previous channel would embed into whichever channel is shown when the
+  // download finishes.
+  m_pendingImages.clear();
   emit cleared();
 }
 
@@ -111,17 +115,12 @@ static const char *mircColors[] = {
 static QString mircColor(int idx) {
   if (idx >= 0 && idx <= 15)
     return QString::fromLatin1(mircColors[idx]);
-  // Extended colors 16-98: generate from 6x6x6 cube + greys
+  // Extended colors 16-98: generate from standard 6x6x6 cube + greys
   if (idx >= 16 && idx <= 87) {
     int n = idx - 16;
-    int r = (n / 12) * 51;
-    int g = ((n / 2) % 6) * 51;
-    int b = (n % 2) * 128 + ((n / 2) % 2) * 127;
-    // Better approximation: use standard 6x6x6 cube
-    int ri = n / 36, gi = (n / 6) % 6, bi = n % 6;
-    r = ri * 51;
-    g = gi * 51;
-    b = bi * 51;
+    int r = (n / 36) * 51;
+    int g = ((n / 6) % 6) * 51;
+    int b = (n % 6) * 51;
     return QStringLiteral("#%1%2%3")
         .arg(r, 2, 16, QLatin1Char('0'))
         .arg(g, 2, 16, QLatin1Char('0'))
@@ -635,6 +634,20 @@ void MessageModel::setDarkMode(bool dark) { s_darkMode = dark; }
 
 void MessageModel::setNickname(const QString &nick) { m_nickname = nick; }
 
+bool MessageModel::containsNickWord(const QString &text, const QString &nick) {
+  if (nick.isEmpty())
+    return false;
+  // Characters that can appear in an IRC nick (RFC 2812 + common extensions);
+  // a mention is the nick NOT surrounded by these on either side.
+  static const QString nickChars =
+      QStringLiteral("A-Za-z0-9_\\-\\[\\]\\\\`^{}|");
+  const QRegularExpression re(
+      QStringLiteral("(?<![%1])%2(?![%1])")
+          .arg(nickChars, QRegularExpression::escape(nick)),
+      QRegularExpression::CaseInsensitiveOption);
+  return re.match(text).hasMatch();
+}
+
 void MessageModel::setHighlightEnabled(bool enabled) {
   m_highlightEnabled = enabled;
 }
@@ -770,9 +783,9 @@ QString MessageModel::formatLine(const Message &msg) const {
 
       // Only highlight if the sender is NOT us
       if (senderRaw.compare(m_nickname, Qt::CaseInsensitive) != 0) {
-        // Check the body after the <nick> prefix for our nick
+        // Check the body after the <nick> prefix for our nick (whole word)
         QString msgBody = msg.text.mid(gt + 1);
-        isHighlight = msgBody.contains(m_nickname, Qt::CaseInsensitive);
+        isHighlight = containsNickWord(msgBody, m_nickname);
       }
     }
   }

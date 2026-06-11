@@ -205,7 +205,7 @@ static int lua_nuchat_hook_print(lua_State *L)
 
 static int lua_nuchat_emit_print(lua_State *L)
 {
-    const char *event = luaL_checkstring(L, 1);
+    luaL_checkstring(L, 1);  // validate event name (arg 1); value unused for now
     // Collect remaining string arguments
     int nargs = lua_gettop(L);
     QStringList args;

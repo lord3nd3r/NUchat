@@ -158,6 +158,12 @@ void ImageDownloader::download(const QString &url)
     req.setHeader(QNetworkRequest::UserAgentHeader, "NUchat/1.0");
 
     QNetworkReply *reply = m_nam->get(req);
+    // Abort oversized downloads early instead of buffering the whole body
+    connect(reply, &QNetworkReply::downloadProgress, reply,
+            [reply](qint64 received, qint64) {
+                if (received > MAX_DOWNLOAD_SIZE)
+                    reply->abort();
+            });
     connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
         reply->deleteLater();
         m_pending.remove(url);

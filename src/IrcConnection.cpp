@@ -405,6 +405,8 @@ void IrcConnection::processLine(const QString &line) {
       QStringList capsToReq;
       if (capList.contains("server-time", Qt::CaseInsensitive))
         capsToReq << "server-time";
+      if (capList.contains("multi-prefix", Qt::CaseInsensitive))
+        capsToReq << "multi-prefix";  // NAMES includes all mode prefixes
       if (serverHasSasl && wantSasl)
         capsToReq << "sasl";
 

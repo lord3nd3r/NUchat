@@ -1,4 +1,5 @@
 #include "Logger.h"
+#include <QFileInfo>
 
 Logger::Logger(QObject *parent) : QObject(parent) {}
 
@@ -7,22 +8,37 @@ QString Logger::logDir() const {
          QStringLiteral("/logs");
 }
 
+// Replace characters that are invalid in filenames (Windows is the strictest:
+// \ / : * ? " < > |) so channels like #foo|bar still get a log file.
+static QString sanitizeFileName(QString name) {
+  static const QString invalid = QStringLiteral("/\\:*?\"<>|");
+  for (const QChar &c : invalid)
+    name.replace(c, QLatin1Char('_'));
+  return name;
+}
+
 QString Logger::logFilePath(const QString &network,
                             const QString &channel) const {
-  QString safeName = channel.toLower();
-  safeName.replace('/', '_');
-  safeName.replace('\\', '_');
-  safeName.replace(':', '_');
-  return logDir() + "/" + network.toLower() + "/" + safeName + ".log";
+  return logDir() + "/" + sanitizeFileName(network.toLower()) + "/" +
+         sanitizeFileName(channel.toLower()) + ".log";
 }
 
 void Logger::log(const QString &network, const QString &channel,
                  const QString &type, const QString &message) {
   // Ensure log directory exists: ~/.config/NUchat/logs/<network>/
-  QString dir = logDir() + "/" + network;
+  QString dir = logDir() + "/" + sanitizeFileName(network.toLower());
   QDir().mkpath(dir);
 
   QString filePath = logFilePath(network, channel);
+
+  // ── Size-based rotation: keep one .log.1 backup ──
+  static constexpr qint64 kMaxLogSize = 10 * 1024 * 1024; // 10 MB
+  if (QFileInfo(filePath).size() > kMaxLogSize) {
+    QString backup = filePath + ".1";
+    QFile::remove(backup);
+    QFile::rename(filePath, backup);
+  }
+
   QFile file(filePath);
   if (file.open(QIODevice::Append | QIODevice::Text)) {
     QTextStream stream(&file);

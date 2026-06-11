@@ -22,9 +22,24 @@ void Settings::setValue(const QString &key, const QVariant &value)
     settings.setValue(key, value);
 }
 
+void Settings::remove(const QString &key)
+{
+    settings.remove(key);
+}
+
 void Settings::sync()
 {
     settings.sync();
+}
+
+QStringList Settings::allKeysIn(const QString &group) const
+{
+    // const_cast: beginGroup/endGroup don't modify stored values
+    QSettings &s = const_cast<QSettings &>(settings);
+    s.beginGroup(group);
+    QStringList keys = s.childKeys();
+    s.endGroup();
+    return keys;
 }
 
 QString Settings::configPath() const
@@ -162,8 +177,13 @@ QVariantMap Settings::importHexChatIdentity() const
 
 QVariantList Settings::importHexChatNetworks() const
 {
+    return parseHexChatServlist(hexchatConfigDir() + "/servlist.conf");
+}
+
+QVariantList Settings::parseHexChatServlist(const QString &path)
+{
     QVariantList networks;
-    QFile f(hexchatConfigDir() + "/servlist.conf");
+    QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
         return networks;
 
@@ -194,6 +214,8 @@ QVariantList Settings::importHexChatNetworks() const
         if (!current.contains("customUser")) current["customUser"]   = QString();
         if (!current.contains("customReal")) current["customReal"]   = QString();
         if (!current.contains("serverPass")) current["serverPass"]   = QString();
+        if (!current.contains("autojoin"))   current["autojoin"]     = QString();
+        if (!current.contains("perform"))    current["perform"]      = QString();
         current["isZnc"]     = false;
         current["zncUser"]   = QString();
         current["zncPass"]   = QString();
@@ -246,13 +268,25 @@ QVariantList Settings::importHexChatNetworks() const
         } else if (key == "P") {
             current["serverPass"] = val;
         } else if (key == "I") {
+            // HexChat: I= is the per-network NICK (U= is the username)
+            current["customNick"] = val;
+            current["useGlobalNick"] = false;
+        } else if (key == "U") {
             current["customUser"] = val;
             current["useGlobalNick"] = false;
         } else if (key == "R") {
             current["customReal"] = val;
+            current["useGlobalNick"] = false;
+        } else if (key == "J") {
+            // Favorite/autojoin channel — HexChat writes one J= line per channel
+            QString aj = current.value("autojoin").toString();
+            current["autojoin"] = aj.isEmpty() ? val : aj + "," + val;
+        } else if (key == "C") {
+            // Connect command — one C= line per command
+            QString pf = current.value("perform").toString();
+            current["perform"] = pf.isEmpty() ? val : pf + "\n" + val;
         }
-        // Other keys (E, F, D, J, C, L, A, B, v, etc.) are ignored for now.
-        // J= (fav channels) and C= (perform) have no corresponding fields in NUchat's network model.
+        // Other keys (E, F, D, L, A, B, v, etc.) are ignored for now.
     }
     flushNetwork(); // final network (no trailing N= after it)
 

@@ -46,6 +46,7 @@ void MessageModel::addMessage(const QString &type, const QString &text,
                               const QString &timestamp) {
   beginInsertRows(QModelIndex(), m_messages.count(), m_messages.count());
   Message msg;
+  msg.id = m_nextMessageId++;
   msg.type = type;
   msg.text = text;
 
@@ -64,9 +65,13 @@ void MessageModel::addMessage(const QString &type, const QString &text,
   if (!m_batchMode)
     emit messageAdded(msg.formattedText); // reuse cached text, no double format
 
-  // Auto-download images for chat/action messages if enabled in preferences
+  // Auto-download images for chat/action messages if enabled in preferences.
+  // Static QSettings: Qt shares one cache per file within a process, so
+  // writes from the QML Settings wrapper are visible here without re-reading
+  // the file on every message.
+  static QSettings prefs;
   bool showInlineImages =
-      QSettings().value(QStringLiteral("ui/showInlineImages"), true).toBool();
+      prefs.value(QStringLiteral("ui/showInlineImages"), true).toBool();
   if (showInlineImages &&
       (type == QLatin1String("chat") || type == QLatin1String("action"))) {
     static const QRegularExpression urlRe(QStringLiteral(
@@ -159,10 +164,9 @@ static bool isHtmlTag(const QString &tagContent) {
   int spacePos = inner.indexOf(' ');
   QString tagName = (spacePos >= 0) ? inner.left(spacePos) : inner;
   tagName = tagName.toLower();
-  // If it has attributes (space present) it's definitely HTML
-  if (spacePos >= 0)
-    return true;
-  // If it matches a known HTML element name, it's HTML
+  // Only treat it as HTML if the tag name is a known element — with or
+  // without attributes.  Requiring the name match prevents eating user text
+  // like "<3 you>" or pasted generics like "<QMap K, V>".
   return s_htmlTagNames.contains(tagName);
 }
 
@@ -580,6 +584,7 @@ void MessageModel::onImageReady(const QString &url, const QString &localPath,
 
   beginInsertRows(QModelIndex(), m_messages.count(), m_messages.count());
   Message msg;
+  msg.id = m_nextMessageId++;
   msg.type = QStringLiteral("embed");
   msg.text = html;
   msg.timestamp = QDateTime::currentDateTime();
@@ -882,8 +887,9 @@ void MessageModel::toggleEventGroup(int groupId) {
 
 QString MessageModel::allFormattedText() const {
   static const int kCollapseThreshold = 3;
+  static QSettings prefs;  // shared per-process QSettings cache
   const bool collapseEvents =
-      QSettings().value(QStringLiteral("ui/collapseEvents"), true).toBool();
+      prefs.value(QStringLiteral("ui/collapseEvents"), true).toBool();
 
   QStringList result;
   result.reserve(m_messages.size());
@@ -896,7 +902,8 @@ QString MessageModel::allFormattedText() const {
         ++j;
       const int count = j - i;
       if (count >= kCollapseThreshold) {
-        int gid = i; // Use start index as stable group ID
+        // Group ID = first message's session-unique id (stable across appends)
+        int gid = m_messages.at(i).id;
         bool expanded = m_expandedGroups.contains(gid);
         
         result.append(makeEventGroupHtml(m_messages, i, count, gid, expanded));

@@ -50,7 +50,9 @@ public:
                                    const QString &saslUser = QString(),
                                    const QString &saslPass = QString(),
                                    const QString &nickServCmd = QString(),
-                                   const QString &nickServPass = QString());
+                                   const QString &nickServPass = QString(),
+                                   const QString &autojoin = QString(),
+                                   const QString &perform = QString());
   Q_INVOKABLE void disconnectFromServer(const QString &host);
   Q_INVOKABLE void disconnectAll();
 
@@ -104,6 +106,8 @@ public:
   IrcConnection *activeConnection() const;
   QString currentNick() const;
   QString channelTopic() const;
+  // Raw topic text (mIRC control codes intact) — for inline topic editing
+  Q_INVOKABLE QString channelTopicRaw() const;
   QStringList channelUsers() const;
   Q_INVOKABLE QString channelModes() const;
 
@@ -247,6 +251,8 @@ private:
     QString saslPass;
     QString nickServCmd;
     QString nickServPass;
+    QString autojoin;  // comma/space-separated channels joined on connect
+    QString perform;   // newline-separated commands run on connect
     int attempts = 0;
     QTimer *timer = nullptr;
   };

@@ -12,8 +12,11 @@ public:
     // Generic accessor (used from QML)
     Q_INVOKABLE QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
     Q_INVOKABLE void setValue(const QString &key, const QVariant &value);
+    Q_INVOKABLE void remove(const QString &key);
     Q_INVOKABLE void sync();
     Q_INVOKABLE QString configPath() const;
+    // All child keys inside a settings group (e.g. "aliases")
+    QStringList allKeysIn(const QString &group) const;
 
     // HexChat script migration
     Q_INVOKABLE bool hexchatScriptsExist() const;
@@ -24,6 +27,9 @@ public:
     Q_INVOKABLE bool hexchatConfigExists() const;
     Q_INVOKABLE QVariantMap importHexChatIdentity() const;
     Q_INVOKABLE QVariantList importHexChatNetworks() const;
+    // Parse a HexChat servlist.conf at an explicit path (unit-testable core
+    // of importHexChatNetworks)
+    static QVariantList parseHexChatServlist(const QString &path);
 
     // Type-safe C++ accessors — preferred over value() in C++ code.
     int    getInt   (const QString &key, int           defaultValue = 0)     const;

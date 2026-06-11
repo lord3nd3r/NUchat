@@ -52,7 +52,8 @@ public:
                                    const QString &nickServCmd = QString(),
                                    const QString &nickServPass = QString(),
                                    const QString &autojoin = QString(),
-                                   const QString &perform = QString());
+                                   const QString &perform = QString(),
+                                   const QString &displayName = QString());
   Q_INVOKABLE void disconnectFromServer(const QString &host);
   Q_INVOKABLE void disconnectAll();
 
@@ -253,6 +254,7 @@ private:
     QString nickServPass;
     QString autojoin;  // comma/space-separated channels joined on connect
     QString perform;   // newline-separated commands run on connect
+    QString displayName;
     int attempts = 0;
     QTimer *timer = nullptr;
   };

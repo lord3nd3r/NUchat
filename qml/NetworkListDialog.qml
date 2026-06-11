@@ -544,7 +544,8 @@ Dialog {
                             nw.nickServCmd,
                             nw.nickServPass,
                             nw.autojoin,
-                            nw.perform
+                            nw.perform,
+                            nw.network
                         )
                         root.refreshChannelList()
                         dlg.close()

@@ -1193,6 +1193,7 @@ ApplicationWindow {
                 TextArea {
                     id: chatArea
                     readOnly: true
+                    activeFocusOnPress: false  // never steal focus from messageInput
                     selectByMouse: true
                     selectedTextColor: theme.highlightText
                     selectionColor: theme.highlight
@@ -1369,10 +1370,12 @@ ApplicationWindow {
                     function scrollToBottom() {
                         var f = chatScrollView.contentItem
                         f.contentY = Math.max(0, f.contentHeight - f.height)
-                        // Also position cursor at end — TextArea will try to
-                        // ensure the cursor is visible, which serves as a
-                        // second scroll mechanism.
+                        // Position cursor at end so Qt keeps the bottom
+                        // visible, but preserve messageInput focus — on some
+                        // Qt builds setting cursorPosition grabs activeFocus.
+                        var hadInputFocus = messageInput.activeFocus
                         chatArea.cursorPosition = chatArea.length
+                        if (hadInputFocus) messageInput.forceActiveFocus()
                         root.userScrolledUp = false
                         root.userScrolledUpManual = false
                     }

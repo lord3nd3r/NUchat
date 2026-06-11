@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QObject>
 #include <QSystemTrayIcon>
 
@@ -56,4 +57,10 @@ private:
     QIcon m_normalIcon;
     QIcon m_unreadIcon;
     QIcon m_highlightIcon;
+
+    // Rate limiting — at most one balloon/sound per interval to prevent
+    // notification spam in busy channels
+    static constexpr int kNotifyThrottleMs = 2000;
+    QElapsedTimer m_notifyLimiter;
+    QElapsedTimer m_soundLimiter;
 };

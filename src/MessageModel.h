@@ -23,6 +23,7 @@ public:
     QString formattedText; // pre-rendered HTML for display
     QString type;          // "system", "chat", "action", "error", "embed"
     QDateTime timestamp;
+    int id = 0;            // session-unique, monotonic — stable event-group key
   };
 
   explicit MessageModel(QObject *parent = nullptr);
@@ -50,6 +51,8 @@ public:
   void beginBatch();
   void endBatch();
   static QString ircToHtml(const QString &text);
+  // Wrap http/https URLs in HTML output with clickable <a> tags
+  static QString linkifyUrls(const QString &html);
   // Whole-word nick match honoring IRC nick characters — avoids false
   // highlights like nick "ed" matching "edited".
   static bool containsNickWord(const QString &text, const QString &nick);
@@ -65,10 +68,10 @@ private slots:
 
 private:
   QString formatLine(const Message &msg) const;
-  static QString linkifyUrls(const QString &html);
   static QString colorizeNicks(const QString &html);
   static QString nickColor(const QString &nick);
   QList<Message> m_messages;
+  int m_nextMessageId = 1;
   QSet<QString> m_pendingImages;
   QString m_nickname;
   bool m_highlightEnabled = false;

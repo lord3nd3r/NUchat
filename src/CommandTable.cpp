@@ -5,6 +5,10 @@
 #include "DccManager.h"
 #include "IrcConnection.h"
 #include "MessageModel.h"
+#include "Settings.h"
+#include <QPointer>
+#include <QProcess>
+#include <QTimer>
 
 void IRCConnectionManager::initCommandTable() {
   auto &T = m_commandTable;
@@ -314,6 +318,216 @@ void IRCConnectionManager::initCommandTable() {
     QString text = "* " + conn->nickname() + " " + info;
     if (m_msgModel) m_msgModel->addMessage("action", text);
     appendToChannel(m_activeServer, target, "action", text);
+    return true;
+  };
+
+  // ═══════════════════════════════════════════════════
+  //  Connection to new servers
+  // ═══════════════════════════════════════════════════
+
+  // /SERVER <host> [port] [password] — port prefixed with + means SSL
+  auto serverHandler = [this](IrcConnection *, const QString &, const QString &args) -> bool {
+    QString host = args.section(' ', 0, 0).trimmed();
+    if (host.isEmpty()) {
+      if (m_msgModel) m_msgModel->addMessage("system", "Usage: /SERVER <host> [port] [password]");
+      return true;
+    }
+    QString portStr = args.section(' ', 1, 1);
+    QString pass = args.section(' ', 2);
+    bool ssl = false;
+    int port = 6667;
+    if (portStr.startsWith('+')) {
+      ssl = true;
+      port = portStr.mid(1).toInt();
+      if (port == 0) port = 6697;
+    } else if (!portStr.isEmpty()) {
+      port = portStr.toInt();
+      if (port == 0) port = 6667;
+    }
+    QString nick = m_settings ? m_settings->getString("user/nickname", "NUchat_user") : "NUchat_user";
+    QString user = m_settings ? m_settings->getString("user/username", "nuchat") : "nuchat";
+    QString real = m_settings ? m_settings->getString("user/realname", "NUchat User") : "NUchat User";
+    connectToServer(host, port, ssl, nick, user, real, pass);
+    return true;
+  };
+  T["SERVER"] = serverHandler; T["NEWSERVER"] = serverHandler;
+
+  // ═══════════════════════════════════════════════════
+  //  Utility commands (/TIMER, /LASTLOG, /EXEC, /ALIAS, /NOTIFY)
+  // ═══════════════════════════════════════════════════
+
+  // /TIMER <seconds> <command or text> — runs once after the delay
+  T["TIMER"] = [this](IrcConnection *, const QString &target, const QString &args) -> bool {
+    double secs = args.section(' ', 0, 0).toDouble();
+    QString cmd = args.section(' ', 1).trimmed();
+    if (secs <= 0 || cmd.isEmpty()) {
+      if (m_msgModel) m_msgModel->addMessage("system", "Usage: /TIMER <seconds> <command>");
+      return true;
+    }
+    QString srv = m_activeServer, tgt = target;
+    QTimer::singleShot(static_cast<int>(secs * 1000), this, [this, srv, tgt, cmd]() {
+      QString prevServer = m_activeServer, prevChannel = m_activeChannel;
+      m_activeServer = srv;
+      m_activeChannel = tgt;
+      sendMessage(tgt, cmd);
+      m_activeServer = prevServer;
+      m_activeChannel = prevChannel;
+    });
+    if (m_msgModel)
+      m_msgModel->addMessage("system", "Timer set: \"" + cmd + "\" in " + QString::number(secs) + "s");
+    return true;
+  };
+
+  // /LASTLOG <text> — show matching lines from the current buffer
+  T["LASTLOG"] = [this](IrcConnection *, const QString &, const QString &args) -> bool {
+    QString pattern = args.trimmed();
+    if (pattern.isEmpty()) {
+      if (m_msgModel) m_msgModel->addMessage("system", "Usage: /LASTLOG <text>");
+      return true;
+    }
+    if (!m_msgModel) return true;
+    ChannelKey key{m_activeServer, m_activeChannel};
+    const auto &hist = m_history.value(key);
+    QVector<StoredMessage> matches;
+    for (const auto &m : hist) {
+      if (m.text.contains(pattern, Qt::CaseInsensitive))
+        matches.append(m);
+    }
+    static constexpr int kMaxLastlog = 100;
+    int start = qMax(0, matches.size() - kMaxLastlog);
+    m_msgModel->addMessage("system",
+        "── LastLog: \"" + pattern + "\" (" + QString::number(matches.size()) + " matches) ──");
+    for (int i = start; i < matches.size(); ++i)
+      m_msgModel->addMessage(matches[i].type, matches[i].text, matches[i].timestamp);
+    m_msgModel->addMessage("system", "── End of LastLog ──");
+    return true;
+  };
+
+  // /EXEC [-o] <command> — run a shell command; -o sends output to the channel
+  T["EXEC"] = [this](IrcConnection *conn, const QString &target, const QString &args) -> bool {
+    bool sendOutput = false;
+    QString cmdLine = args;
+    if (cmdLine.startsWith("-o ")) {
+      sendOutput = true;
+      cmdLine = cmdLine.mid(3);
+    }
+    cmdLine = cmdLine.trimmed();
+    if (cmdLine.isEmpty()) {
+      if (m_msgModel) m_msgModel->addMessage("system", "Usage: /EXEC [-o] <command>");
+      return true;
+    }
+    auto *proc = new QProcess(this);
+    QPointer<IrcConnection> connGuard(conn);
+    QString tgt = target;
+    connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+            [this, proc, connGuard, tgt, sendOutput](int, QProcess::ExitStatus) {
+      const QString out = QString::fromUtf8(proc->readAllStandardOutput()) +
+                          QString::fromUtf8(proc->readAllStandardError());
+      static constexpr int kMaxExecLines = 20;
+      QStringList lines = out.split('\n', Qt::SkipEmptyParts);
+      if (lines.size() > kMaxExecLines) {
+        int dropped = lines.size() - kMaxExecLines;
+        lines = lines.mid(0, kMaxExecLines);
+        lines << QStringLiteral("... (%1 more lines suppressed)").arg(dropped);
+      }
+      for (const QString &line : lines) {
+        if (sendOutput && connGuard && connGuard->isConnected()) {
+          connGuard->sendMessage(tgt, line);
+          QString echo = "<" + connGuard->nickname() + "> " + line;
+          appendToChannel(m_activeServer, tgt, "chat", echo);
+          if (m_msgModel && m_activeChannel == tgt)
+            m_msgModel->addMessage("chat", echo);
+        } else if (m_msgModel) {
+          m_msgModel->addMessage("system", line);
+        }
+      }
+      proc->deleteLater();
+    });
+    // Kill runaway commands after 15s
+    QTimer::singleShot(15000, proc, [proc]() {
+      if (proc->state() != QProcess::NotRunning) proc->kill();
+    });
+#ifdef Q_OS_WIN
+    proc->start("cmd", {"/c", cmdLine});
+#else
+    proc->start("/bin/sh", {"-c", cmdLine});
+#endif
+    return true;
+  };
+
+  // /ALIAS [<name> <expansion>] — define or list user aliases ($* = args)
+  T["ALIAS"] = [this](IrcConnection *, const QString &, const QString &args) -> bool {
+    if (!m_msgModel) return true;
+    QString name = args.section(' ', 0, 0).trimmed().toUpper();
+    QString expansion = args.section(' ', 1).trimmed();
+    if (name.startsWith('/')) name = name.mid(1);
+    if (name.isEmpty()) {
+      // List all aliases
+      if (!m_settings) return true;
+      const QStringList aliasKeys = m_settings->allKeysIn("aliases");
+      if (aliasKeys.isEmpty()) {
+        m_msgModel->addMessage("system", "No aliases defined — use /ALIAS <name> <expansion>");
+      } else {
+        m_msgModel->addMessage("system", "Aliases:");
+        for (const QString &k : aliasKeys)
+          m_msgModel->addMessage("system",
+              "  /" + k + " → " + m_settings->getString("aliases/" + k));
+      }
+      return true;
+    }
+    if (expansion.isEmpty()) {
+      m_msgModel->addMessage("system", "Usage: /ALIAS <name> <expansion>   ($* = arguments)");
+      return true;
+    }
+    if (m_settings) {
+      m_settings->setString("aliases/" + name, expansion);
+      m_settings->sync();
+    }
+    m_msgModel->addMessage("system", "Alias added: /" + name + " → " + expansion);
+    return true;
+  };
+  T["UNALIAS"] = [this](IrcConnection *, const QString &, const QString &args) -> bool {
+    QString name = args.trimmed().toUpper();
+    if (name.startsWith('/')) name = name.mid(1);
+    if (name.isEmpty()) {
+      if (m_msgModel) m_msgModel->addMessage("system", "Usage: /UNALIAS <name>");
+      return true;
+    }
+    if (m_settings) {
+      m_settings->remove("aliases/" + name);
+      m_settings->sync();
+    }
+    if (m_msgModel) m_msgModel->addMessage("system", "Alias removed: /" + name);
+    return true;
+  };
+
+  // /NOTIFY [nick | -nick] — manage the notify (friends) list via MONITOR
+  T["NOTIFY"] = [this](IrcConnection *conn, const QString &, const QString &args) -> bool {
+    if (!m_settings || !m_msgModel) return true;
+    QStringList list = m_settings->value("notify/list").toStringList();
+    QString arg = args.trimmed();
+    if (arg.isEmpty()) {
+      if (list.isEmpty())
+        m_msgModel->addMessage("system", "Notify list is empty. Use /NOTIFY <nick> to add.");
+      else
+        m_msgModel->addMessage("system", "Notify list: " + list.join(", "));
+      return true;
+    }
+    bool remove = arg.startsWith('-');
+    QString nick = remove ? arg.mid(1) : arg;
+    if (remove) {
+      list.removeAll(nick);
+      conn->sendRaw("MONITOR - " + nick);
+      m_msgModel->addMessage("system", "Removed from notify list: " + nick);
+    } else if (!list.contains(nick, Qt::CaseInsensitive)) {
+      list.append(nick);
+      conn->sendRaw("MONITOR + " + nick);
+      m_msgModel->addMessage("system", "Added to notify list: " + nick);
+    } else {
+      m_msgModel->addMessage("system", nick + " is already on the notify list");
+    }
+    m_settings->setValue("notify/list", list);
+    m_settings->sync();
     return true;
   };
 

@@ -92,6 +92,12 @@ void NotificationManager::notify(const QString &title, const QString &body,
     if (m_window && m_window->isActive())
         return;
 
+    // Throttle: at most one balloon per interval (spam protection)
+    if (m_notifyLimiter.isValid() &&
+        m_notifyLimiter.elapsed() < kNotifyThrottleMs)
+        return;
+    m_notifyLimiter.start();
+
     if (m_tray && QSystemTrayIcon::supportsMessages()) {
         int timeout = m_settings ? m_settings->getInt("notify/timeout", 5000) : 5000;
         m_tray->showMessage(title, body, QSystemTrayIcon::Information, timeout);
@@ -128,12 +134,22 @@ void NotificationManager::playSound(bool isHighlight, bool isPrivate) {
             return;
     }
 
+    // Throttle: at most one sound per interval (spam protection)
+    if (m_soundLimiter.isValid() &&
+        m_soundLimiter.elapsed() < kNotifyThrottleMs)
+        return;
+    m_soundLimiter.start();
+
     // Use configured beep command, or fall back to system bell
     QString beepCmd = m_settings ? m_settings->getString("sound/beepCommand") : QString();
     if (beepCmd.isEmpty()) {
         QApplication::beep();
     } else {
+#ifdef Q_OS_WIN
+        QProcess::startDetached("cmd", {"/c", beepCmd});
+#else
         QProcess::startDetached("/bin/sh", {"-c", beepCmd});
+#endif
     }
 }
 

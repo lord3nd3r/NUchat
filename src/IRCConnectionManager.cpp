@@ -69,7 +69,8 @@ void IRCConnectionManager::connectToServer(
     const QString &host, int port, bool ssl, const QString &nick,
     const QString &user, const QString &realname, const QString &password,
     const QString &saslMethod, const QString &saslUser, const QString &saslPass,
-    const QString &nickServCmd, const QString &nickServPass) {
+    const QString &nickServCmd, const QString &nickServPass,
+    const QString &autojoin, const QString &perform) {
   qDebug() << "[Manager] connectToServer called:" << host << port << ssl << nick
            << "sasl:" << saslMethod << "nickserv:" << (!nickServPass.isEmpty());
 
@@ -130,6 +131,8 @@ void IRCConnectionManager::connectToServer(
   ri.saslPass = saslPass;
   ri.nickServCmd = nickServCmd;
   ri.nickServPass = nickServPass;
+  ri.autojoin = autojoin;
+  ri.perform = perform;
   ri.attempts = 0;
   ri.timer = nullptr;
   m_reconnectInfo[host] = ri;
@@ -301,6 +304,28 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
   if (m_commandTable.isEmpty()) initCommandTable();
   auto it = m_commandTable.find(cmd);
   if (it != m_commandTable.end()) return it.value()(conn, target, args);
+
+  // ── User-defined aliases (settings: aliases/<NAME>) ──
+  if (m_settings) {
+    QString expansion = m_settings->getString("aliases/" + cmd);
+    if (!expansion.isEmpty()) {
+      static int aliasDepth = 0;
+      if (aliasDepth >= 5) {
+        if (m_msgModel)
+          m_msgModel->addMessage("error", "Alias recursion limit reached: /" + cmd);
+        return true;
+      }
+      if (expansion.contains("$*"))
+        expansion.replace("$*", args);
+      else if (!args.isEmpty())
+        expansion += " " + args;
+      ++aliasDepth;
+      sendMessage(target, expansion);
+      --aliasDepth;
+      return true;
+    }
+  }
+
   conn->sendRaw(cmd + " " + args);
   return true;
 }
@@ -414,7 +439,14 @@ QString IRCConnectionManager::currentNick() const {
 
 QString IRCConnectionManager::channelTopic() const {
   ChannelKey key{m_activeServer, m_activeChannel};
-  return MessageModel::ircToHtml(m_topics.value(key));
+  // Render mIRC color/format codes and make URLs clickable (mIRC-style bar)
+  return MessageModel::linkifyUrls(
+      MessageModel::ircToHtml(m_topics.value(key)));
+}
+
+QString IRCConnectionManager::channelTopicRaw() const {
+  ChannelKey key{m_activeServer, m_activeChannel};
+  return m_topics.value(key);
 }
 
 QString IRCConnectionManager::channelModes() const {
@@ -499,6 +531,42 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
 
     // ── Execute perform-on-connect commands ──
     executePerformCommands(srv);
+
+    // ── Per-network perform commands + autojoin (network list / HexChat import) ──
+    if (m_reconnectInfo.contains(srv)) {
+      const ReconnectInfo &ri = m_reconnectInfo[srv];
+      const QStringList performLines =
+          ri.perform.split('\n', Qt::SkipEmptyParts);
+      for (const QString &line : performLines) {
+        QString cmd = line.trimmed();
+        if (cmd.isEmpty()) continue;
+        if (cmd.startsWith('/')) {
+          QString prevServer = m_activeServer, prevChannel = m_activeChannel;
+          m_activeServer = srv;
+          m_activeChannel = srv;
+          sendMessage(srv, cmd);
+          m_activeServer = prevServer;
+          m_activeChannel = prevChannel;
+        } else {
+          conn->sendRaw(cmd);
+        }
+      }
+      static const QRegularExpression chanSep(QStringLiteral("[,\\s]+"));
+      const QStringList autojoinChans =
+          ri.autojoin.split(chanSep, Qt::SkipEmptyParts);
+      for (const QString &chan : autojoinChans) {
+        if (chan.startsWith('#') || chan.startsWith('&'))
+          conn->joinChannel(chan);
+      }
+    }
+
+    // ── Notify list: subscribe via IRCv3 MONITOR ──
+    if (m_settings) {
+      QStringList notifyList =
+          m_settings->value("notify/list").toStringList();
+      if (!notifyList.isEmpty())
+        conn->sendRaw("MONITOR + " + notifyList.join(','));
+    }
 
     // ── Start lag meter ──
     if (!m_lagTimer.isActive()) m_lagTimer.start();
@@ -612,6 +680,14 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             if (m_msgModel && m_activeServer == srv &&
                 m_activeChannel == dest) {
               m_msgModel->addMessage("system", text);
+            } else if (dest != srv) {
+              // Mark channel/query tabs unread for notices (server tab excluded
+              // to avoid noise from services/server notices)
+              QString ukey = unreadKey(srv, dest);
+              if (!m_unread.contains(ukey)) {
+                m_unread.insert(ukey);
+                emit unreadStateChanged();
+              }
             }
           });
 
@@ -1235,6 +1311,25 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                           "system", text);
           if (m_msgModel)
             m_msgModel->addMessage("system", text);
+        }
+
+        // ── MONITOR notify list: RPL_MONONLINE (730) / RPL_MONOFFLINE (731) ──
+        else if (code == 730 || code == 731) {
+          // trailing: comma-separated nick[!user@host] list
+          const QStringList targets = trailing.split(',', Qt::SkipEmptyParts);
+          for (const QString &t : targets) {
+            QString nick = t.section('!', 0, 0).trimmed();
+            if (nick.isEmpty()) continue;
+            bool online = (code == 730);
+            QString text = nick + (online
+                ? QStringLiteral(" is online (notify)")
+                : QStringLiteral(" is offline (notify)"));
+            appendToChannel(srv, srv, "system", text);
+            if (m_msgModel && m_activeServer == srv)
+              m_msgModel->addMessage("system", text);
+            if (online)
+              emit notifyUser(QStringLiteral("Notify"), text, false, false);
+          }
         }
 
         // ── RPL_BANLIST (367): <channel> <mask> <setter> <timestamp> ──

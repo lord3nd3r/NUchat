@@ -20,3 +20,9 @@ target_link_libraries(test_ircparsing PRIVATE Qt6::Test nuchatcore)
 target_include_directories(test_ircparsing PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME ircparsing COMMAND test_ircparsing)
 
+# ── test_hexchatimport ────────────────────────────────────────────────────────
+add_executable(test_hexchatimport test_hexchatimport.cpp)
+target_link_libraries(test_hexchatimport PRIVATE Qt6::Test nuchatcore)
+target_include_directories(test_hexchatimport PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME hexchatimport COMMAND test_hexchatimport)
+

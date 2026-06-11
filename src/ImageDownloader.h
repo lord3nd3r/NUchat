@@ -27,6 +27,7 @@ signals:
 private:
     explicit ImageDownloader(QObject *parent = nullptr);
     QString urlToFilename(const QString &url) const;
+    void startDownload(const QString &url);  // after host validation
 
     QNetworkAccessManager *m_nam;
     QString m_cacheDir;

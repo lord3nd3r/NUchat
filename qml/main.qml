@@ -1061,7 +1061,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            // ── Topic bar (double-click to edit) ──
+            // ── Topic bar (mIRC-style: click to edit raw topic, Enter to set) ──
             Rectangle {
                 id: topicBarRect
                 Layout.fillWidth: true
@@ -1074,7 +1074,22 @@ ApplicationWindow {
 
                 property bool topicEditing: false
 
-                // ── Display mode ──
+                function canEditTopic() {
+                    return currentChannel !== "" &&
+                           (currentChannel.startsWith('#') || currentChannel.startsWith('&'))
+                }
+
+                function startTopicEdit() {
+                    if (!canEditTopic()) return
+                    topicEditing = true
+                    // Edit the RAW topic (mIRC control codes intact), not the
+                    // rendered HTML — exactly what gets sent back to the server
+                    topicEditField.text = ircManager.channelTopicRaw()
+                    topicEditField.forceActiveFocus()
+                    topicEditField.selectAll()
+                }
+
+                // ── Display mode: rendered topic (colors, formatting, links) ──
                 Text {
                     id: topicText
                     anchors.left: parent.left
@@ -1100,18 +1115,26 @@ ApplicationWindow {
                     elide: Text.ElideRight
 
                     MouseArea {
+                        id: topicMouseArea
                         anchors.fill: parent
-                        onDoubleClicked: {
-                            if (currentChannel === "" || !currentChannel.startsWith('#')) return
-                            topicBarRect.topicEditing = true
-                            topicEditField.text = root.channelTopic || ""
-                            topicEditField.forceActiveFocus()
-                            topicEditField.selectAll()
+                        hoverEnabled: true
+                        cursorShape: topicText.linkAt(mouseX, mouseY) !== ""
+                                     ? Qt.PointingHandCursor
+                                     : (topicBarRect.canEditTopic() ? Qt.IBeamCursor : Qt.ArrowCursor)
+                        onClicked: function(mouse) {
+                            // Links stay clickable; clicking anywhere else
+                            // enters inline edit mode (mIRC topic box behavior)
+                            var link = topicText.linkAt(mouse.x, mouse.y)
+                            if (link !== "") {
+                                Qt.openUrlExternally(link)
+                                return
+                            }
+                            topicBarRect.startTopicEdit()
                         }
                     }
                 }
 
-                // ── Edit mode ──
+                // ── Edit mode: raw topic, Enter sets / Esc cancels ──
                 TextField {
                     id: topicEditField
                     anchors.left: parent.left
@@ -1122,7 +1145,7 @@ ApplicationWindow {
                     visible: topicBarRect.topicEditing
                     color: theme.textPrimary
                     font.pixelSize: 12
-                    placeholderText: "Enter new topic..."
+                    placeholderText: "Enter new topic (empty clears it)..."
                     placeholderTextColor: theme.textMuted
                     background: Rectangle {
                         color: Qt.darker(theme.topicBg, 1.2)
@@ -1132,8 +1155,12 @@ ApplicationWindow {
                     }
 
                     Keys.onReturnPressed: {
-                        if (text.trim() !== "") {
-                            ircManager.sendCommand(currentServer, "/topic " + currentChannel + " " + text)
+                        var newTopic = text.trim()
+                        if (newTopic !== "") {
+                            ircManager.sendMessage(currentChannel, "/topic " + newTopic)
+                        } else if (ircManager.channelTopicRaw() !== "") {
+                            // Empty input clears an existing topic
+                            ircManager.sendRawCommand("TOPIC " + currentChannel + " :")
                         }
                         topicBarRect.topicEditing = false
                         messageInput.forceActiveFocus()

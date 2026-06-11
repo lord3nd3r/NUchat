@@ -13,6 +13,7 @@
 #include <QClipboard>
 #include <QFileInfo>
 #include <QHostAddress>
+#include <QHostInfo>
 
 ImageDownloader *ImageDownloader::instance()
 {
@@ -97,6 +98,16 @@ bool ImageDownloader::isVideoUrl(const QString &url)
 
 // ---------- download ----------
 
+// True if the address is loopback, link-local, or RFC-1918/ULA private.
+static bool isPrivateAddress(const QHostAddress &addr) {
+    return addr.isLoopback() || addr.isLinkLocal() ||
+           addr.isInSubnet(QHostAddress("10.0.0.0"),    8)  ||
+           addr.isInSubnet(QHostAddress("172.16.0.0"),  12) ||
+           addr.isInSubnet(QHostAddress("192.168.0.0"), 16) ||
+           addr.isInSubnet(QHostAddress("fc00::"),      7)  ||
+           addr.isInSubnet(QHostAddress("fe80::"),      10);
+}
+
 // Returns true if the URL is safe to fetch: https/http only, no private/loopback hosts.
 static bool isSafeImageUrl(const QUrl &qurl) {
     const QString scheme = qurl.scheme().toLower();
@@ -112,17 +123,10 @@ static bool isSafeImageUrl(const QUrl &qurl) {
     if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0)
         return false;
 
-    // Reject by IP range
+    // Reject by IP range (literal IPs)
     QHostAddress addr(host);
-    if (!addr.isNull()) {
-        if (addr.isLoopback() || addr.isLinkLocal() ||
-            addr.isInSubnet(QHostAddress("10.0.0.0"),    8)  ||
-            addr.isInSubnet(QHostAddress("172.16.0.0"),  12) ||
-            addr.isInSubnet(QHostAddress("192.168.0.0"), 16) ||
-            addr.isInSubnet(QHostAddress("fc00::"),      7)  ||
-            addr.isInSubnet(QHostAddress("fe80::"),      10))
-            return false;
-    }
+    if (!addr.isNull() && isPrivateAddress(addr))
+        return false;
 
     return true;
 }
@@ -151,6 +155,35 @@ void ImageDownloader::download(const QString &url)
 
     m_pending.insert(url);
 
+    // DNS-rebinding guard: resolve the hostname first and reject URLs whose
+    // host resolves to a private/loopback address (a literal-IP check alone
+    // can be bypassed by a hostname pointing at 192.168.x.x etc.).
+    QHostAddress literal(qurl.host());
+    if (literal.isNull()) {
+        QHostInfo::lookupHost(qurl.host(), this, [this, url](const QHostInfo &info) {
+            if (info.error() != QHostInfo::NoError || info.addresses().isEmpty()) {
+                m_pending.remove(url);
+                emit downloadFailed(url);
+                return;
+            }
+            const QList<QHostAddress> addrs = info.addresses();
+            for (const QHostAddress &a : addrs) {
+                if (isPrivateAddress(a)) {
+                    qWarning() << "[ImageDownloader] Host resolves to private address, blocked:" << url;
+                    m_pending.remove(url);
+                    emit downloadFailed(url);
+                    return;
+                }
+            }
+            startDownload(url);
+        });
+        return;
+    }
+    startDownload(url);
+}
+
+void ImageDownloader::startDownload(const QString &url)
+{
     QNetworkRequest req{QUrl(url)};
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                      QNetworkRequest::NoLessSafeRedirectPolicy);
@@ -170,6 +203,14 @@ void ImageDownloader::download(const QString &url)
 
         if (reply->error() != QNetworkReply::NoError) {
             qWarning() << "Image download failed:" << reply->errorString() << url;
+            emit downloadFailed(url);
+            return;
+        }
+
+        // Re-validate the final URL after redirects
+        if (!isSafeImageUrl(reply->url())) {
+            qWarning() << "[ImageDownloader] Redirect to unsafe URL blocked:"
+                       << reply->url().toString();
             emit downloadFailed(url);
             return;
         }

@@ -193,8 +193,10 @@ int main(int argc, char *argv[]) {
   // when a new connection is added, hook it to plugin and script managers
   QObject::connect(
       &manager, &IRCConnectionManager::clientAdded, [&](IrcConnection *conn) {
+        // conn must be captured by value: a [&] capture would reference the
+        // outer lambda's parameter, which is gone by the time a line arrives
         QObject::connect(conn, &IrcConnection::rawLineReceived,
-                         [&](const QString &msg) {
+                         [&, conn](const QString &msg) {
                            pluginMgr.onMessage(conn, msg);
                            scriptMgr->handleMessage(conn, QString(), msg);
 #ifdef HAVE_PYTHON

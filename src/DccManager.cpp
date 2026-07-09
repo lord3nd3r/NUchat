@@ -136,6 +136,17 @@ void DccTransfer::onDataReady() {
     QByteArray data = m_socket->read(CHUNK_SIZE);
     m_file.write(data);
     transferred += data.size();
+    // A peer sending more than it offered is misbehaving — stop before it
+    // can fill the disk (allow one chunk of slack for the final read)
+    if (fileSize > 0 && transferred > fileSize + CHUNK_SIZE) {
+      state = Failed;
+      errorString = "Peer sent more data than the offered file size";
+      m_speedTimer.stop();
+      m_file.close();
+      m_socket->abort();
+      emit stateChanged();
+      return;
+    }
   }
 
   // Send DCC acknowledgment (4-byte big-endian total received)
@@ -338,6 +349,14 @@ DccTransfer *DccManager::findTransfer(const QString &id) {
 // ── Handle incoming DCC SEND offer ──
 void DccManager::handleDccSend(const QString &nick, const QString &fileName,
                                quint32 ip, quint16 port, qint64 size, int token) {
+  // Reject offers without a positive size — the receive loop uses the
+  // declared size as its only termination condition, so accepting a
+  // zero/negative size would let the peer stream data (and fill the disk)
+  // indefinitely.
+  if (size <= 0) {
+    emit transferFailed(nick, fileName, "Invalid file size in DCC offer");
+    return;
+  }
   // Check file size limit
   if (m_maxFileSize > 0 && size > m_maxFileSize) {
     emit transferFailed(nick, fileName,

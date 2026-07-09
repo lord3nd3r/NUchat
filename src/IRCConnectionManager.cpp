@@ -500,9 +500,13 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
   connect(conn, &IrcConnection::rawLineReceived, this,
           [this, conn](const QString &line) {
             emit rawLineReceived("<<", line);
-            // Detect PONG response to our LAG ping
+            // Detect PONG response to our LAG ping — match the actual PONG
+            // command with our LAG token as final param, not any chat line
+            // that merely mentions both words
+            static const QRegularExpression lagPongRe(
+                QStringLiteral("^(?::\\S+ )?PONG (?:\\S+ )*:?LAG\\d+$"));
             if (m_lagState.contains(conn) && m_lagState[conn].pending &&
-                line.contains("PONG") && line.contains("LAG")) {
+                lagPongRe.match(line).hasMatch()) {
               auto &state = m_lagState[conn];
               state.lagMs = static_cast<int>(state.pingSent.elapsed());
               state.pending = false;
@@ -594,8 +598,17 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
     // Clean up lag state for this connection
     m_lagState.remove(conn);
 
-    // ── Stop lag meter if no connections left ──
-    if (m_connections.size() <= 1) {
+    // ── Stop lag meter if no live connections left ──
+    // (disconnected connections can linger in m_connections until the user
+    // closes the tab or a reconnect replaces them, so count actual state)
+    bool anyConnected = false;
+    for (auto *c : m_connections) {
+      if (c && c->isConnected()) {
+        anyConnected = true;
+        break;
+      }
+    }
+    if (!anyConnected) {
       m_lagTimer.stop();
       m_lagMs = -1;
       emit lagChanged(m_lagMs);
@@ -625,7 +638,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
 
             QString channel = target;
             // If target is our nick, it's a PM — use sender's nick as channel
-            if (target == conn->nickname()) {
+            // (IRC targets are case-insensitive)
+            if (target.compare(conn->nickname(), Qt::CaseInsensitive) == 0) {
               channel = nick;
               // Auto-create query tab for incoming PMs
               if (m_treeModel && !m_treeModel->hasChannel(srv, nick)) {
@@ -709,54 +723,14 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           }
           emit channelJoined(srv, channel);
 
-          // Load scrollback from log file before showing "Now talking in"
-          ChannelKey key{srv, channel};
-          if (m_logger && !m_history.contains(key)) {
-            auto entries = m_logger->loadScrollback(srv, channel, 200);
-            if (!entries.isEmpty()) {
-              for (const auto &e : entries) {
-                StoredMessage sm;
-                sm.type = e.type;
-                sm.text = e.text;
-                sm.timestamp = e.timestamp;
-                m_history[key].append(sm);
-              }
-            }
-          }
-
           appendToChannel(srv, channel, "system", "Now talking in " + channel);
           // Auto-switch to the new channel (server too — the join may have
-          // happened on a non-active connection, e.g. auto-join on reconnect)
-          m_activeServer = srv;
-          m_activeChannel = channel;
-          if (m_msgModel) {
-            m_msgModel->clear();
-            const auto &msgs = m_history[key];
-
-            // Find where scrollback ends (the last "Now talking in" is the live
-            // one we just appended)
-            int scrollbackEnd =
-                msgs.size() - 1; // last msg is our "Now talking in"
-            bool hasScrollback = scrollbackEnd > 0;
-
-            // Use batch mode so QML receives a single reloaded() signal
-            // instead of per-message signals that fight with scroll tracking
-            m_msgModel->beginBatch();
-            if (hasScrollback) {
-              m_msgModel->addMessage(
-                  "system", QString::fromUtf8(
-                                "\u2500\u2500 Scrollback from %1 \u2500\u2500")
-                                .arg(channel));
-              for (int i = 0; i < scrollbackEnd; ++i)
-                m_msgModel->addMessage(msgs[i].type, msgs[i].text);
-              m_msgModel->addMessage(
-                  "system", QString::fromUtf8(
-                                "\u2500\u2500 End of scrollback \u2500\u2500"));
-            }
-            // Show the current "Now talking in" message
-            m_msgModel->addMessage(msgs.last().type, msgs.last().text);
-            m_msgModel->endBatch(); // emits reloaded() → QML does one scroll-to-bottom
-          }
+          // happened on a non-active connection, e.g. auto-join on reconnect).
+          // switchToChannel() loads log scrollback exactly once (via
+          // ensureScrollbackLoaded) and replays the history into the model in
+          // a single batch; loading the log again here as well would display
+          // the scrollback duplicated.
+          switchToChannel(srv, channel);
           // Request channel modes so we can display them
           conn->sendRaw("MODE " + channel);
         } else {
@@ -985,15 +959,20 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             }
 
             QChar pfx = modeToPrefix(c);
-            if (pfx.isNull() || paramIdx >= params.size()) {
-              // Non-user mode that takes a param (b, k, l, etc.)
-              if (QString("bkljeIfq").contains(c) && c != 'q')
-                paramIdx++;
-              else if (pfx.isNull()) { /* channel flag, no param */
-              } else
+            if (pfx.isNull()) {
+              // Non-user channel mode — keep the parameter index aligned.
+              // Without ISUPPORT CHANMODES we use the common defaults:
+              // list modes and key always take a parameter, limit-style
+              // modes only when being set.
+              static const QString alwaysParam = QStringLiteral("beIk");
+              static const QString paramWhenSet = QStringLiteral("lfj");
+              if (alwaysParam.contains(c) ||
+                  (adding && paramWhenSet.contains(c)))
                 paramIdx++;
               continue;
             }
+            if (paramIdx >= params.size())
+              continue;
 
             QString affected = params[paramIdx++];
 
@@ -1065,8 +1044,9 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
               return;
 
             // Determine the proper destination channel
+            // (IRC targets are case-insensitive)
             QString channel = target;
-            if (target == conn->nickname()) {
+            if (target.compare(conn->nickname(), Qt::CaseInsensitive) == 0) {
               channel = nick; // PM
             }
             QString text;
@@ -1601,6 +1581,9 @@ static QString runProcess(const QString &program, const QStringList &args,
   proc.start(program, args);
   if (proc.waitForFinished(timeout))
     return proc.readAllStandardOutput().trimmed();
+  // Timed out — kill it so we don't leave a stray child process behind
+  proc.kill();
+  proc.waitForFinished(500);
   return {};
 }
 

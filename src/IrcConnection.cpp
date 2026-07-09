@@ -45,6 +45,15 @@ void IrcConnection::connectToServer(const QString &host, quint16 port,
   if (m_socket->isOpen())
     m_socket->disconnectFromHost();
 
+  // Drop any previous connect wiring: if this object last connected in the
+  // other SSL mode, the stale signal would fire registration on plain
+  // `connected` before the TLS handshake completes (and a second time on
+  // `encrypted`).
+  disconnect(m_socket, &QSslSocket::encrypted, this,
+             &IrcConnection::onSocketConnected);
+  disconnect(m_socket, &QSslSocket::connected, this,
+             &IrcConnection::onSocketConnected);
+
   if (useSsl) {
     // Connect the encrypted signal for SSL
     connect(m_socket, &QSslSocket::encrypted, this,
@@ -308,7 +317,8 @@ void IrcConnection::sendRegistration() {
   sendRawImmediate("CAP LS 302");
 
   if (!m_password.isEmpty()) {
-    sendRawImmediate("PASS " + m_password);
+    // Colon-framed so passwords containing spaces survive as one parameter
+    sendRawImmediate("PASS :" + m_password);
     m_password.fill('\0');
     m_password.clear();
   }
@@ -690,12 +700,33 @@ QMap<QString, QString> IrcConnection::parseTags(const QString &tagStr) {
       QString key = part.left(eq);
       QString val = part.mid(eq + 1);
       // IRCv3 tag value unescaping: \: = ; \s = space \\ = \ \r \n
-      val.replace("\\:", ";");
-      val.replace("\\s", " ");
-      val.replace("\\r", "\r");
-      val.replace("\\n", "\n");
-      val.replace("\\\\", "\\");
-      tags[key] = val;
+      // Must be a single left-to-right pass — sequential replace() would
+      // decode the escaped backslash in "\\s" and then re-interpret it.
+      QString out;
+      out.reserve(val.size());
+      for (int i = 0; i < val.size(); ++i) {
+        QChar c = val.at(i);
+        if (c != QLatin1Char('\\')) {
+          out += c;
+          continue;
+        }
+        if (i + 1 >= val.size())
+          break; // lone trailing backslash: no output character (per spec)
+        QChar n = val.at(++i);
+        if (n == QLatin1Char(':'))
+          out += QLatin1Char(';');
+        else if (n == QLatin1Char('s'))
+          out += QLatin1Char(' ');
+        else if (n == QLatin1Char('r'))
+          out += QLatin1Char('\r');
+        else if (n == QLatin1Char('n'))
+          out += QLatin1Char('\n');
+        else if (n == QLatin1Char('\\'))
+          out += QLatin1Char('\\');
+        else
+          out += n; // invalid escape: drop the backslash, keep the character
+      }
+      tags[key] = out;
     } else {
       tags[part] = QString();  // boolean tag (no value)
     }

@@ -516,7 +516,11 @@ void IRCConnectionManager::initCommandTable() {
     bool remove = arg.startsWith('-');
     QString nick = remove ? arg.mid(1) : arg;
     if (remove) {
-      list.removeAll(nick);
+      // Case-insensitive removal to match the case-insensitive add check
+      for (int i = list.size() - 1; i >= 0; --i) {
+        if (list[i].compare(nick, Qt::CaseInsensitive) == 0)
+          list.removeAt(i);
+      }
       conn->sendRaw("MONITOR - " + nick);
       m_msgModel->addMessage("system", "Removed from notify list: " + nick);
     } else if (!list.contains(nick, Qt::CaseInsensitive)) {

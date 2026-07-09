@@ -171,6 +171,53 @@ private slots:
         // ERROR line has no prefix
         conn.feedLine("ERROR :Closing link");
     }
+
+    // IRCv3 message-tag value unescaping
+    void testTagUnescaping()
+    {
+        IrcConnectionTestable conn;
+        QSignalSpy spy(&conn, &IrcConnection::taggedMessageReceived);
+        conn.feedLine("@time=2026-01-01T00:00:00Z;plain=hello "
+                      ":alice!a@b PRIVMSG #chan :hi");
+        QCOMPARE(spy.count(), 1);
+        auto tags = spy.takeFirst()[0].value<QMap<QString, QString>>();
+        QCOMPARE(tags.value("time"), QString("2026-01-01T00:00:00Z"));
+        QCOMPARE(tags.value("plain"), QString("hello"));
+    }
+
+    void testTagUnescapingEscapes()
+    {
+        IrcConnectionTestable conn;
+        QSignalSpy spy(&conn, &IrcConnection::taggedMessageReceived);
+        // \s = space, \: = semicolon, \\ = backslash, \\s must decode to
+        // literal "\s" (backslash + s), NOT backslash-then-reinterpreted-space
+        conn.feedLine("@a=one\\stwo;b=x\\:y;c=back\\\\slash;d=lit\\\\s;"
+                      "e=bad\\qesc;f=trail\\ "
+                      ":alice!a@b PRIVMSG #chan :hi");
+        QCOMPARE(spy.count(), 1);
+        auto tags = spy.takeFirst()[0].value<QMap<QString, QString>>();
+        QCOMPARE(tags.value("a"), QString("one two"));
+        QCOMPARE(tags.value("b"), QString("x;y"));
+        QCOMPARE(tags.value("c"), QString("back\\slash"));
+        QCOMPARE(tags.value("d"), QString("lit\\s"));
+        // Invalid escape: backslash dropped, character kept
+        QCOMPARE(tags.value("e"), QString("badqesc"));
+        // Lone trailing backslash: no output character
+        QCOMPARE(tags.value("f"), QString("trail"));
+    }
+
+    // Boolean tags (no value) parse as present-but-empty
+    void testBooleanTag()
+    {
+        IrcConnectionTestable conn;
+        QSignalSpy spy(&conn, &IrcConnection::taggedMessageReceived);
+        conn.feedLine("@solanum.chat/oper;account=alice "
+                      ":alice!a@b PRIVMSG #chan :hi");
+        QCOMPARE(spy.count(), 1);
+        auto tags = spy.takeFirst()[0].value<QMap<QString, QString>>();
+        QVERIFY(tags.contains("solanum.chat/oper"));
+        QCOMPARE(tags.value("account"), QString("alice"));
+    }
 };
 
 QTEST_MAIN(TestIrcParsing)

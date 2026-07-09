@@ -11,7 +11,10 @@ env:
 
 jobs:
   build:
-    runs-on: macos-latest
+    # Pinned: macos-latest now ships the Xcode 26 SDK, which removed the AGL
+    # framework that Qt <= 6.8.3's FindWrapOpenGL still links on Apple.
+    # Unpin once Qt is bumped to a release without the AGL reference.
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4

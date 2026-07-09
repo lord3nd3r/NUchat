@@ -11,7 +11,10 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Pinned: windows-latest now ships an MSVC STL that removed
+    # stdext::checked_array_iterator, which Qt 6.5.3's headers still use.
+    # Unpin once the Qt version below is bumped to 6.8.x.
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v4

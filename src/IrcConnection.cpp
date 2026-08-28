@@ -264,6 +264,12 @@ void IrcConnection::onReadyRead() {
     if (!line.isEmpty())
       processLine(line);
   }
+
+  // Guard against memory flood if buffer grows without newlines
+  if (m_readBuffer.size() > 65536) {
+    qWarning() << "[IRC] Read buffer exceeded 64KB without newline, discarding corrupted data";
+    m_readBuffer.clear();
+  }
 }
 
 void IrcConnection::onSocketConnected() {

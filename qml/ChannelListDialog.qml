@@ -17,6 +17,24 @@ Dialog {
         Text { anchors.centerIn: parent; text: "Channel List"; color: "#ddd"; font.pixelSize: 14; font.bold: true }
     }
 
+    // ── Connections to C++ signals for channel list data ──
+    Connections {
+        target: ircManager
+        function onChannelListEntry(channel, users, topic) {
+            if (users >= minUsers.value) {
+                var search = filterField.text.trim().toLowerCase()
+                if (search === "" || channel.toLowerCase().indexOf(search) !== -1 || topic.toLowerCase().indexOf(search) !== -1) {
+                    if (chanListModel.count < 5000) {
+                        chanListModel.append({channel: channel, users: users, topic: topic})
+                    }
+                }
+            }
+        }
+        function onChannelListEnd() {
+            // Completed
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 12

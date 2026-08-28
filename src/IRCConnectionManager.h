@@ -162,6 +162,8 @@ signals:
   void banListEntry(const QString &channel, const QString &mask,
                     const QString &setBy, const QString &timestamp);
   void banListEnd(const QString &channel);
+  void channelListEntry(const QString &channel, int users, const QString &topic);
+  void channelListEnd();
 
 private:
   void wireConnection(IrcConnection *conn);

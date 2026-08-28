@@ -62,6 +62,19 @@ void MessageModel::addMessage(const QString &type, const QString &text,
   msg.formattedText = formatLine(msg); // pre-render HTML once
   m_messages.append(msg);
   endInsertRows();
+
+  // Enforce max scrollback line limit to prevent unbounded memory growth
+  static QSettings prefs;
+  int maxScrollback = prefs.value(QStringLiteral("ui/maxScrollback"), 10000).toInt();
+  if (maxScrollback < 100)
+    maxScrollback = 100;
+  if (m_messages.count() > maxScrollback) {
+    int excess = m_messages.count() - maxScrollback;
+    beginRemoveRows(QModelIndex(), 0, excess - 1);
+    m_messages.erase(m_messages.begin(), m_messages.begin() + excess);
+    endRemoveRows();
+  }
+
   if (!m_batchMode)
     emit messageAdded(msg.formattedText); // reuse cached text, no double format
 
@@ -69,7 +82,6 @@ void MessageModel::addMessage(const QString &type, const QString &text,
   // Static QSettings: Qt shares one cache per file within a process, so
   // writes from the QML Settings wrapper are visible here without re-reading
   // the file on every message.
-  static QSettings prefs;
   bool showInlineImages =
       prefs.value(QStringLiteral("ui/showInlineImages"), true).toBool();
   if (showInlineImages &&

@@ -217,6 +217,7 @@ ApplicationWindow {
         return fonts[idx] || "Monospace"
     }
     property int prefFontSize: parseInt(appSettings.value("ui/fontSize", 12)) || 12
+    property int prefMaxScrollback: parseInt(appSettings.value("ui/maxScrollback", 10000)) || 10000
 
     // Helper: run a command for each selected nick
     function forEachSelectedNick(callback) {
@@ -1312,7 +1313,19 @@ ApplicationWindow {
                         function onMessageAdded(formattedLine) {
                             // Live incoming message — fast single-line append
                             chatArea.append(formattedLine)
-                            if (!root.userScrolledUp) {
+                            // Bound QTextDocument memory if lineCount exceeds max scrollback buffer
+                            if (chatArea.lineCount > root.prefMaxScrollback + 500) {
+                                var oldContentY = chatScrollView.contentItem.contentY
+                                var oldCursor = chatArea.cursorPosition
+                                var wasAtBottom = !root.userScrolledUp
+                                chatArea.text = msgModel.allFormattedText()
+                                chatArea.cursorPosition = oldCursor
+                                if (wasAtBottom) {
+                                    chatArea.startScrollSettle()
+                                } else {
+                                    chatScrollView.contentItem.contentY = oldContentY
+                                }
+                            } else if (!root.userScrolledUp) {
                                 chatArea.startScrollSettle()
                             }
                         }

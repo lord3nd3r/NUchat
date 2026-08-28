@@ -362,7 +362,7 @@ Dialog {
                         Text { text: "Max scrollback lines:"; color: "#ccc"; font.pixelSize: 12 }
                         SpinBox {
                             id: spnScrollback; from: 100; to: 100000; value: 10000; stepSize: 500; Layout.preferredWidth: 120
-                            onValueChanged: saveSetting("ui/maxScrollback", value)
+                            onValueChanged: { saveSetting("ui/maxScrollback", value); root.prefMaxScrollback = value }
                         }
                     }
                     CheckBox { id: chkIndentWrap; text: "Indent wrapped text"

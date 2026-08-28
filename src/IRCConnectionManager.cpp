@@ -1128,6 +1128,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           QString user = params.value(1);
           QString host = params.value(2);
           QString key = srv + "\n" + nick.toLower();
+          if (m_whoisBuffer.size() > 50)
+            m_whoisBuffer.erase(m_whoisBuffer.begin());
           m_whoisBuffer[key].clear(); // start fresh
           m_whoisBuffer[key] << nick + " (" + user + "@" + host + ")";
           m_whoisBuffer[key] << "  Real name: " + trailing;
@@ -1297,6 +1299,33 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             m_msgModel->addMessage("system", text);
         }
 
+        // RPL_AWAY (301) — user is away
+        else if (code == 301) {
+          QString nick = params.value(0);
+          QString key = srv + "\n" + nick.toLower();
+          if (m_whoisBuffer.contains(key)) {
+            m_whoisBuffer[key] << "  Away: " + trailing;
+          } else {
+            QString text = nick + " is away: " + trailing;
+            appendToChannel(srv,
+                            m_activeChannel.isEmpty() ? srv : m_activeChannel,
+                            "system", text);
+            if (m_msgModel)
+              m_msgModel->addMessage("system", text);
+          }
+        }
+
+        // ── RPL_LIST (322): <channel> <# visible> :<topic> ──
+        else if (code == 322) {
+          QString channel = params.value(0);
+          int users = params.value(1).toInt();
+          emit channelListEntry(channel, users, trailing);
+        }
+        // ── RPL_LISTEND (323) ──
+        else if (code == 323) {
+          emit channelListEnd();
+        }
+
         // ── MONITOR notify list: RPL_MONONLINE (730) / RPL_MONOFFLINE (731) ──
         else if (code == 730 || code == 731) {
           // trailing: comma-separated nick[!user@host] list
@@ -1351,6 +1380,11 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         // Error numerics — route to the relevant channel if mentioned in
         // params, else server tab
         if (code >= 400 && code < 600) {
+          // Clear any pending WHOIS buffer for ERR_NOSUCHNICK (401)
+          if (code == 401 && !params.isEmpty()) {
+            QString failedNick = params.value(0);
+            m_whoisBuffer.remove(srv + "\n" + failedNick.toLower());
+          }
           QString text = "[" + QString::number(code) + "] " + trailing;
           // Some error numerics mention a channel in params (e.g. 404 #channel
           // :Cannot send)
@@ -1385,8 +1419,14 @@ void IRCConnectionManager::appendToChannel(const QString &server,
   hist.append(msg);
 
   // Enforce per-channel history cap to prevent unbounded memory growth
-  if (hist.size() > kMaxHistoryPerChannel) {
-    int excess = hist.size() - kMaxHistoryPerChannel;
+  int maxHistory = kMaxHistoryPerChannel;
+  if (m_settings) {
+    maxHistory = m_settings->getInt("ui/maxScrollback", kMaxHistoryPerChannel);
+    if (maxHistory < 100)
+      maxHistory = 100;
+  }
+  if (hist.size() > maxHistory) {
+    int excess = hist.size() - maxHistory;
     hist.remove(0, excess);
   }
 

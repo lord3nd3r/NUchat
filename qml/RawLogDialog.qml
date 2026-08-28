@@ -55,6 +55,9 @@ Dialog {
             target: ircManager
             function onRawLineReceived(direction, line) {
                 rawLogModel.append({direction: direction, line: line})
+                if (rawLogModel.count > 1000) {
+                    rawLogModel.remove(0, rawLogModel.count - 1000)
+                }
                 if (autoScroll.checked) {
                     rawLogList.positionViewAtEnd()
                 }

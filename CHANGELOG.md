@@ -2,6 +2,19 @@
 
 All notable changes to NUchat are documented in this file.
 
+## [1.6.1] — 2026-08-27
+
+### Added
+- **Channel list streaming & filtering** — wired `RPL_LIST` (322) and `RPL_LISTEND` (323) numeric signals to populate the channel list dialog dynamically with search filtering and size protection.
+- **RPL_AWAY (301) response handling** — surfaces target away messages directly in the active buffer or WHOIS output.
+
+### Improved
+- **Text memory lifecycle & scrollback bounding** — dynamic enforcement of user-configured `ui/maxScrollback` limits in the active message model and per-channel history buffers to prevent unbounded heap growth in long sessions.
+- **QTextDocument memory recycling** — chat area safely re-indexes its document text when exceeding scrollback limit headroom while maintaining exact cursor and scroll position.
+- **Raw socket buffer protection** — added a 64 KB safety threshold in the IRC read buffer to discard corrupted newline-less stream floods.
+- **Raw log buffering** — capped the raw traffic dialog model at 1,000 entries.
+- **WHOIS buffer cleanup** — automatic eviction and cleanup on `ERR_NOSUCHNICK` (401) or aborted queries.
+
 ## [1.6.0] — 2026-07-08
 
 ### Added

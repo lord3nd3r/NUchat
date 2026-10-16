@@ -69,10 +69,10 @@ void Logger::setRotationLimits(qint64 maxBytes, int maxBackups) {
 
 // Replace characters that are invalid in filenames (Windows is the strictest:
 // \ / : * ? " < > |) so channels like #foo|bar still get a log file.
-// A component of "." or ".." would walk out of the log directory, so those
-// names are prefixed with '_' (".." -> "_.."). Windows then strips trailing
-// dots and spaces, which would store "_.." as "_", so a trailing '_' is
-// added until the name no longer ends in either (".." -> "_.._").
+// "." / ".." would walk out of the log directory. Win32 also strips trailing
+// dots and spaces, so a prefixed "_.." would be created as "_" and the path
+// the logger computes would not be the path on disk. Trailing dots and spaces
+// are removed first, and an empty result becomes "_".
 static QString sanitizeFileName(QString name) {
   name = name.trimmed();
   QString out;
@@ -84,10 +84,14 @@ static QString sanitizeFileName(QString name) {
     else
       out += c;
   }
+  while (out.endsWith(QLatin1Char('.')) || out.endsWith(QLatin1Char(' ')))
+    out.chop(1);
   if (out.isEmpty() || out == QLatin1String(".") || out == QLatin1String(".."))
     out = QLatin1Char('_') + out;
   while (out.endsWith(QLatin1Char('.')) || out.endsWith(QLatin1Char(' ')))
-    out += QLatin1Char('_');
+    out.chop(1);
+  if (out.isEmpty())
+    out = QLatin1Char('_');
   return out;
 }
 
@@ -269,9 +273,9 @@ void Logger::log(const QString &network, const QString &channel,
 #ifdef Q_OS_UNIX
   const mode_t oldMask = umask(0077);
 #endif
-  // Binary mode so the newline stays '\n' on Windows. Text mode would write
-  // "\r\n", and loadScrollback would keep the '\r' on the message.
-  const bool opened = file.open(QIODevice::Append);
+  // Binary mode so Windows does not translate \n to \r\n. Scrollback splits
+  // on \n and would otherwise keep the CR in the message text.
+  const bool opened = file.open(QIODevice::Append | QIODevice::WriteOnly);
 #ifdef Q_OS_UNIX
   umask(oldMask);
 #endif

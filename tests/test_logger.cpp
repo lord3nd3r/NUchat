@@ -101,13 +101,14 @@ private slots:
             QStringLiteral("../../etc.log"))));
 
         const QString dotLog =
-            QDir(root).filePath(QStringLiteral("_.._/#chan.log"));
+            QDir(root).filePath(QStringLiteral("_/#chan.log"));
         const QString etcLog =
-            QDir(root).filePath(QStringLiteral(".._.._etc/_.._.log"));
+            QDir(root).filePath(QStringLiteral(".._.._etc/_.log"));
         QVERIFY2(QFile::exists(dotLog), qPrintable(dotLog));
         QVERIFY2(QFile::exists(etcLog), qPrintable(etcLog));
 
-        const QString canonRoot = QFileInfo(root).canonicalFilePath();
+        const QString canonRoot = QDir::fromNativeSeparators(
+            QFileInfo(root).canonicalFilePath());
         QDirIterator it(root, QStringList() << QStringLiteral("*.log"),
                         QDir::Files | QDir::Hidden,
                         QDirIterator::Subdirectories);
@@ -118,23 +119,22 @@ private slots:
         bool sawDot = false;
         bool sawEtc = false;
         for (const QString &path : files) {
-            const QString canon =
-                QDir::fromNativeSeparators(QFileInfo(path).canonicalFilePath());
-            const QString rootSlash =
-                QDir::fromNativeSeparators(canonRoot) + QLatin1Char('/');
-            QVERIFY2(canon.startsWith(rootSlash), qPrintable(canon));
+            const QString canon = QDir::fromNativeSeparators(
+                QFileInfo(path).canonicalFilePath());
+            QVERIFY2(canon.startsWith(canonRoot + QLatin1Char('/')),
+                     qPrintable(canon));
             const QString dirName = QFileInfo(path).dir().dirName();
             QVERIFY(dirName != QLatin1String(".."));
             QVERIFY(dirName != QLatin1String("."));
-            if (dirName == QLatin1String("_.._"))
+            if (dirName == QLatin1String("_"))
                 sawDot = true;
             if (dirName == QLatin1String(".._.._etc"))
                 sawEtc = true;
+            // Qt on Windows only honors the read-only flag, so group/other
+            // bits stay set even after restrictToOwner().
+#if defined(Q_OS_UNIX)
             const QFileDevice::Permissions perms = QFile::permissions(path);
             QVERIFY(perms & QFileDevice::ReadOwner);
-            // Qt on Windows only honors the read-only attribute, so group and
-            // other bits stay set from the inherited ACL. Unix is owner-only.
-#if !defined(Q_OS_WIN)
             QVERIFY(!(perms & (QFileDevice::ReadGroup | QFileDevice::WriteGroup |
                                QFileDevice::ExeGroup | QFileDevice::ReadOther |
                                QFileDevice::WriteOther | QFileDevice::ExeOther)));
@@ -261,10 +261,13 @@ private slots:
                            QStringLiteral("chat"), QStringLiteral("private"));
         const QString path =
             scratch.logger.logDir() + QStringLiteral("/net/chan.log");
+        QVERIFY(QFile::exists(path));
+        // Qt on Windows only honors the read-only flag, so group/other bits
+        // stay set even after restrictToOwner().
+#if defined(Q_OS_UNIX)
         const auto perms = QFile::permissions(path);
         QVERIFY(perms & QFileDevice::ReadOwner);
         QVERIFY(perms & QFileDevice::WriteOwner);
-#if !defined(Q_OS_WIN)
         QVERIFY(!(perms & QFileDevice::ReadGroup));
         QVERIFY(!(perms & QFileDevice::ReadOther));
         QVERIFY(!(perms & QFileDevice::WriteOther));
@@ -300,8 +303,8 @@ private slots:
         const QString token = QStringLiteral("PATH-TOKEN-UNIQUE");
         scratch.logger.log(QStringLiteral(".."), QStringLiteral(".."),
                            QStringLiteral("chat"), token);
-        const QString path =
-            scratch.logger.logDir() + QStringLiteral("/_.._/_.._.log");
+        const QString path = scratch.logger.logDir() + QStringLiteral("/_/") +
+                             QStringLiteral("_.log");
         QVERIFY2(QFile::exists(path), qPrintable(path));
         QVERIFY(readFile(path).contains(token));
         QVERIFY(!QFile::exists(scratch.dir.path() + QStringLiteral("/_.log")));

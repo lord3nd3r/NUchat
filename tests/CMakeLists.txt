@@ -55,6 +55,11 @@ add_executable(test_managerrouting test_managerrouting.cpp)
 target_link_libraries(test_managerrouting PRIVATE Qt6::Test Qt6::Widgets nuchatcore)
 target_include_directories(test_managerrouting PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME managerrouting COMMAND test_managerrouting)
+# QTEST_MAIN builds a QApplication because this target links Qt Widgets.
+# Headless CI (Linux, ASan, FreeBSD) has no display; the offscreen plugin is
+# part of qtbase and is enough for these routing tests.
+set_tests_properties(managerrouting PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # ── test_netsecurity ──────────────────────────────────────────────────────────
 add_executable(test_netsecurity test_netsecurity.cpp)
@@ -67,6 +72,9 @@ add_executable(test_protocol test_protocol.cpp)
 target_link_libraries(test_protocol PRIVATE Qt6::Test Qt6::Widgets Qt6::Network nuchatcore)
 target_include_directories(test_protocol PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME protocol COMMAND test_protocol)
+# Same Widgets/QApplication constraint as managerrouting above.
+set_tests_properties(protocol PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # ── test_plugins (C++ plugins, JS, Python/Lua hook dispatch) ─────────────────
 add_executable(test_plugins test_plugins.cpp)
@@ -88,19 +96,8 @@ endif()
 add_dependencies(test_plugins ExamplePlugin)
 add_test(NAME plugins COMMAND test_plugins)
 
-# managerrouting and protocol link Qt Widgets, so QTEST_MAIN builds a
-# QApplication. Headless Linux, FreeBSD, and ASan runners have no DISPLAY;
-# the offscreen plugin is installed there. macOS and Windows already have a
-# session, and forcing offscreen would fail if that plugin is not packaged.
-if(NOT WIN32 AND NOT APPLE)
-    set_tests_properties(
-        messageparser settings ircparsing hexchatimport secrets redact
-        messagemodel logger managerrouting netsecurity protocol plugins
-        PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-endif()
-
-# Linking Qt Gui marks these WIN32 executables, so a failed QCOMPARE never
-# reaches the ctest log. Keep them console programs.
+# Linking Qt Gui would otherwise mark these as GUI executables on Windows, so
+# a failed QCOMPARE never reaches the ctest log.
 if(WIN32)
     set(_nuchat_console_tests
         test_messageparser test_settings test_ircparsing test_hexchatimport

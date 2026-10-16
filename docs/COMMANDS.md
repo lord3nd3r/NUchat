@@ -141,3 +141,26 @@ These keyboard shortcuts insert mIRC control characters into the message input:
 | `Ctrl+U` | `\x1F` | Underline |
 | `Ctrl+I` | `\x1D` | Italic |
 | `Ctrl+O` | `\x0F` | Reset all formatting |
+
+Strikethrough (`\x1E`) is rendered. There is no shortcut that inserts it.
+
+Application shortcuts (overridable under Preferences → Shortcuts, keys `shortcut/*`):
+
+| Default | Action |
+|---------|--------|
+| `Ctrl+W` | Close tab |
+| `Ctrl+PgUp` / `Ctrl+PgDown` | Previous / next tab |
+| `Ctrl+J` | Join channel |
+| `Ctrl+N` | Quick connect |
+| `Ctrl+D` | Disconnect |
+| `Ctrl+L` | Channel list |
+| `Ctrl+R` | Raw log |
+| `Ctrl+F` | Search |
+| `Ctrl+P` | Preferences |
+| `Ctrl+Shift+N` | Network list |
+| `Ctrl+Shift+K` | Change nick |
+| `Ctrl+Shift+A` | Toggle away |
+| `Ctrl+Shift+S` | Scripts |
+| `Ctrl+Shift+U` | URL grabber |
+
+Up and Down recall input history. Tab cycles nick completion. Help → Keyboard Shortcuts prints this list into the current buffer.

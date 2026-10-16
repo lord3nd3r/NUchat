@@ -2,8 +2,8 @@
 
 NUchat provides a **HexChat-style scripting API** for both Python and Lua.
 It covers the calls most scripts use. It is not a full HexChat runtime; see [Current limitations](#current-limitations).
-Scripts are loaded automatically from `~/.config/NUchat/scripts/` on startup and
-hot-reloaded when modified on disk.
+Scripts are loaded automatically from `~/.config/NUchat/scripts/` on startup.
+A change on disk reloads the file. Lua drops that script's hooks first; Python hot reload does not. See [Hot Reloading](#hot-reloading).
 
 ---
 
@@ -71,8 +71,10 @@ hexchat.hook_command("GREET", function(word, word_eol, userdata)
     return hexchat.EAT_ALL
 end)
 
-hexchat.prnt("myscript.lua loaded!")
+hexchat.prnt("myscript.lua loaded!")  -- does not display; see below
 ```
+
+Lua `prnt` looks up a `MessageModel` child of the connection manager. The model is not parented there, so that line does not appear. Use a Python script, or `hexchat.command("ECHO ...")`, to print locally.
 
 ---
 
@@ -110,12 +112,12 @@ compatibility with both HexChat and NUchat naming conventions.
 | Function | Description |
 |----------|-------------|
 | `hexchat.command(cmd)` | Execute an IRC command (without leading `/`). Example: `hexchat.command("JOIN #channel")` |
-| `hexchat.prnt(text)` | Print text to the current channel tab locally. Supports mIRC color codes (e.g. `\00303green\003`). |
+| `hexchat.prnt(text)` | Python sends `/ECHO`, which prints in the active buffer and supports mIRC color codes (e.g. `\00303green\003`). Lua looks up a `MessageModel` child of the connection manager. The model is not parented there, so Lua `prnt` does not display. |
 | `hexchat.emit_print(event, ...)` | Print the arguments, joined by spaces, in the active tab. The event name is ignored. This does not dispatch HexChat text events. |
 | `hexchat.get_info(id)` | Retrieve information about the current context. See [get_info Keys](#get_info-keys). |
 | `hexchat.hook_command(name, cb, ...)` | Register a hook for a `/COMMAND`. See [hook_command](#hook_command). |
 | `hexchat.hook_server(name, cb, ...)` | Register a hook for raw server numerics/commands. See [hook_server](#hook_server). |
-| `hexchat.hook_print(name, cb, ...)` | Register a hook for print events. See [hook_print](#hook_print). |
+| `hexchat.hook_print(name, cb, ...)` | Store a print-event hook. The callback is not called. See [hook_print](#hook_print). |
 | `hexchat.hook_timer(timeout, cb, ...)` | Register a timer hook. See [hook_timer](#hook_timer). |
 | `hexchat.unhook(hook_id)` | Remove a previously registered hook by its ID. |
 | `hexchat.nickcmp(a, b)` | Case-insensitive IRC nick comparison. Returns 0 if equal. |
@@ -142,7 +144,7 @@ hook_id = hexchat.hook_command(name, callback [, userdata [, priority]])
 | `callback` | function | Handler function — see [Hook Callbacks](#hook-callbacks) |
 | `userdata` | any | Optional data passed to the callback |
 | `priority` | int | Hook priority (default: `PRI_NORM`) |
-| `help` | string | Help text shown for `/HELP name` (Python only) |
+| `help` | string | Accepted by the Python binding and then discarded. There is no `/HELP` command, and the string is not stored |
 
 **Returns:** An integer hook ID that can be passed to `unhook()`.
 
@@ -180,7 +182,7 @@ case-insensitively (`"privmsg"` and `"PRIVMSG"` are the same hook).
 
 #### hook_print
 
-Register a handler for print events (local display events).
+Store a handler for a print-event name. Neither engine calls these callbacks. Python's `handlePrintEvent` exists and has no caller. Use `hook_server` for IRC lines such as `JOIN`.
 
 **Python:**
 ```python
@@ -230,7 +232,7 @@ hook_id = hexchat.hook_timer(timeout_ms, callback [, userdata])
 | `EAT_PLUGIN` | 2 | Don't pass to other hooks, but let NUchat process it |
 | `EAT_ALL` | 3 | Consume completely — no other hooks or NUchat processing |
 
-Lua also defines `EAT_XCHAT` as an alias for `EAT_HEXCHAT`.
+Python and Lua both define `EAT_XCHAT` as an alias for `EAT_HEXCHAT`.
 
 These values are honored:
 
@@ -253,21 +255,26 @@ These values are honored:
 
 | Key | Returns |
 |-----|---------|
-| `"nick"` | Current nickname on the active server |
-| `"server"` | Hostname of the active server |
+| `"nick"`, `"nickname"` | Current nickname on the active server |
+| `"server"`, `"network"`, `"host"` | Hostname of the active server |
 | `"topic"` | Topic of the active channel |
 | `"version"` | NUchat version string |
-| `"channel"` | Name of the active channel. Currently returns an empty string (see below). |
-| `"away"` | Empty string. Away state is not exposed here. |
+| `"channel"` | Empty string (see below) |
+| `"away"` | Empty string. `IRCConnectionManager` has an `isAway` property, and `get_info` does not read it |
+| `"event_text"` | Empty string |
 
 ### Current limitations
 
 - `get_info("channel")` returns an empty string. The Python engine returns that directly. The Lua engine reads a Qt property named `activeChannel`, and `IRCConnectionManager` does not publish that property.
 - `get_info("away")` returns an empty string in both engines.
+- `nickcmp` always compares with rfc1459 rules. It does not use the server's ISUPPORT `CASEMAPPING`.
 - `emit_print` prints its arguments locally. It does not run print hooks or format a HexChat text event.
 - Python `get_list` returns an empty list. Python `get_prefs` returns `None`. `get_context`, `find_context`, and `set_context` are stubs (a constant context id, and `set_context` always succeeds). Lua does not define those functions.
+- Python `hook_command`'s `help` keyword is parsed and ignored.
 - Python command, server, and print callbacks are always called with three arguments: `word`, `word_eol`, and `userdata`. A function that only accepts the first two raises `TypeError`. Lua command and server callbacks are also called with those three values; Lua ignores extra arguments, so a shorter function still runs. Lua timer callbacks receive only userdata.
-- Lua `hook_print` stores the callback and never calls it. Python print hooks are invoked.
+- `hook_print` stores the callback in both engines and never calls it. Python has `handlePrintEvent`, and nothing in the client calls it. A `hook_print("Join", ...)` callback does not run when someone joins. Use `hook_server("JOIN", ...)` for server lines.
+- Lua `prnt` does not show text. It searches for a `MessageModel` that is a child of `IRCConnectionManager`, and `setMessageModel` does not reparent the model. Python `prnt` goes through `/ECHO` and does show.
+- Python `hook_unload(callback, userdata=None)` is implemented. The callback is called with userdata when that script is unloaded. Lua has no `hook_unload`.
 
 ---
 
@@ -315,6 +322,8 @@ end
 
 ### Auto-greet on join (Python)
 
+`hook_print` is not dispatched. Hook the server `JOIN` line instead. `word` is the tag-stripped line, so the prefix is `word[0]` and the channel is `word[2]`.
+
 ```python
 import hexchat
 
@@ -323,14 +332,15 @@ __module_version__ = "1.0"
 __module_description__ = "Greets users when they join"
 
 def on_join(word, word_eol, userdata):
-    nick = word[0]
-    channel = word[1] if len(word) > 1 else ""
+    prefix = word[0][1:] if word and word[0].startswith(":") else ""
+    nick = prefix.split("!")[0]
+    channel = word[2].lstrip(":") if len(word) > 2 else ""
     my_nick = hexchat.get_info("nick")
-    if nick != my_nick:
+    if nick and nick != my_nick and channel:
         hexchat.command(f"PRIVMSG {channel} :Welcome, {nick}!")
     return hexchat.EAT_NONE
 
-hexchat.hook_print("Join", on_join)
+hexchat.hook_server("JOIN", on_join)
 hexchat.prnt("autogreet.py loaded!")
 ```
 
@@ -415,24 +425,30 @@ See `scripts/hello.js`.
 
 ## Script Management
 
-Scripts can be managed via the **Scripts** menu or through commands:
+There are no `/LOAD`, `/UNLOAD`, or `/RELOAD` commands. Those names are forwarded to the server as raw IRC.
 
-| Command | Description |
-|---------|-------------|
-| `/LOAD <path>` | Load a script file |
-| `/UNLOAD <filename>` | Unload a loaded script |
-| `/RELOAD` | Reload all scripts |
+| Surface | What it does |
+|---------|----------------|
+| **Scripts → Loaded Scripts...** and **View → Plugins and Scripts...** | Open the Scripts dialog |
+| **Scripts → Load Script...** and the dialog's **Load...** | Python only. Title "Load Python Script", filter `*.py`, `pyEngine.loadScript`. There is no Lua file picker |
+| **Scripts → Reload All Scripts** | `pyEngine.reloadAll()` only |
+| Dialog **Reload** | Python: `reloadScript`. Lua: `unloadScript` then `loadScript` of `scriptsDirectory/filename` |
+| Dialog **Reload All** | `pyEngine.reloadAll()` and `luaEngine.reloadAll()` |
+| Dialog **Unload** | Unloads the selected Python or Lua script |
+| **Scripts → Open Scripts Folder** | Python scripts directory when Python is built in. The dialog's Open Folder falls back to the Lua directory |
+| Preferences → Scripts buttons | Load, Unload, and Open Script Editor have no handlers. The list is a static label |
 
-The Scripts dialog (**Scripts > Plugins and Scripts...**) shows all loaded Python and Lua
-scripts with their metadata and hook counts.
+The Scripts dialog lists loaded Python and Lua files. Python rows show `__module_name__`, version, and description. Lua rows show the filename: the Lua engine never fills its info map. The hook total under the list is Python's `hookCount()` only. Lua hooks are not included, and the count is not per script.
 
 ---
 
 ## Hot Reloading
 
-NUchat watches the scripts directory for file changes. When a `.py` or `.lua` file is
-modified, it is automatically reloaded. All existing hooks from that script are removed
-before the script is re-executed.
+NUchat watches `~/.config/NUchat/scripts/` for file changes.
+
+Lua reloads a changed `.lua` file by unloading that script first, which drops its hooks, then running it again. A new `.lua` file that appears in the directory is loaded.
+
+Python reloads a changed `.py` file by running it again. It does not remove the previous hooks first, so a hot reload can leave the old hooks in place alongside the new ones. Unload or Reload from the Scripts dialog does remove that script's hooks before loading it again.
 
 ---
 
@@ -441,8 +457,8 @@ before the script is re-executed.
 - The `hexchat` module is injected by NUchat at runtime — there is no separate package
   to install.
 - Scripts run in the main thread. Long-running operations will block the UI.
-- All script output (`prnt`) appears in the currently active channel tab.
-- mIRC color codes are supported in `prnt()` output (e.g. `\00304red text\003`).
+- Python `prnt` appears in the currently active channel tab. Lua `prnt` does not (see [Current limitations](#current-limitations)).
+- mIRC color codes in Python `prnt()` are rendered (e.g. `\00304red text\003`). Lua `prnt` does not display, so those codes are not shown from Lua.
 
 ---
 
@@ -466,14 +482,9 @@ Open **Settings → Preferences → Scripts → Open Migration Wizard** at any t
 
 ### Compatibility notes
 
-- NUchat uses the same `import hexchat` API, so most HexChat Python scripts work
-  without changes.
-- **Command hooks** receive arguments exactly like HexChat — the command name is excluded
-  from the word list, and callbacks always receive 3 parameters (word, word_eol, userdata).
-- **SAY command** is fully implemented — scripts can use `hexchat.command("SAY text")` to
-  send messages to the active channel with proper status prefix display.
-- Scripts that use `hexchat.find_context()`, `hexchat.get_context()`, or
-  `hexchat.get_list()` may need minor adjustments as those are not yet implemented.
-- Lua scripts using the `hexchat` global work as-is; scripts using `xchat` may need
-  the global renamed.
-- `hexchat.hook_unload()` is not yet implemented — use module-level cleanup or context managers.
+- NUchat uses `import hexchat` for the calls listed above. Scripts that depend on print events, `get_list`, contexts, or `get_info("channel")` need changes. See [Current limitations](#current-limitations).
+- **Command hooks** receive arguments with the command name excluded from the word list, and Python callbacks always receive 3 parameters (word, word_eol, userdata).
+- **SAY command** is implemented — `hexchat.command("SAY text")` sends the text as a normal message on the active channel.
+- `hexchat.find_context()`, `hexchat.get_context()`, and `hexchat.get_list()` are stubs.
+- Lua scripts using the `hexchat` global work for the implemented calls. Scripts using `xchat` need the global renamed. Lua has no `hook_unload`.
+- Python `hexchat.hook_unload(callback, userdata=None)` runs when that script is unloaded. The callback receives userdata.

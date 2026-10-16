@@ -44,7 +44,7 @@ Complete reference for all menu bar items, context menus, and dialogs.
 | Set Away / Set Back | Toggle away status |
 | SASL Authentication | Configure SASL for current server |
 | Server Password | Set server connection password |
-| Send Raw Command | Send a raw IRC command |
+| Send Raw Command | Opens the Raw Log dialog. It does not open a separate command prompt |
 
 ### Channel
 
@@ -54,7 +54,7 @@ Complete reference for all menu bar items, context menus, and dialogs.
 | Channel Modes | View/set channel modes |
 | Ban List | View channel bans |
 | Clear Buffer | Clear the chat buffer |
-| Save Buffer | Save chat to file |
+| Save Buffer | Placeholder. Prints "Buffer save not yet implemented" |
 | Invite User | Invite a user to the channel |
 | Op / DeOp / Voice / DeVoice | Change user modes |
 | Kick / Ban / Kick+Ban | Remove users |
@@ -64,11 +64,11 @@ Complete reference for all menu bar items, context menus, and dialogs.
 
 | Item | Description |
 |------|-------------|
-| WHOIS / DNS Lookup / Ping | User information queries |
+| WHOIS / DNS Lookup / Ping | WHOIS sends `WHOIS`. DNS Lookup sends `USERHOST` (it is not a DNS query). Ping sends a CTCP PING |
 | Send Private Message | Open a PM tab |
-| Direct Chat (DCC) / Send File (DCC) | DCC operations |
+| Direct Chat (DCC) / Send File (DCC) | Both open the DCC transfers dialog. There is no DCC CHAT. `/DCC` implements `SEND` only |
 | Ignore / Unignore / Ignore List | Manage ignore list |
-| Notify List | Manage nick notify list |
+| Notify List | Placeholder. Prints "Notify list not yet implemented". `/NOTIFY` still manages the list |
 
 ### Settings
 
@@ -81,15 +81,24 @@ Complete reference for all menu bar items, context menus, and dialogs.
 | URL Handlers | URL handling configuration |
 | Text Events | Customize event format strings |
 | Keyboard Shortcuts | Configure shortcuts |
-| Identd Server | Toggle identd |
+| Identd Server | Placeholder. Prints "Identd server not yet implemented" |
 | Perform List | Auto-commands on connect |
+
+### Scripts
+
+| Item | Description |
+|------|-------------|
+| Loaded Scripts | Open the Scripts dialog (Python and Lua) |
+| Load Script | Python only. The dialog is titled "Load Python Script", filters `*.py`, and calls `pyEngine.loadScript`. Lua files dropped here are still passed to Python |
+| Reload All Scripts | Calls `pyEngine.reloadAll()` only. Lua scripts are not reloaded. The Scripts dialog's Reload All button reloads both engines |
+| Open Scripts Folder | Opens the Python engine's scripts directory when Python is built in |
 
 ### Window
 
 | Item | Description |
 |------|-------------|
 | Previous Tab / Next Tab | Navigate tabs |
-| Detach Tab / Attach Tab | Tear off / reattach tabs |
+| Detach Tab / Attach Tab | Placeholders. Each prints that detach or attach is not yet implemented |
 | Close Tab / Close All Tabs | Close tabs |
 
 ### Services
@@ -113,7 +122,7 @@ Send, Read, List, Del, Help
 Add Bot, Del Bot, List Bots, Help
 
 #### Channel Settings
-Mode toggles: `+i`, `+m`, `+s`, `+t`, `+n`, `+r`, `+k`, `+l` (and removal)
+Mode toggles: `+i`, `+m`, `+s`, `+t`, `+n`, `+r`, `+k`, `+l`. Removal items exist for invite-only, moderated, secret, key, and limit. There is no menu item that removes `+t`, `+n`, or `+r`
 
 #### Network Info
 Links, Lusers, MOTD, Admin, Stats, Trace, Version, Time
@@ -129,7 +138,7 @@ Oper, Rehash, Restart, SQuit, GLINE, Kill, Wallops
 | Item | Description |
 |------|-------------|
 | Documentation | Open docs |
-| Keyboard Shortcuts | Show shortcut reference |
+| Keyboard Shortcuts | Print the current `shortcut/*` bindings into the active buffer. It does not open a dialog. Defaults are listed in [COMMANDS.md](COMMANDS.md) |
 | Report a Bug | Open issue tracker |
 | Check for Updates | Check for new versions |
 | About NUchat | Version and credits |
@@ -164,7 +173,7 @@ Appears when right-clicking a URL in the chat area.
 |------|-------------|
 | Open URL | Open in system browser |
 | Copy Link | Copy URL to clipboard |
-| Download Image | Save image to ~/Downloads |
+| Download Image | If the preview is already cached, copy it to Qt's download location (or `~/Downloads`). If it is not cached, a fetch starts and the buffer says it will be saved when ready; nothing connects that fetch to a save |
 
 ---
 
@@ -185,7 +194,7 @@ Appears when right-clicking a URL in the chat area.
 | **Channel Modes** | View and set channel modes |
 | **Topic** | Edit channel topic |
 | **About** | Application info and version |
-| **Preferences** | Full settings editor (17 tabs — see below) |
+| **Preferences** | Full settings editor (18 tabs — see below) |
 | **Invite User** | Invite a user to the current channel |
 | **Server Password** | Set server password for connection |
 
@@ -201,14 +210,15 @@ Appears when right-clicking a URL in the chat area.
 | **Input** | Spell check. Tab completion settings + suffix. Per-channel history + max size. |
 | **User Info** | Primary nick + 3 alternates. Username, real name. Quit/part/away messages. |
 | **Connection** | Auto-reconnect (initial delay, then exponential backoff capped at 15 minutes, max attempts). A connect that does not finish within 30 seconds is aborted. Auto-join. Proxy (SOCKS5, HTTP CONNECT; SOCKS4 is refused). Accept self-signed SSL certificates (`conn/allowSelfSignedCerts`) — hostname mismatches, self-signed certs, and untrusted issuers only. |
-| **SASL / Auth** | Auth method (PLAIN, EXTERNAL, SCRAM, ECDSA, NickServ, CERTFP). PEM client certificate and unencrypted key, sent on the TLS handshake. SASL PLAIN responses are split into 400-byte `AUTHENTICATE` chunks. |
+| **SASL / Auth** | The method combo lists None, SASL PLAIN, SASL EXTERNAL, SASL SCRAM-SHA-256, SASL ECDSA-NIST256P, two NickServ spellings, Server Password, and CERTFP. It saves `auth/methodIndex` and nothing reads that key. A connection uses the network's `saslMethod`, and only `PLAIN` and `EXTERNAL` are implemented. PEM client certificate and unencrypted key are sent on the TLS handshake. SASL PLAIN responses are split into 400-byte `AUTHENTICATE` chunks. |
 | **DCC** | Download folder. Auto-accept (public peers only, unless private-LAN peers are allowed). Max file size. Listen port range (`dcc/portLow`–`dcc/portHigh`, default 1024–5000). Advertised address: the IRC connection's local IPv4, or a manual IPv4 when that method is selected. The listen socket still binds to the local address. Loopback and non-unicast offers are rejected. Receives follow the proxy setting or fail closed. Active sends are refused while a proxy is on. |
-| **Logging** | Enable/disable, directory, format (Plain/HTML/JSON), PM logging, per-channel files. The dialog saves these keys. The logger does not read them: every channel is still written under the application config directory, with a 10 MB rotation. |
+| **Logging** | Enable, directory, timestamps, private messages, and per-channel files are read by the logger. The format combo is disabled and only offers plain text; there is no `log/formatIndex` key. An empty `log/directory` uses Qt's application config location plus `/logs`. The field's unset text is `~/.config/NUchat/logs`, and saving Preferences writes that string. Rotation is 10 MB (`.log.1` through `.log.5`). |
 | **Notifications** | Desktop notifications. Flash taskbar. Tray unread. Highlight on nick mention. Timeout. |
 | **Sounds** | Enable/disable. Per-event toggles (highlight, PM, connect). Custom beep command. |
 | **Auto-Replace** | Pattern/replacement rules for outgoing text. |
 | **URL Handlers** | Clickable URLs. Auto-grab. Custom browser command. Inline image previews are off by default (http/https only, 15 MB limit). Private and special-use addresses are blocked, including after a redirect. A configured proxy that cannot be applied skips the fetch. |
 | **Text Events** | Format strings for join, part, quit, kick, nick change, topic, action, notice, CTCP. |
-| **Plugins** | Load/unload/reload C++ plugins. Plugin directory path. |
-| **Scripts** | Load/unload/reload scripts. Script editor. Script directory. |
-| **Advanced** | Encoding (UTF-8 + alternatives). IPv6. CAP. Perform commands. Command character. |
+| **Plugins** | The list is a static placeholder (`ExamplePlugin`). Load, Unload, and Reload have no handlers. The directory field is disabled. Saving Preferences still writes `plugin/directory`. The loader scans that key when it is non-empty. |
+| **Scripts** | The list is a static "No scripts loaded" label. Load, Unload, and Open Script Editor have no handlers. The directory field is disabled. `script/directory` is written on OK and is not read. Python and Lua load `~/.config/NUchat/scripts/`. The working controls are the Scripts menu and the Scripts dialog. The migration wizard button on this tab does open the wizard. |
+| **Advanced** | Encoding, IPv6, identify-before-join, turning CAP off, and the command character are disabled. CAP stays on. Perform commands are read. Raw IRC in the server tab is `adv/showRawIRC`. |
+| **Shortcuts** | Edits the `shortcut/*` sequences listed in [COMMANDS.md](COMMANDS.md). Clear a field to disable that shortcut. |

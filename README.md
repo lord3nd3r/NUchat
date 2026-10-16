@@ -14,35 +14,40 @@ See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
 
 ![NUchat Screenshot](docs/screenshot.png)
 
+The image is an earlier window. The current UI adds a menu bar, a topic bar (channel, modes, and topic), nick mode buttons, and a status bar with the lag meter. The picture was not replaced.
+
 ---
 
 ## Features
 
 - **Multi-server** — connect to multiple networks simultaneously
-- **SSL/TLS** on all connections with **per-network SASL** (PLAIN/EXTERNAL) and **NickServ auto-identify**
-- **25 built-in themes** — HexChat Dark, Monokai, Dracula, Nord, Gruvbox, Catppuccin, and more
-- **mIRC color codes** — foreground and background (palette and hex), bold, italic, underline, and strikethrough, plus input shortcuts. Reverse video swaps the two colors.
-- **Clickable URLs** with inline image previews (off by default; enable under Preferences → URL Handlers)
-- **DCC file transfer** — send and receive with progress, ETA, and speed. Offers to loopback, unspecified, link-local, and other non-unicast addresses are rejected. Receives use the configured proxy, or they are refused when that proxy cannot be applied. An active send is refused while a proxy is configured, because it listens for a direct connection.
+- **SSL/TLS** on all connections with **per-network SASL** and **NickServ auto-identify**. The connection implements **PLAIN** and **EXTERNAL** only. `AUTHENTICATE PLAIN` is split into 400-byte chunks. A PEM client certificate and unencrypted key from Preferences are presented on the TLS handshake. The network list also offers `SCRAM-SHA-256` and `ECDSA-NIST256P-CHALLENGE`. The SASL preferences combo lists SCRAM-SHA-256 and ECDSA-NIST256P among other labels. Those choices are stored, and the connection rejects anything other than `PLAIN` and `EXTERNAL`. `auth/methodIndex` is saved and is not read when connecting
+- **IRCv3** — requests `server-time` and `multi-prefix`. ISUPPORT `PREFIX`, `CHANTYPES`, `CHANMODES`, and `CASEMAPPING` (`ascii`, `rfc1459`, `strict-rfc1459`) drive channel detection, nick prefixes, and identity. Until 005 arrives the client assumes rfc1459 and the usual `#&` / `qaohv` defaults
+- **Reconnect** — a connection that does not finish within 30 seconds is aborted. Auto-reconnect waits the configured delay, then doubles it after each later attempt, up to 15 minutes
+- **25 built-in themes** — HexChat Dark, Monokai, Dracula, Nord, Gruvbox, Catppuccin, and more. Each theme object has 42 color properties. The theme named in the menu is **Rosé Pine**
+- **mIRC color codes** — foreground and background (palette and hex), bold, italic, underline, and strikethrough. Input shortcuts insert color, bold, underline, italic, and reset. There is no strikethrough shortcut (`\x1E` is rendered when it is already in the text). Reverse video swaps the two colors
+- **Clickable URLs** with inline image previews (off by default; enable under Preferences → URL Handlers). Fetches allow only http(s), block private and special-use addresses, check each redirect, and cap the on-disk cache at 100 MB
+- **DCC file transfer** — send and receive with progress, ETA, and speed. Sends listen in `dcc/portLow`–`dcc/portHigh` (default 1024–5000). Offers to loopback, unspecified, link-local, and other non-unicast addresses are rejected. Private-LAN offers stay pending for a manual accept unless `dcc/allowPrivatePeers` is set. Receives use the configured proxy, or they are refused when that proxy cannot be applied. An active send is refused while a proxy is configured, because it listens for a direct connection. There is no DCC CHAT; `/DCC` implements `SEND` only
 - **Nick list** with multi-select (Ctrl+click, Shift+click) and mode buttons (Op, DeOp, Ban, Kick, Voice, DeVoice)
 - **Tab nick-completion** with cycling
 - **Input history** — Up/Down arrow keys recall previous messages
-- **Paste flood protection** — confirmation dialog when pasting multiple lines
-- **Spell checker** — Hunspell. Dictionaries are searched in `DICPATH`, next to the application (`hunspell/` and `dictionaries/`), the usual Linux paths (`/usr/share/hunspell`, `/usr/share/myspell/dicts`), Homebrew locations on macOS, and the user data directory. `en_US` and `en-US` names both match.
+- **Paste flood protection** — confirmation dialog when a paste has more than three non-empty lines, including a paste that starts with `/`
+- **Spell checker** — Hunspell. Dictionaries are searched in `DICPATH`, next to the application (`hunspell/` and `dictionaries/`), `/usr/share/hunspell`, `/usr/share/myspell`, `/usr/share/myspell/dicts`, `/usr/local/share/hunspell`, `/usr/local/share/myspell/dicts`, Homebrew paths on macOS (`/opt/homebrew/share/hunspell` and `/usr/local/share/hunspell`) plus `/Library/Spelling` and `~/Library/Spelling`, the LibreOffice wordbook under `ProgramFiles` on Windows, and the user data directory (`hunspell/`). `en_US` and `en-US` names both match.
 - **Auto-focus input** — typing anywhere in the window goes to the input bar
-- **Smart chat area** — auto-scroll, jump-to-bottom button, and "new messages" marker line
-- **Collapsible event groups** — groups multiple joins/parts/quits into a single clickable summary line
+- **Smart chat area** — auto-scroll, and a jump-to-bottom button labeled "New messages" when the view is scrolled up. Joining a channel inserts an "End of scrollback" line after the loaded log. There is no separate new-messages marker inside the buffer (`lastSeenIndex` is unused)
+- **Collapsible event groups** — three or more consecutive joins, parts, or quits collapse into one clickable summary (`ui/collapseEvents`, on by default)
 - **Lag meter** — visual PING/PONG RTT indicator in the status bar
 - **Scrollback** — loads last 200 lines from logs when rejoining a channel
-- **Channel logging** under the Preferences log directory (by default `~/.config/NUchat/NUchat/logs/` on Linux), with a 10 MB rotation that keeps `.log.1` through `.log.5`
+- **Channel logging** — an empty `log/directory` uses `~/.config/NUchat/NUchat/logs/` on Linux. Saving Preferences writes the Logging field, whose unset text is `~/.config/NUchat/logs`. Rotation is 10 MB and keeps `.log.1` through `.log.5`
 - **Built-in commands and aliases** — see [docs/COMMANDS.md](docs/COMMANDS.md)
-- **Services menus** — NickServ, ChanServ, OperServ, HostServ, MemoServ, BotServ
+- **Services menus** — NickServ, ChanServ, OperServ, HostServ, MemoServ, BotServ, plus Channel Settings, Network Info, Channel Stats, and Oper Commands
 - **Right-click context menus** on nicks and links
-- **10 pre-configured networks** (Libera.Chat, OFTC, EFnet, DALnet, Rizon, and more)
+- **10 pre-configured networks** — Libera.Chat, OFTC, EFnet, DALnet, Undernet, Rizon, IRCnet, QuakeNet, Snoonet, and freenode (legacy)
 - **Per-network identity** override (nick, username, real name)
 - **Channel modes on join** — displays mode string when entering a channel
-- **Dynamic title bar** — shows channel, server, and topic (like HexChat)
-- **C++ plugin API**, **Python scripting**, and **Lua scripting** — a HexChat-style subset (see the docs for what is actually implemented)
+- **Dynamic title bar** — a channel tab is titled `NUchat: <channel> on <server> — <topic>`. The server tab title is `NUchat`
+- **Preferences that take effect** — logging, DCC download directory and max size, URL handling, highlights, tray unread, and tab completion. These controls stay disabled because they are not applied: text encoding, IPv6, identify-before-join, turning CAP off, the command character, HTML/JSON log format, the nick-completion popup, hanging indent, and taskbar flash
+- **C++ plugin API**, **Python scripting**, and **Lua scripting** — a HexChat-style subset. Print hooks are stored and not called. Python `prnt` works; Lua `prnt` does not. See the scripting doc
 - **Migrate from HexChat** — first-launch wizard imports your scripts, server list, and identity
 - **ZNC bouncer** support
 - **Proxy support** — SOCKS5 and HTTP CONNECT. SOCKS4 is refused (Qt has no SOCKS4 client). A proxy with no host or an invalid port is refused instead of connecting directly.
@@ -69,14 +74,27 @@ Python, Lua, and Hunspell are optional. CMake disables the matching feature when
 **Fedora:**
 ```
 sudo dnf install cmake gcc-c++ \
-  qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtquickcontrols2-devel \
+  qt6-qtbase-devel qt6-qtdeclarative-devel \
   mesa-libGL-devel
 ```
 
+Qt Quick Controls ships in `qt6-qtdeclarative-devel`. On current Fedora, `qt6-qtquickcontrols2-devel` is a provide of that package, not a separate source package. Optional: `python3-devel`, `lua-devel`, `hunspell-devel`, and `qtkeychain-qt6-devel`.
+
 **Arch:**
 ```
-sudo pacman -S cmake qt6-base qt6-declarative qt6-quickcontrols2
+sudo pacman -S cmake qt6-base qt6-declarative
 ```
+
+Qt Quick Controls is part of `qt6-declarative`. The old `qt6-quickcontrols2` package was merged into it. Optional: `python`, `lua`, `hunspell`, and `qtkeychain-qt6`.
+
+**FreeBSD:**
+```
+pkg install cmake pkgconf qt6-base qt6-declarative python3 lua54 hunspell
+```
+
+Optional keychain package: `qtkeychain-qt6`.
+
+**macOS:** `brew install lua hunspell`. The macOS CI job installs Qt 6.8.3 with aqtinstall (see the Windows/macOS notes below). QtKeychain is a separate Qt 6 build.
 
 ### Build & Run
 
@@ -107,7 +125,7 @@ Uses GNUInstallDirs — installs binary, desktop file, icon, and plugin/script d
 | Linux ASan/UBSan | Distro Qt 6, Python disabled | `ctest` under AddressSanitizer and UndefinedBehaviorSanitizer |
 | Windows (`windows-2022`) | Qt 6.5.3 via aqtinstall | `ctest -C Release` |
 | macOS (`macos-15`) | Qt 6.8.3 via aqtinstall | `ctest` |
-| FreeBSD (VM on `ubuntu-latest`) | Ports Qt 6 | `ctest` |
+| FreeBSD (VM on `ubuntu-latest`) | pkg Qt 6 (`qt6-base`, `qt6-declarative`) | `ctest` |
 | Release (published release or `v*` tag) | The four platform jobs above | Same `ctest` runs, then uploads the four zip assets |
 
 Windows stays on Qt 6.5.3 and `windows-2022` because newer MSVC standard-library headers removed an API that Qt 6.5.3 still uses. macOS stays on Qt 6.8.3 because that release's OpenGL find-module still references the AGL framework, which the Xcode 26 SDK removed.
@@ -123,7 +141,7 @@ Publishing a GitHub Release, or pushing a `v*` tag for a release that already ex
 | `~/.config/NUchat/NUchat.conf` | Settings (theme, window geometry, networks, identity). Password fields are blank when the OS keychain is in use |
 | `~/.config/NUchat/NUchat/logs/` | Channel logs. Directory, enable, timestamps, private messages, and per-channel files follow Preferences. Rotated `.log.1`–`.log.5`. Control characters and mIRC codes stripped |
 | `~/.config/NUchat/scripts/` | Python and Lua scripts |
-| `~/.cache/NUchat/images/` | Cached inline image previews |
+| `~/.cache/NUchat/NUchat/images/` | Cached inline image previews (Qt `CacheLocation` plus `/images`, organization and application both `NUchat`). The directory is trimmed to 100 MB |
 
 ### Passwords and the OS keychain
 
@@ -134,7 +152,8 @@ QtKeychain is optional at build time:
 | Platform | Package |
 |----------|---------|
 | Debian / Ubuntu | `qtkeychain-qt6-dev` |
-| Fedora | `qt6-qtkeychain-devel` |
+| Fedora | `qtkeychain-qt6-devel` |
+| Arch | `qtkeychain-qt6` |
 | FreeBSD | `qtkeychain-qt6` |
 | macOS | QtKeychain built for Qt 6 (`brew` / a source build) |
 | Windows | QtKeychain built for the same Qt 6 used to compile NUchat |
@@ -157,7 +176,7 @@ Outbound IRC lines have CR, LF, and NUL removed before they are sent. Debug logs
 
 ### Logging
 
-Logs are written under the directory from Preferences (`log/directory`). A leading `~` is expanded. When that setting is empty, the logger uses Qt's application config location plus `/logs` (`~/.config/NUchat/NUchat/logs/<network>/<channel>.log`). `log/enable` turns logging off. `log/privateMessages` skips queries when it is off; the server tab is still written. `log/perChannel` off folds every channel of a network into `messages.log`. `log/timestamps` off writes `[type] message` with no time prefix. `log/formatIndex` is stored by the preferences page and is not read by the logger.
+Logs are written under the directory from Preferences (`log/directory`). A leading `~` is expanded. When that setting is empty, the logger uses Qt's application config location plus `/logs` (`~/.config/NUchat/NUchat/logs/<network>/<channel>.log`). The Logging page displays `~/.config/NUchat/logs` when the key is unset, and saving Preferences writes that field, so the first OK moves logs there unless you edit it. `log/enable` turns logging off. `log/privateMessages` skips queries when it is off; the server tab is still written. `log/perChannel` off folds every channel of a network into `messages.log`. `log/timestamps` off writes `[type] message` with no time prefix. The format combo is disabled. The logger always writes plain text and does not read a format key.
 
 Each file rotates at 10 MB and keeps `.log.1` through `.log.5`. Lines strip C0 controls, ANSI escapes, and mIRC color codes so one message stays one line. Writes are flushed and `fsync`'d, and new log files and directories are owner-only. A name of `.` or `..` stays inside the log directory. Trailing dots are removed so Windows stores the same path the logger opens.
 
@@ -167,10 +186,10 @@ Pre-built binaries and installers for **NUchat 1.7.0** are available on the [Git
 
 | Platform   | Archive                        | Approx. Size | Contents |
 |------------|--------------------------------|--------------|----------|
-| Linux      | `nuchat-linux.zip`             | 480 KiB      | Single `nuchat` executable (extract + `chmod +x ./nuchat`) |
-| FreeBSD    | `nuchat-freebsd.zip`           | 420 KiB      | Single `nuchat` executable |
+| Linux      | `nuchat-linux.zip`             | 620 KiB      | Single `nuchat` executable (extract + `chmod +x ./nuchat`) |
+| FreeBSD    | `nuchat-freebsd.zip`           | 528 KiB      | Single `nuchat` executable |
 | macOS      | `nuchat-macos.zip`             | 54 MiB       | `nuchat-macos.dmg` — open the DMG and drag NUchat to Applications |
-| Windows    | `nuchat-windows-installer.zip` | 21 MiB       | `NUchat_1.7.0_Windows_x64.exe` (NSIS installer) |
+| Windows    | `nuchat-windows-installer.zip` | 20 MiB       | `NUchat_1.7.0_Windows_x64.exe` (NSIS installer) |
 
 **Direct download links** (or visit the [Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.7.0) for all assets and release notes):
 
@@ -227,9 +246,9 @@ Existing scripts and networks in NUchat are never overwritten.
 
 ## Themes
 
-25 themes available via **Settings > Themes** or the Next/Previous Theme menu items:
+25 themes available via **Settings > Themes** or the Next/Previous Theme menu items. Each theme object defines 42 color properties:
 
-HexChat Dark (default), Monokai, Solarized Dark/Light, Dracula, Nord, Gruvbox Dark/Light, One Dark/Light, Catppuccin Mocha/Latte, Tokyo Night, Material Dark, Cyberpunk, Retro Green, Retro Amber, Zenburn, Ayu Dark, GitHub Dark, Midnight Blue, Rose Pine, Everforest Dark, Ice, High Contrast
+HexChat Dark (default), Monokai, Solarized Dark/Light, Dracula, Nord, Gruvbox Dark/Light, One Dark/Light, Catppuccin Mocha/Latte, Tokyo Night, Material Dark, Cyberpunk, Retro Green, Retro Amber, Zenburn, Ayu Dark, GitHub Dark, Midnight Blue, Rosé Pine, Everforest Dark, Ice, High Contrast
 
 ---
 
@@ -260,7 +279,7 @@ NUchat/
 │   └── ...                 ThemeManager, Settings, ScriptManager, PluginManager
 ├── qml/                    QML UI (21 files)
 │   ├── main.qml            Main window (sidebar, chat, nick list, menus)
-│   ├── ThemeManager.qml    25 built-in themes (50+ color properties each)
+│   ├── ThemeManager.qml    25 built-in themes (42 color properties each)
 │   ├── NetworkListDialog.qml  Network manager with drag-and-drop reorder
 │   └── ...                 Dialogs (preferences, DCC, channel list, and others)
 ├── plugins/                C++ plugin directory
@@ -276,7 +295,7 @@ NUchat/
 
 ### C++ Plugins
 
-Implement `PluginInterface` (see `src/PluginInterface.h`) as a `QObject` with `Q_PLUGIN_METADATA(IID "com.nuchat.PluginInterface")`, and compile it as a shared library. The loader skips any library whose embedded IID is not `com.nuchat.PluginInterface`. On startup NUchat scans the Preferences plugin directory, `plugins/` next to the executable, `<build>/plugins` for an in-tree build, `${CMAKE_INSTALL_LIBDIR}/nuchat/plugins` after install, and `~/.config/NUchat/plugins`. The sample `plugins/exampleplugin/` CMake file writes the library to `${CMAKE_BINARY_DIR}/plugins`. See [docs/PLUGINS.md](docs/PLUGINS.md).
+Implement `PluginInterface` (see `src/PluginInterface.h`) as a `QObject` with `Q_PLUGIN_METADATA(IID "com.nuchat.PluginInterface")`, and compile it as a shared library. The loader skips any library whose embedded IID is not `com.nuchat.PluginInterface`. On startup NUchat scans, in order, a non-empty `plugin/directory` (a leading `~` expanded), `plugins/` next to the executable, `<build>/plugins` for an in-tree build, `${CMAKE_INSTALL_LIBDIR}/nuchat/plugins` after install (including `lib/<triplet>/nuchat/plugins`), and `~/.config/NUchat/plugins`. The Preferences field for that key is disabled and its caption says the path is not used, but **OK** still writes the field. The Load/Unload/Reload buttons on that page have no handlers. The sample `plugins/exampleplugin/` CMake file writes the library to `${CMAKE_BINARY_DIR}/plugins`. See [docs/PLUGINS.md](docs/PLUGINS.md).
 
 ### Python and Lua scripts
 

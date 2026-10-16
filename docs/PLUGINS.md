@@ -6,13 +6,18 @@ class embeds `Q_PLUGIN_METADATA` for `com.nuchat.PluginInterface`. `Q_OBJECT`
 and `Q_INTERFACES` are not a substitute: the loader reads the IID from the
 plugin metadata and skips anything else.
 
-On startup NUchat scans, in order, any directory set in Preferences
-(`plugin/directory`, with a leading `~` expanded), `plugins/` next to the
-executable, `<build>/plugins` when `<build>/CMakeCache.txt` shows this is a
-build tree, `${CMAKE_INSTALL_LIBDIR}/nuchat/plugins` after install, and
+On startup NUchat scans, in order, a non-empty `plugin/directory` (a leading
+`~` expanded), `plugins/` next to the executable, `<build>/plugins` when
+`<build>/CMakeCache.txt` shows this is a build tree,
+`${CMAKE_INSTALL_LIBDIR}/nuchat/plugins` after install (also
+`lib/<triplet>/nuchat/plugins` next to the executable), and
 `~/.config/NUchat/plugins`. Directories that do not exist are skipped. An
-installed `/usr/bin/nuchat` does not scan `/usr/plugins`. The sample CMake
-file writes the library to `${CMAKE_BINARY_DIR}/plugins`.
+installed `/usr/bin/nuchat` does not scan `/usr/plugins`. The Preferences
+field for `plugin/directory` is disabled and its caption says the path is
+not used. Saving Preferences still writes that field into the key (the
+dialog's fallback text is `~/.config/NUchat/plugins`). The Load, Unload, and
+Reload buttons on that page have no handlers. The sample CMake file writes
+the library to `${CMAKE_BINARY_DIR}/plugins`.
 
 ---
 

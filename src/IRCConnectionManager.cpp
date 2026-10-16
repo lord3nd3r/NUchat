@@ -1,4 +1,5 @@
 #include "IRCConnectionManager.h"
+#include "CredentialRedactor.h"
 #include "DccManager.h"
 #include "IrcConnection.h"
 #include "Logger.h"
@@ -282,7 +283,8 @@ void IRCConnectionManager::sendMessage(const QString &target,
       }
     }
   }
-  QString text = "<" + displayNick + "> " + message;
+  const QString shown = CredentialRedactor::redactOutgoingChat(target, message);
+  QString text = "<" + displayNick + "> " + shown;
   if (m_msgModel && m_activeChannel == target)
     m_msgModel->addMessage("chat", text);
   appendToChannel(m_activeServer, target, "chat", text);
@@ -338,7 +340,7 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
 void IRCConnectionManager::sendRawCommand(const QString &raw) {
   if (auto *conn = activeConnection()) {
     conn->sendRaw(raw);
-    emit rawLineReceived(">>", raw);
+    emit rawLineReceived(">>", CredentialRedactor::redactIrcLine(raw));
   }
 }
 
@@ -499,7 +501,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
   // Forward raw lines for Raw Log + lag meter PONG detection
   connect(conn, &IrcConnection::rawLineReceived, this,
           [this, conn](const QString &line) {
-            emit rawLineReceived("<<", line);
+            emit rawLineReceived("<<", CredentialRedactor::redactIrcLine(line));
             // Detect PONG response to our LAG ping — match the actual PONG
             // command with our LAG token as final param, not any chat line
             // that merely mentions both words

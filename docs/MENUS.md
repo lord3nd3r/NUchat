@@ -172,13 +172,13 @@ Appears when right-clicking a URL in the chat area.
 
 | Dialog | Description |
 |--------|-------------|
-| **Network List** | Manage servers — 10 pre-configured networks, editable address/port/SSL/SASL/channels, per-network identity, drag-and-drop reorder |
+| **Network List** | Manage servers — 10 pre-configured networks, editable address/port/SSL/SASL/channels, per-network identity, drag-and-drop reorder. Server, SASL, NickServ, and ZNC passwords are stored in the OS keychain when QtKeychain is available |
 | **Quick Connect** | Fast connect with server, port, nick, password, channel, SSL toggle |
 | **Join Channel** | Join a channel by name with optional key |
 | **Nick Change** | Change current nickname |
 | **Channel List** | Browse and search server channel list |
 | **DCC Transfers** | View DCC file transfer status |
-| **Raw Log** | View raw IRC protocol messages |
+| **Raw Log** | View raw IRC protocol messages. `PASS`, SASL `AUTHENTICATE` payloads, `OPER` passwords, and service `IDENTIFY`/`AUTH`/`REGISTER` commands are redacted |
 | **URL Grabber** | Collected URLs from chat |
 | **Search** | Search text within the current buffer |
 | **Ban List** | View and manage channel bans |

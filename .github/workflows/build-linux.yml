@@ -27,7 +27,8 @@ jobs:
             libgl1-mesa-dev \
             python3-dev \
             liblua5.4-dev \
-            libhunspell-dev
+            libhunspell-dev \
+            qtkeychain-qt6-dev
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release

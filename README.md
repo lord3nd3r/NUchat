@@ -98,10 +98,28 @@ Uses GNUInstallDirs — installs binary, desktop file, icon, and plugin/script d
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/NUchat/NUchat.conf` | Settings (theme, window geometry, networks, identity) |
-| `~/.config/NUchat/NUchat/logs/` | Channel logs (per-network, per-channel) |
+| `~/.config/NUchat/NUchat.conf` | Settings (theme, window geometry, networks, identity). Password fields are blank when the OS keychain is in use |
+| `~/.config/NUchat/NUchat/logs/` | Channel logs (per-network, per-channel). Rotated (`.log.1` … `.log.5`), control characters and mIRC codes stripped |
 | `~/.config/NUchat/scripts/` | Python scripts |
 | `~/.cache/NUchat/images/` | Cached inline image previews |
+
+### Passwords and the OS keychain
+
+Server `PASS`, SASL, NickServ, ZNC, and proxy passwords are stored in the OS keychain (libsecret on Linux, Keychain on macOS, Credential Manager on Windows) through [QtKeychain](https://github.com/frankosterfeld/qtkeychain). On the first launch after upgrading, existing passwords are copied out of `NUchat.conf` and the copies in the file are cleared. Every other setting in that file is left as it was.
+
+QtKeychain is optional at build time:
+
+| Platform | Package |
+|----------|---------|
+| Debian / Ubuntu | `qtkeychain-qt6-dev` |
+| Fedora | `qt6-qtkeychain-devel` |
+| FreeBSD | `qtkeychain-qt6` |
+| macOS | QtKeychain built for Qt 6 (`brew` / a source build) |
+| Windows | QtKeychain built for the same Qt 6 used to compile NUchat |
+
+If CMake does not find Qt6Keychain, the build still succeeds and passwords stay in `NUchat.conf` as plaintext — the same place they lived in older versions. The CMake warning names the missing package. A keychain write that fails at runtime (no secret service, locked keychain, denied prompt) also leaves the plaintext value in `NUchat.conf`, so a failed migration cannot drop a saved password.
+
+`/msg NickServ IDENTIFY` (and the same kind of command to ChanServ, OperServ, Q, X, and the other service bots: `AUTH`, `REGISTER`, `GHOST`, `SET PASSWORD`, …) is still sent to the server, but the password is replaced with `***` in the chat buffer, the channel log, and the raw log. `PASS`, SASL `AUTHENTICATE` payloads, and `OPER` passwords are redacted there too.
 
 ### Self-signed / untrusted SSL certificates
 

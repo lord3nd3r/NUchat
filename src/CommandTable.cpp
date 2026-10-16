@@ -2,6 +2,7 @@
 // Called once lazily from handleSlashCommand.
 // Each entry maps a command name (uppercase) to a lambda handler.
 #include "IRCConnectionManager.h"
+#include "CredentialRedactor.h"
 #include "DccManager.h"
 #include "IrcConnection.h"
 #include "MessageModel.h"
@@ -50,6 +51,7 @@ void IRCConnectionManager::initCommandTable() {
     QString ch = target.isEmpty() ? m_activeChannel : target;
     if (!ch.isEmpty() && !args.isEmpty()) {
       conn->sendMessage(ch, args);
+      const QString shown = CredentialRedactor::redactOutgoingChat(ch, args);
       QString nick = conn->nickname(), displayNick = nick;
       ChannelKey key{m_activeServer, ch};
       if (m_users.contains(key)) {
@@ -61,7 +63,7 @@ void IRCConnectionManager::initCommandTable() {
           }
         }
       }
-      QString text = "<" + displayNick + "> " + args;
+      QString text = "<" + displayNick + "> " + shown;
       if (m_msgModel && m_activeChannel == ch) m_msgModel->addMessage("chat", text);
       appendToChannel(m_activeServer, ch, "chat", text);
     }
@@ -73,7 +75,8 @@ void IRCConnectionManager::initCommandTable() {
     if (!tgt.startsWith('#') && !tgt.startsWith('&')) openQuery(m_activeServer, tgt);
     if (!msg.isEmpty()) {
       conn->sendMessage(tgt, msg);
-      QString text = "<" + conn->nickname() + "> " + msg;
+      const QString shown = CredentialRedactor::redactOutgoingChat(tgt, msg);
+      QString text = "<" + conn->nickname() + "> " + shown;
       appendToChannel(m_activeServer, tgt, "chat", text);
       if (m_msgModel && m_activeChannel == tgt) m_msgModel->addMessage("chat", text);
     }

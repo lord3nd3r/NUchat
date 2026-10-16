@@ -1,4 +1,5 @@
 #include "IrcConnection.h"
+#include "CredentialRedactor.h"
 #include "Version.h"
 #include <QDebug>
 
@@ -102,7 +103,7 @@ void IrcConnection::sendRawImmediate(const QString &line) {
   data.append("\r\n");
   m_socket->write(data);
   m_socket->flush();
-  qDebug() << "[IRC >]" << line;
+  qDebug() << "[IRC >]" << CredentialRedactor::redactIrcLine(line);
 }
 
 void IrcConnection::drainSendQueue() {
@@ -340,7 +341,7 @@ QString IrcConnection::nickFromPrefix(const QString &prefix) {
 
 void IrcConnection::processLine(const QString &line) {
   emit rawLineReceived(line);
-  qDebug() << "[IRC <]" << line;
+  qDebug() << "[IRC <]" << CredentialRedactor::redactIrcLine(line);
 
   // ── IRCv3 message-tags: strip @tags prefix ──
   // Format: @tag1=val;tag2;tag3=val :prefix COMMAND ...

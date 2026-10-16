@@ -22,7 +22,7 @@ See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
 - **SSL/TLS** on all connections with **per-network SASL** (PLAIN/EXTERNAL) and **NickServ auto-identify**
 - **25 built-in themes** — HexChat Dark, Monokai, Dracula, Nord, Gruvbox, Catppuccin, and more
 - **mIRC color codes** — full rendering (foreground, background, bold, italic, underline, hex colors) and input shortcuts
-- **Clickable URLs** with inline image previews
+- **Clickable URLs** with inline image previews (off by default; enable under Preferences → URL Handlers)
 - **DCC file transfer** — send/receive files with progress, ETA, and speed metrics
 - **Nick list** with multi-select (Ctrl+click, Shift+click) and mode buttons (Op, DeOp, Ban, Kick, Voice, DeVoice)
 - **Tab nick-completion** with cycling
@@ -45,7 +45,7 @@ See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
 - **C++ plugin system**, **Python scripting engine**, and **Lua scripting engine** — HexChat-compatible API
 - **Migrate from HexChat** — first-launch wizard imports your scripts, server list, and identity
 - **ZNC bouncer** support
-- **Proxy support** — SOCKS4/5 and HTTP CONNECT
+- **Proxy support** — SOCKS5 and HTTP CONNECT. SOCKS4 is refused (Qt has no SOCKS4 client). A proxy with no host or an invalid port is refused instead of connecting directly.
 - **Desktop integration** — `.desktop` file, SVG icon, system tray, notifications, `make install` support
 
 ---

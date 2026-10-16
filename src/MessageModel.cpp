@@ -83,7 +83,7 @@ void MessageModel::addMessage(const QString &type, const QString &text,
   // writes from the QML Settings wrapper are visible here without re-reading
   // the file on every message.
   bool showInlineImages =
-      prefs.value(QStringLiteral("ui/showInlineImages"), true).toBool();
+      prefs.value(QStringLiteral("ui/showInlineImages"), false).toBool();
   if (showInlineImages &&
       (type == QLatin1String("chat") || type == QLatin1String("action"))) {
     static const QRegularExpression urlRe(QStringLiteral(

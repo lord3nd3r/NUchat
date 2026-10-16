@@ -16,6 +16,7 @@ set(CORE_SRC
     MessageModel.cpp
     ScriptManager.cpp
     ImageDownloader.cpp
+    NetSafety.cpp
 )
 
 set(CORE_HEADERS
@@ -33,6 +34,7 @@ set(CORE_HEADERS
     MessageModel.h
     ScriptManager.h
     ImageDownloader.h
+    NetSafety.h
 )
 
 include(FindPkgConfig)

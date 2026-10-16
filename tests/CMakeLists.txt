@@ -26,3 +26,9 @@ target_link_libraries(test_hexchatimport PRIVATE Qt6::Test nuchatcore)
 target_include_directories(test_hexchatimport PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME hexchatimport COMMAND test_hexchatimport)
 
+# ── test_netsecurity ──────────────────────────────────────────────────────────
+add_executable(test_netsecurity test_netsecurity.cpp)
+target_link_libraries(test_netsecurity PRIVATE Qt6::Test Qt6::Network nuchatcore)
+target_include_directories(test_netsecurity PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME netsecurity COMMAND test_netsecurity)
+

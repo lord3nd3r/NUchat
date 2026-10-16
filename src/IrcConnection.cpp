@@ -1,4 +1,5 @@
 #include "IrcConnection.h"
+#include "NetSafety.h"
 #include "Version.h"
 #include <QDebug>
 
@@ -98,11 +99,15 @@ void IrcConnection::sendRaw(const QString &line) {
 }
 
 void IrcConnection::sendRawImmediate(const QString &line) {
-  QByteArray data = line.toUtf8();
+  // One IRC message. Embedded CR/LF (or NUL) would delimit extra commands.
+  const QString clean = NetSafety::sanitizeIrcLine(line);
+  if (clean.isEmpty())
+    return;
+  QByteArray data = clean.toUtf8();
   data.append("\r\n");
   m_socket->write(data);
   m_socket->flush();
-  qDebug() << "[IRC >]" << line;
+  qDebug() << "[IRC >]" << NetSafety::redactIrcLine(clean);
 }
 
 void IrcConnection::drainSendQueue() {
@@ -293,23 +298,38 @@ void IrcConnection::setAllowSelfSignedCerts(bool allow) {
 }
 
 void IrcConnection::onSslErrors(const QList<QSslError> &errors) {
-  // If the user has explicitly allowed self-signed / untrusted certs (global pref),
-  // ignore all errors reported for this handshake so the connection can proceed.
-  // This makes the "Accept self-signed / untrusted SSL certificates" setting effective
-  // for any cert validation failure (not just a hard-coded list of 6 codes).
-  if (m_allowSelfSignedCerts) {
-    for (const QSslError &e : errors) {
-      qDebug() << "[IRC] Ignoring SSL error (user-approved):" << e.errorString();
-    }
-    m_socket->ignoreSslErrors();
+  if (errors.isEmpty())
+    return;
+
+  // Secure default: fail on any TLS error.
+  if (!m_allowSelfSignedCerts) {
+    emit errorOccurred(tr("SSL error: %1").arg(errors.first().errorString()));
+    m_socket->abort();
     return;
   }
 
-  // Secure default: fail on any SSL error.
-  if (!errors.isEmpty()) {
-    emit errorOccurred(tr("SSL error: %1").arg(errors.first().errorString()));
-    m_socket->abort();
+  // The preference covers self-signed certs, hostname mismatches, and
+  // untrusted issuer chains. Expired certs and other hard failures still abort.
+  // ignoreSslErrors(list) ignores only those entries; anything else fails the handshake.
+  QList<QSslError> ignorable;
+  QStringList blocked;
+  for (const QSslError &e : errors) {
+    if (NetSafety::isIgnorableTlsError(e.error()))
+      ignorable.append(e);
+    else
+      blocked.append(e.errorString());
   }
+  if (!blocked.isEmpty()) {
+    qWarning() << "[IRC] Refusing TLS connection; error not covered by "
+                  "accept-self-signed:"
+               << blocked;
+    emit errorOccurred(tr("SSL error: %1").arg(blocked.join(QStringLiteral("; "))));
+    m_socket->abort();
+    return;
+  }
+  for (const QSslError &e : ignorable)
+    qDebug() << "[IRC] Ignoring self-signed/untrusted TLS error:" << e.errorString();
+  m_socket->ignoreSslErrors(ignorable);
 }
 
 // ── IRC Protocol ──
@@ -340,7 +360,7 @@ QString IrcConnection::nickFromPrefix(const QString &prefix) {
 
 void IrcConnection::processLine(const QString &line) {
   emit rawLineReceived(line);
-  qDebug() << "[IRC <]" << line;
+  qDebug() << "[IRC <]" << NetSafety::redactIrcLine(line);
 
   // ── IRCv3 message-tags: strip @tags prefix ──
   // Format: @tag1=val;tag2;tag3=val :prefix COMMAND ...
@@ -467,7 +487,7 @@ void IrcConnection::processLine(const QString &line) {
             m_saslUser + QChar('\0') + m_saslUser + QChar('\0') + m_saslPass;
         QByteArray encoded = authStr.toUtf8().toBase64();
         sendRawImmediate("AUTHENTICATE " + QString::fromLatin1(encoded));
-        qDebug() << "[IRC] Sent SASL PLAIN credentials for" << m_saslUser;
+        qDebug() << "[IRC] Sent SASL PLAIN response";
         // Zero credentials from memory immediately after use
         m_saslPass.fill('\0');
         m_saslPass.clear();

@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <QHostAddress>
 
 class IrcConnection;
 
@@ -41,7 +42,8 @@ public:
 
   // ── Methods ──
   void startReceive(const QString &downloadDir);
-  void startSend(const QString &localPath, quint16 listenPort);
+  // bindAddr must be a concrete IPv4 address. QHostAddress::Any is refused.
+  void startSend(const QString &localPath, quint16 listenPort, const QHostAddress &bindAddr);
   void cancel();
   double progress() const;
   QString speedString() const;
@@ -62,19 +64,28 @@ private slots:
   void onDisconnected();
   void onError(QAbstractSocket::SocketError err);
   void updateSpeed();
+  void onIdleTimeout();
 
 
 private:
+  friend class TestNetSecurity;
+
   QTcpSocket *m_socket = nullptr;
   QTcpServer *m_server = nullptr;  // for sending
   QFile       m_file;
   QTimer      m_speedTimer;
+  QTimer      m_idleTimer;
   QElapsedTimer m_elapsed;
   qint64      m_lastBytes = 0;     // for speed calculation
   static constexpr int CHUNK_SIZE = 8192;
+  static constexpr int kConnectTimeoutMs = 30000;
+  static constexpr int kAcceptTimeoutMs = 120000;
+  static constexpr int kIdleTimeoutMs = 60000;
 
   void sendNextChunk();
   void sendAck();
+  void failTransfer(const QString &reason);
+  void armIdleTimer(int ms);
 };
 
 // ── DCC Manager — coordinates all transfers, exposed to QML ──
@@ -133,6 +144,9 @@ private:
   bool m_autoAccept = false;
   qint64 m_maxFileSize = 100 * 1024 * 1024; // 100MB default
   IrcConnection *m_connection = nullptr;
+  static constexpr int kMaxActiveTransfers = 32;
+
+  int activeTransferCount() const;
 
   DccTransfer *findTransfer(const QString &id);
   void refreshRow(DccTransfer *t);

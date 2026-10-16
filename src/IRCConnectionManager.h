@@ -177,7 +177,9 @@ private:
                    const QString &channel);
   void executePerformCommands(const QString &server);
   void attemptReconnect(const QString &host);
-  void applyProxySettings(IrcConnection *conn);
+  // Empty on success. A non-empty string means the connection must not proceed
+  // (a configured proxy could not be applied, so a direct connection is refused).
+  QString applyProxySettings(IrcConnection *conn);
   void ensureScrollbackLoaded(const QString &server, const QString &channel);
   void cleanupChannelState(const QString &server, const QString &channel);
   // ── Command dispatch table ──

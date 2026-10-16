@@ -1,4 +1,5 @@
 #include "IRCConnectionManager.h"
+#include "NetSafety.h"
 #include "DccManager.h"
 #include "IrcConnection.h"
 #include "Logger.h"
@@ -153,7 +154,14 @@ void IRCConnectionManager::connectToServer(
                   "Connecting to " + host + ":" + QString::number(port) +
                       "...");
 
-  applyProxySettings(conn);
+  const QString proxyErr = applyProxySettings(conn);
+  if (!proxyErr.isEmpty()) {
+    appendToChannel(name, name, "system", proxyErr);
+    if (m_msgModel)
+      m_msgModel->addMessage("system", proxyErr);
+    qWarning() << "[Manager]" << proxyErr;
+    return;
+  }
   if (m_settings)
     conn->setAllowSelfSignedCerts(
         m_settings->getBool("conn/allowSelfSignedCerts", false));
@@ -1919,7 +1927,14 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
     if (m_msgModel)
       m_msgModel->addMessage("system", reconnMsg);
 
-    applyProxySettings(conn);
+    const QString proxyErr = applyProxySettings(conn);
+    if (!proxyErr.isEmpty()) {
+      appendToChannel(host, host, "system", proxyErr);
+      if (m_msgModel && m_activeServer == host)
+        m_msgModel->addMessage("system", proxyErr);
+      qWarning() << "[Manager]" << proxyErr;
+      return;
+    }
     if (m_settings)
       conn->setAllowSelfSignedCerts(
           m_settings->getBool("conn/allowSelfSignedCerts", false));
@@ -2047,44 +2062,21 @@ void IRCConnectionManager::clearAwayLog() {
 //  Proxy Support
 // ═══════════════════════════════════════════════════════════════════
 
-void IRCConnectionManager::applyProxySettings(IrcConnection *conn) {
-  if (!m_settings || !conn)
-    return;
+QString IRCConnectionManager::applyProxySettings(IrcConnection *conn) {
+  if (!conn)
+    return QStringLiteral("No connection");
 
-  int typeIdx = m_settings->getInt("conn/proxyTypeIndex", 0);
-  if (typeIdx <= 0) {
+  const NetSafety::ProxyResolution resolved = NetSafety::proxyFromSettings();
+  if (resolved.result == NetSafety::ProxyResolution::Result::Rejected) {
     conn->setProxy(QNetworkProxy::NoProxy);
-    return;
+    return resolved.error;
   }
-
-  QString host = m_settings->getString("conn/proxyHost", "").trimmed();
-  int port = m_settings->getInt("conn/proxyPort", 1080);
-
-  if (host.isEmpty())
-    return;
-
-  QNetworkProxy::ProxyType proxyType = QNetworkProxy::NoProxy;
-  switch (typeIdx) {
-  case 1:
-    proxyType = QNetworkProxy::Socks5Proxy;
-    break; // SOCKS4 not in Qt, fallback to SOCKS5
-  case 2:
-    proxyType = QNetworkProxy::Socks5Proxy;
-    break; // SOCKS5
-  case 3:
-    proxyType = QNetworkProxy::HttpProxy;
-    break; // HTTP CONNECT
-  default:
-    return;
+  if (resolved.result == NetSafety::ProxyResolution::Result::UseProxy) {
+    const QNetworkProxy &p = resolved.proxy;
+    conn->setProxy(p.type(), p.hostName(), static_cast<quint16>(p.port()), p.user(),
+                   p.password());
+  } else {
+    conn->setProxy(QNetworkProxy::NoProxy);
   }
-
-  // Authentication (user/pass from settings if proxy auth is enabled)
-  bool useAuth = m_settings->getBool("conn/proxyAuth", false);
-  QString user, pass;
-  if (useAuth) {
-    user = m_settings->getString("conn/proxyUser", "");
-    pass = m_settings->getString("conn/proxyPass", "");
-  }
-
-  conn->setProxy(proxyType, host, static_cast<quint16>(port), user, pass);
+  return {};
 }

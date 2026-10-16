@@ -1,4 +1,5 @@
 #include "ImageDownloader.h"
+#include "NetSafety.h"
 
 #include <QStandardPaths>
 #include <QDir>
@@ -14,6 +15,48 @@
 #include <QFileInfo>
 #include <QHostAddress>
 #include <QHostInfo>
+#include <algorithm>
+
+namespace {
+
+QString urlForLog(const QUrl &url) {
+    QUrl copy = url;
+    copy.setUserName(QString());
+    copy.setPassword(QString());
+    return copy.toString(QUrl::FullyEncoded);
+}
+
+QString extensionForUrl(const QString &url) {
+    QString ext = QStringLiteral(".dat");
+    const QString path = QUrl(url).path().toLower();
+    if (path.endsWith(QLatin1String(".png")))
+        ext = QStringLiteral(".png");
+    else if (path.endsWith(QLatin1String(".jpg")) || path.endsWith(QLatin1String(".jpeg")))
+        ext = QStringLiteral(".jpg");
+    else if (path.endsWith(QLatin1String(".gif")))
+        ext = QStringLiteral(".gif");
+    else if (path.endsWith(QLatin1String(".webp")))
+        ext = QStringLiteral(".webp");
+    else if (path.endsWith(QLatin1String(".svg")))
+        ext = QStringLiteral(".svg");
+    else if (path.endsWith(QLatin1String(".bmp")))
+        ext = QStringLiteral(".bmp");
+    return ext;
+}
+
+bool isImageContentType(const QByteArray &contentType) {
+    static const QList<QByteArray> kImageMimeTypes = {
+        "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
+        "image/bmp", "image/svg+xml", "image/tiff"
+    };
+    for (const QByteArray &mime : kImageMimeTypes) {
+        if (contentType.startsWith(mime))
+            return true;
+    }
+    return false;
+}
+
+} // namespace
 
 ImageDownloader *ImageDownloader::instance()
 {
@@ -32,24 +75,16 @@ ImageDownloader::ImageDownloader(QObject *parent)
 
 // ---------- helpers ----------
 
+QString ImageDownloader::cacheFileName(const QString &url)
+{
+    const QByteArray hash = QCryptographicHash::hash(url.toUtf8(),
+                                                     QCryptographicHash::Sha256);
+    return QString::fromLatin1(hash.toHex()) + extensionForUrl(url);
+}
+
 QString ImageDownloader::urlToFilename(const QString &url) const
 {
-    QByteArray hash = QCryptographicHash::hash(url.toUtf8(),
-                                               QCryptographicHash::Sha256);
-    QString hex = QString::fromLatin1(hash.toHex().left(16));
-
-    // Determine extension from URL path
-    QString ext = QStringLiteral(".dat");
-    QUrl qurl(url);
-    QString path = qurl.path().toLower();
-    if (path.endsWith(QLatin1String(".png")))        ext = QStringLiteral(".png");
-    else if (path.endsWith(QLatin1String(".jpg"))
-             || path.endsWith(QLatin1String(".jpeg"))) ext = QStringLiteral(".jpg");
-    else if (path.endsWith(QLatin1String(".gif")))     ext = QStringLiteral(".gif");
-    else if (path.endsWith(QLatin1String(".webp")))    ext = QStringLiteral(".webp");
-    else if (path.endsWith(QLatin1String(".svg")))     ext = QStringLiteral(".svg");
-    else if (path.endsWith(QLatin1String(".bmp")))     ext = QStringLiteral(".bmp");
-    return hex + ext;
+    return cacheFileName(url);
 }
 
 bool ImageDownloader::isCached(const QString &url) const
@@ -60,6 +95,57 @@ bool ImageDownloader::isCached(const QString &url) const
 QString ImageDownloader::cachedPath(const QString &url) const
 {
     return m_cacheDir + QChar('/') + urlToFilename(url);
+}
+
+bool ImageDownloader::isDecodableImage(const QByteArray &data)
+{
+    if (data.isEmpty() || data.size() > MAX_DOWNLOAD_SIZE)
+        return false;
+    QBuffer buf;
+    buf.setData(data);
+    if (!buf.open(QIODevice::ReadOnly))
+        return false;
+    QImageReader reader(&buf);
+    reader.setAutoTransform(true);
+    const QImage img = reader.read();
+    return !img.isNull() && img.width() > 0 && img.height() > 0;
+}
+
+int ImageDownloader::trimCacheDirectory(const QString &dirPath, qint64 maxBytes)
+{
+    if (maxBytes < 0)
+        maxBytes = 0;
+    QDir dir(dirPath);
+    if (!dir.exists())
+        return 0;
+
+    // Oldest first so a newly written preview is the last candidate for deletion.
+    QFileInfoList files = dir.entryInfoList(QDir::Files | QDir::NoSymLinks);
+    std::sort(files.begin(), files.end(), [](const QFileInfo &a, const QFileInfo &b) {
+        if (a.lastModified() != b.lastModified())
+            return a.lastModified() < b.lastModified();
+        return a.fileName() < b.fileName();
+    });
+    qint64 total = 0;
+    for (const QFileInfo &fi : files)
+        total += fi.size();
+
+    int removed = 0;
+    for (const QFileInfo &fi : files) {
+        if (total <= maxBytes)
+            break;
+        const qint64 sz = fi.size();
+        if (QFile::remove(fi.absoluteFilePath())) {
+            total -= sz;
+            ++removed;
+        }
+    }
+    return removed;
+}
+
+void ImageDownloader::enforceCacheLimit()
+{
+    trimCacheDirectory(m_cacheDir, MAX_CACHE_BYTES);
 }
 
 // ---------- URL classification ----------
@@ -98,165 +184,176 @@ bool ImageDownloader::isVideoUrl(const QString &url)
 
 // ---------- download ----------
 
-// True if the address is loopback, link-local, or RFC-1918/ULA private.
-static bool isPrivateAddress(const QHostAddress &addr) {
-    return addr.isLoopback() || addr.isLinkLocal() ||
-           addr.isInSubnet(QHostAddress("10.0.0.0"),    8)  ||
-           addr.isInSubnet(QHostAddress("172.16.0.0"),  12) ||
-           addr.isInSubnet(QHostAddress("192.168.0.0"), 16) ||
-           addr.isInSubnet(QHostAddress("fc00::"),      7)  ||
-           addr.isInSubnet(QHostAddress("fe80::"),      10);
-}
-
-// Returns true if the URL is safe to fetch: https/http only, no private/loopback hosts.
-static bool isSafeImageUrl(const QUrl &qurl) {
-    const QString scheme = qurl.scheme().toLower();
-    if (scheme != QLatin1String("https") && scheme != QLatin1String("http"))
-        return false;
-
-    // Block requests to loopback, link-local, and RFC-1918 private addresses.
-    const QString host = qurl.host();
-    if (host.isEmpty())
-        return false;
-
-    // Reject localhost by name
-    if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0)
-        return false;
-
-    // Reject by IP range (literal IPs)
-    QHostAddress addr(host);
-    if (!addr.isNull() && isPrivateAddress(addr))
-        return false;
-
-    return true;
-}
-
 void ImageDownloader::download(const QString &url)
 {
     if (m_pending.contains(url))
         return;
 
-    // Validate URL before making any network request.
     QUrl qurl(url);
-    if (!isSafeImageUrl(qurl)) {
-        qWarning() << "[ImageDownloader] Blocked unsafe URL:" << url;
+    if (!NetSafety::isSafeImageUrl(qurl)) {
+        qWarning() << "[ImageDownloader] Blocked unsafe URL:" << urlForLog(qurl);
         emit downloadFailed(url);
         return;
     }
 
-    // Already cached – emit immediately
+    // Already cached – emit immediately, unless the file is not an image.
     if (isCached(url)) {
-        QString path = cachedPath(url);
+        const QString path = cachedPath(url);
         QImageReader reader(path);
-        QSize sz = reader.size();
-        emit imageReady(url, path, sz.width(), sz.height());
+        const QSize sz = reader.size();
+        if (reader.canRead() && sz.width() > 0 && sz.height() > 0) {
+            emit imageReady(url, path, sz.width(), sz.height());
+            return;
+        }
+        QFile::remove(path);
+    }
+
+    // A configured proxy that cannot be applied must not fall back to a
+    // direct fetch (that would leak the user's address).
+    const NetSafety::ProxyResolution proxy = NetSafety::proxyFromSettings();
+    if (proxy.result == NetSafety::ProxyResolution::Result::Rejected) {
+        qWarning() << "[ImageDownloader]" << proxy.error;
+        emit downloadFailed(url);
         return;
     }
+    if (proxy.result == NetSafety::ProxyResolution::Result::UseProxy)
+        m_nam->setProxy(proxy.proxy);
+    else
+        m_nam->setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
 
     m_pending.insert(url);
-
-    // DNS-rebinding guard: resolve the hostname first and reject URLs whose
-    // host resolves to a private/loopback address (a literal-IP check alone
-    // can be bypassed by a hostname pointing at 192.168.x.x etc.).
-    QHostAddress literal(qurl.host());
-    if (literal.isNull()) {
-        QHostInfo::lookupHost(qurl.host(), this, [this, url](const QHostInfo &info) {
-            if (info.error() != QHostInfo::NoError || info.addresses().isEmpty()) {
-                m_pending.remove(url);
-                emit downloadFailed(url);
-                return;
-            }
-            const QList<QHostAddress> addrs = info.addresses();
-            for (const QHostAddress &a : addrs) {
-                if (isPrivateAddress(a)) {
-                    qWarning() << "[ImageDownloader] Host resolves to private address, blocked:" << url;
-                    m_pending.remove(url);
-                    emit downloadFailed(url);
-                    return;
-                }
-            }
-            startDownload(url);
-        });
-        return;
-    }
-    startDownload(url);
+    fetchIfHostSafe(url, qurl, 0);
 }
 
-void ImageDownloader::startDownload(const QString &url)
+void ImageDownloader::fetchIfHostSafe(const QString &originalUrl, const QUrl &target, int hop)
 {
-    QNetworkRequest req{QUrl(url)};
+    if (!NetSafety::isSafeImageUrl(target)) {
+        qWarning() << "[ImageDownloader] Blocked unsafe URL:" << urlForLog(target);
+        m_pending.remove(originalUrl);
+        emit downloadFailed(originalUrl);
+        return;
+    }
+
+    QHostAddress literal;
+    if (NetSafety::parseHostLiteral(target.host(), &literal)) {
+        if (NetSafety::isBlockedAddress(literal)) {
+            qWarning() << "[ImageDownloader] Blocked literal address:" << urlForLog(target);
+            m_pending.remove(originalUrl);
+            emit downloadFailed(originalUrl);
+            return;
+        }
+        beginRequest(originalUrl, target, hop);
+        return;
+    }
+
+    // Hostname: resolve first and refuse private answers. QNetworkAccessManager
+    // performs its own lookup afterwards, so this is not a pin — a rebinding
+    // between the two lookups can still occur. Redirects are not followed
+    // until the next hop passes this same check, which is the request that
+    // used to be sent before the private-address test.
+    QHostInfo::lookupHost(target.host(), this, [this, originalUrl, target, hop](const QHostInfo &info) {
+        if (info.error() != QHostInfo::NoError ||
+            NetSafety::anyAddressBlocked(info.addresses())) {
+            qWarning() << "[ImageDownloader] Host resolves to a blocked address:"
+                       << target.host();
+            m_pending.remove(originalUrl);
+            emit downloadFailed(originalUrl);
+            return;
+        }
+        beginRequest(originalUrl, target, hop);
+    });
+}
+
+void ImageDownloader::beginRequest(const QString &originalUrl, const QUrl &target, int hop)
+{
+    QNetworkRequest req{target};
+    // Manual so a redirect to a private host is not requested before we check it.
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                     QNetworkRequest::NoLessSafeRedirectPolicy);
-    req.setMaximumRedirectsAllowed(5);
-    req.setHeader(QNetworkRequest::UserAgentHeader, "NUchat/1.0");
+                     QNetworkRequest::ManualRedirectPolicy);
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("NUchat/1.0"));
 
     QNetworkReply *reply = m_nam->get(req);
-    // Abort oversized downloads early instead of buffering the whole body
     connect(reply, &QNetworkReply::downloadProgress, reply,
             [reply](qint64 received, qint64) {
                 if (received > MAX_DOWNLOAD_SIZE)
                     reply->abort();
             });
-    connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, originalUrl, hop]() {
         reply->deleteLater();
-        m_pending.remove(url);
+
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QUrl redir = reply->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl();
+        if (status >= 300 && status < 400) {
+            if (!redir.isValid() || redir.isEmpty() || hop + 1 > kMaxRedirects) {
+                qWarning() << "[ImageDownloader] Redirect refused:" << urlForLog(reply->url());
+                m_pending.remove(originalUrl);
+                emit downloadFailed(originalUrl);
+                return;
+            }
+            const QUrl next = reply->url().resolved(redir);
+            // Validate (and resolve) the next hop before any bytes are requested.
+            fetchIfHostSafe(originalUrl, next, hop + 1);
+            return;
+        }
 
         if (reply->error() != QNetworkReply::NoError) {
-            qWarning() << "Image download failed:" << reply->errorString() << url;
-            emit downloadFailed(url);
+            qWarning() << "Image download failed:" << reply->errorString()
+                       << urlForLog(reply->url());
+            m_pending.remove(originalUrl);
+            emit downloadFailed(originalUrl);
             return;
         }
 
-        // Re-validate the final URL after redirects
-        if (!isSafeImageUrl(reply->url())) {
-            qWarning() << "[ImageDownloader] Redirect to unsafe URL blocked:"
-                       << reply->url().toString();
-            emit downloadFailed(url);
+        if (!NetSafety::isSafeImageUrl(reply->url())) {
+            qWarning() << "[ImageDownloader] Response URL blocked:"
+                       << urlForLog(reply->url());
+            m_pending.remove(originalUrl);
+            emit downloadFailed(originalUrl);
             return;
         }
 
-        // Check Content-Type — must be an image MIME type.
         const QByteArray contentType =
             reply->header(QNetworkRequest::ContentTypeHeader).toByteArray().toLower();
-        static const QList<QByteArray> kImageMimeTypes = {
-            "image/png", "image/jpeg", "image/gif", "image/webp",
-            "image/bmp",  "image/svg+xml", "image/tiff"
-        };
-        bool mimeOk = false;
-        for (const QByteArray &mime : kImageMimeTypes) {
-            if (contentType.startsWith(mime)) { mimeOk = true; break; }
-        }
-        if (!contentType.isEmpty() && !mimeOk) {
+        if (!contentType.isEmpty() && !isImageContentType(contentType)) {
             qWarning() << "[ImageDownloader] Non-image Content-Type rejected:"
-                       << contentType << url;
-            emit downloadFailed(url);
+                       << contentType << urlForLog(reply->url());
+            m_pending.remove(originalUrl);
+            emit downloadFailed(originalUrl);
             return;
         }
 
-        QByteArray data = reply->readAll();
-        if (data.size() > MAX_DOWNLOAD_SIZE) {
-            qWarning() << "Image too large, skipping:" << url;
-            emit downloadFailed(url);
+        const QByteArray data = reply->readAll();
+        if (data.size() > MAX_DOWNLOAD_SIZE || !isDecodableImage(data)) {
+            qWarning() << "[ImageDownloader] Payload is not a decodable image:"
+                       << urlForLog(reply->url());
+            m_pending.remove(originalUrl);
+            emit downloadFailed(originalUrl);
             return;
         }
 
-        // Save to cache
-        QString path = cachedPath(url);
+        m_pending.remove(originalUrl);
+
+        const QString path = cachedPath(originalUrl);
         QFile file(path);
         if (!file.open(QIODevice::WriteOnly)) {
-            emit downloadFailed(url);
+            emit downloadFailed(originalUrl);
             return;
         }
-        file.write(data);
+        if (file.write(data) != data.size()) {
+            file.close();
+            file.remove();
+            emit downloadFailed(originalUrl);
+            return;
+        }
         file.close();
+        enforceCacheLimit();
 
-        // Read dimensions
-        QBuffer buf(&data);
+        QBuffer buf;
+        buf.setData(data);
         buf.open(QIODevice::ReadOnly);
         QImageReader reader(&buf);
-        QSize sz = reader.size();
-
-        emit imageReady(url, path, sz.width(), sz.height());
+        const QSize sz = reader.size();
+        emit imageReady(originalUrl, path, sz.width(), sz.height());
     });
 }
 

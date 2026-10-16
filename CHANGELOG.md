@@ -2,6 +2,16 @@
 
 All notable changes to NUchat are documented in this file.
 
+## [Unreleased]
+
+### Security
+- Outbound IRC lines have CR, LF, and NUL stripped before they are sent, so one call cannot inject a second command.
+- Debug logs redact `PASS`, `OPER`, SASL `AUTHENTICATE` payloads, and NickServ `IDENTIFY` / credential commands.
+- "Accept self-signed" ignores only self-signed certificates, hostname mismatches, and untrusted issuer chains. Expired certificates and other hard failures still abort the connection.
+- A configured proxy with an empty host, an invalid port, or SOCKS4 no longer falls back to a direct connection or to SOCKS5.
+- Inline image previews are off by default. The downloader blocks private and special-use addresses, checks each redirect before following it, validates image bytes before caching, and caps the on-disk cache.
+- DCC offers to loopback, unspecified, link-local, and other non-unicast addresses are rejected. Receives use the configured proxy or fail closed. Active sends bind to the IRC connection's IPv4 address, time out, and partial downloads are deleted on failure.
+
 ## [1.6.1] — 2026-08-27
 
 ### Added

@@ -17,6 +17,7 @@ set(CORE_SRC
     ScriptManager.cpp
     ScriptDispatch.cpp
     ImageDownloader.cpp
+    NetSafety.cpp
 )
 
 set(CORE_HEADERS
@@ -35,6 +36,7 @@ set(CORE_HEADERS
     ScriptManager.h
     ScriptDispatch.h
     ImageDownloader.h
+    NetSafety.h
 )
 
 include(FindPkgConfig)

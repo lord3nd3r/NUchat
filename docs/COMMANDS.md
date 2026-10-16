@@ -126,7 +126,7 @@ These are handled inside NUchat. They are not IRC protocol commands.
 | `/ALIAS` | | `/ALIAS` lists aliases. `/ALIAS <name> <expansion>` saves one. `$*` in the expansion is replaced with the arguments; if `$*` is absent, the arguments are appended. Names are stored in uppercase. Alias expansion stops after 5 nested aliases. |
 | `/UNALIAS` | | `/UNALIAS <name>` removes a saved alias. |
 | `/NOTIFY` | | `/NOTIFY` prints the notify list. `/NOTIFY <nick>` adds a nick and sends `MONITOR +`. `/NOTIFY -<nick>` removes it and sends `MONITOR -`. |
-| `/DCC` | | `/DCC SEND <nick> <filepath>` offers a file to that nick. Other `/DCC` subcommands are not implemented. |
+| `/DCC` | | `/DCC SEND <nick> <filepath>` offers a file to that nick. The send is refused while a proxy is configured. Other `/DCC` subcommands are not implemented. |
 
 ## Formatting Shortcuts (mIRC)
 

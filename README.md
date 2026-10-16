@@ -22,8 +22,8 @@ See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
 - **SSL/TLS** on all connections with **per-network SASL** (PLAIN/EXTERNAL) and **NickServ auto-identify**
 - **25 built-in themes** — HexChat Dark, Monokai, Dracula, Nord, Gruvbox, Catppuccin, and more
 - **mIRC color codes** — foreground (palette and hex), bold, italic, underline, and strikethrough, plus input shortcuts. Background color codes are parsed and then dropped when the message is turned into HTML.
-- **Clickable URLs** with inline image previews
-- **DCC file transfer** — send/receive files with progress, ETA, and speed metrics
+- **Clickable URLs** with inline image previews (off by default; enable under Preferences → URL Handlers)
+- **DCC file transfer** — send and receive with progress, ETA, and speed. Offers to loopback, unspecified, link-local, and other non-unicast addresses are rejected. Receives use the configured proxy, or they are refused when that proxy cannot be applied. An active send is refused while a proxy is configured, because it listens for a direct connection.
 - **Nick list** with multi-select (Ctrl+click, Shift+click) and mode buttons (Op, DeOp, Ban, Kick, Voice, DeVoice)
 - **Tab nick-completion** with cycling
 - **Input history** — Up/Down arrow keys recall previous messages
@@ -45,7 +45,7 @@ See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
 - **C++ plugin API**, **Python scripting**, and **Lua scripting** — a HexChat-style subset (see the docs for what is actually implemented)
 - **Migrate from HexChat** — first-launch wizard imports your scripts, server list, and identity
 - **ZNC bouncer** support
-- **Proxy support** — SOCKS4/5 and HTTP CONNECT
+- **Proxy support** — SOCKS5 and HTTP CONNECT. SOCKS4 is refused (Qt has no SOCKS4 client). A proxy with no host or an invalid port is refused instead of connecting directly.
 - **Desktop integration** — `.desktop` file, SVG icon, system tray, notifications, `make install` support
 
 ---
@@ -130,7 +130,9 @@ If your IRC server uses a self-signed certificate or one where the hostname does
 2. Check **"Accept self-signed / untrusted SSL certificates"**
 3. Reconnect
 
-The preference is global. When it is checked, the connection ignores every TLS error reported for that handshake: hostname mismatches, self-signed certificates, untrusted issuers, and expired certificates. The default is off, and then any TLS error aborts the connection.
+The preference is global. When it is checked, the handshake continues for self-signed certificates, hostname mismatches, and untrusted issuer chains. Expired certificates and every other TLS error still abort the connection. The default is off, and then any TLS error aborts the connection.
+
+Outbound IRC lines have CR, LF, and NUL removed before they are sent. Debug logs redact `PASS`, `OPER`, SASL `AUTHENTICATE` payloads, and NickServ `IDENTIFY`. Inline image fetches use the IRC proxy or they are skipped, and they do not follow a redirect onto a private or special-use address.
 
 ### Logging
 

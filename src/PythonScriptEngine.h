@@ -49,14 +49,15 @@ public:
     Q_INVOKABLE QString scriptInfo(const QString &filename) const;
     Q_INVOKABLE int hookCount() const { return m_hooks.size(); }
 
-    // Called by IRCConnectionManager when raw lines arrive
-    bool handleServerLine(IrcConnection *conn, const QString &rawLine);
+    // Called when a raw server line arrives. Returns the combined EAT mask
+    // (see ScriptEat.h). EAT_PLUGIN means later hooks were not run.
+    int handleServerLine(IrcConnection *conn, const QString &rawLine);
 
-    // Called when the user types a command (returns true if a hook consumed it)
-    bool handleCommand(const QString &command, const QStringList &args);
+    // Called when the user types a command. Returns the combined EAT mask.
+    int handleCommand(const QString &command, const QStringList &args);
 
-    // Called for print events
-    bool handlePrintEvent(const QString &event, const QStringList &args);
+    // Called for print events. Returns the combined EAT mask.
+    int handlePrintEvent(const QString &event, const QStringList &args);
 
     // ── HexChat API (called from Python C functions) ──
     void command(const QString &cmd);
@@ -82,6 +83,8 @@ private:
     void initPython();
     void shutdownPython();
     void loadSingleScript(const QString &path);
+    int dispatchPyHooks(PyHook::Type type, const QString &name,
+                        const QStringList &parts, bool rawLineWildcard);
 
     IRCConnectionManager *m_mgr;
     QString m_directory;

@@ -339,8 +339,13 @@ QString IrcConnection::nickFromPrefix(const QString &prefix) {
 }
 
 void IrcConnection::processLine(const QString &line) {
+  m_eatCurrentLine = false;
   emit rawLineReceived(line);
   qDebug() << "[IRC <]" << line;
+  if (m_eatCurrentLine) {
+    m_eatCurrentLine = false;
+    return;
+  }
 
   // ── IRCv3 message-tags: strip @tags prefix ──
   // Format: @tag1=val;tag2;tag3=val :prefix COMMAND ...

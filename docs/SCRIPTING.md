@@ -31,6 +31,7 @@ hot-reloaded when modified on disk.
   - [get_info Keys](#get_info-keys)
 - [Hook Callbacks](#hook-callbacks)
 - [Examples](#examples)
+- [JavaScript](#javascript)
 
 ---
 
@@ -163,7 +164,18 @@ hook_id = hexchat.hook_server(name, callback [, userdata [, priority]])
 | `name` | string | Server numeric (e.g. `"376"` for end of MOTD) or command (e.g. `"PRIVMSG"`) |
 | `callback` | function | Handler receiving the raw line |
 | `userdata` | any | Optional data passed to the callback |
-| `priority` | int | Hook priority |
+| `priority` | int | Hook priority. Higher values run first (`PRI_HIGHEST` … `PRI_LOWEST`). Equal priorities keep registration order. |
+
+The command name is taken from the IRC line after IRCv3 message-tags and the
+optional `:prefix` are skipped:
+
+- `:nick!user@host PRIVMSG #chan :hello` matches `PRIVMSG`
+- `@time=2026-10-16T00:00:00.000Z :nick!user@host PRIVMSG #chan :hello` matches `PRIVMSG`
+- `PING :irc.example.net` matches `PING` (there is no prefix)
+
+`word` / `word_eol` are the space-split line **with tags removed**. A hook
+named `RAW LINE` receives every server line. Names are matched
+case-insensitively (`"privmsg"` and `"PRIVMSG"` are the same hook).
 
 #### hook_print
 
@@ -203,7 +215,7 @@ hook_id = hexchat.hook_timer(timeout_ms, callback [, userdata])
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `timeout_ms` | int | Delay in milliseconds |
-| `callback` | function | Called when the timer fires. Return `1` to repeat, `0` to cancel. |
+| `callback` | function | Called when the timer fires. Return `1` to repeat, `0` (or `false`) to cancel. Cancelling from inside the callback is safe. |
 | `userdata` | any | Optional data passed to the callback |
 
 ### Constants
@@ -218,6 +230,13 @@ hook_id = hexchat.hook_timer(timeout_ms, callback [, userdata])
 | `EAT_ALL` | 3 | Consume completely — no other hooks or NUchat processing |
 
 Lua also defines `EAT_XCHAT` as an alias for `EAT_HEXCHAT`.
+
+These values are honored:
+
+- Hooks run highest priority first. `EAT_PLUGIN` and `EAT_ALL` stop later hooks in that engine and skip the other language engine (Python runs before Lua).
+- For a **server line**, `EAT_HEXCHAT` and `EAT_ALL` skip NUchat's own handling of that line, including the automatic `PONG` for `PING`. A script that eats `PING` has to answer it itself.
+- For a **user command**, `EAT_HEXCHAT` and `EAT_ALL` skip the built-in command table. `EAT_PLUGIN` stops later script hooks but still lets NUchat run the command.
+- C++ plugins run before either script engine on `/command`. A plugin that returns true consumes the command.
 
 #### Hook Priorities
 
@@ -350,6 +369,36 @@ def on_endmotd(word, word_eol, userdata):
 hexchat.hook_server("372", on_motd)      # RPL_MOTD
 hexchat.hook_server("376", on_endmotd)   # RPL_ENDOFMOTD
 ```
+
+---
+
+## JavaScript
+
+NUchat also loads `*.js` files with Qt's JavaScript engine. This is separate
+from the HexChat Python/Lua API: there is no `hexchat` module.
+
+Scripts are loaded from the same places as the examples shipped with NUchat:
+the in-tree `scripts/` directory when running a dev build,
+`<prefix>/share/nuchat/scripts` after install, `scripts/` next to the
+executable, and `~/.config/NUchat/scripts/`.
+
+Define a global `onMessage(conn, sender, message)`. It is called for each
+`PRIVMSG` and `NOTICE` after IRCv3 tags are stripped. `sender` is the nick,
+`message` is the message text (so a body of `!ping` is exactly `"!ping"`, not
+the raw IRC line). `conn` is the live connection; `conn.sendRaw(line)` sends
+a protocol line. Other server lines (joins, numerics, `PING`) are not passed
+to `onMessage`. If several scripts each define `onMessage`, the last one
+loaded wins.
+
+```javascript
+function onMessage(conn, sender, message) {
+    if (message.indexOf("!ping") === 0) {
+        conn.sendRaw("PRIVMSG #general :PONG from script");
+    }
+}
+```
+
+See `scripts/hello.js`.
 
 ---
 

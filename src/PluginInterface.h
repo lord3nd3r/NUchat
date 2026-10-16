@@ -16,3 +16,8 @@ public:
 #define PluginInterface_iid "com.nuchat.PluginInterface"
 
 Q_DECLARE_INTERFACE(PluginInterface, PluginInterface_iid)
+
+// A loadable plugin class must also contain:
+//   Q_PLUGIN_METADATA(IID PluginInterface_iid)
+// QPluginLoader rejects a shared library whose embedded IID is not
+// PluginInterface_iid, and that metadata is emitted only by the macro.

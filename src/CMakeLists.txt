@@ -12,12 +12,15 @@ set(CORE_SRC
     SecretStore.cpp
     CredentialRedactor.cpp
     Logger.cpp
+    UserPaths.cpp
     NotificationManager.cpp
     ThemeManager.cpp
     ServerChannelModel.cpp
     MessageModel.cpp
     ScriptManager.cpp
+    ScriptDispatch.cpp
     ImageDownloader.cpp
+    NetSafety.cpp
 )
 
 set(CORE_HEADERS
@@ -31,12 +34,16 @@ set(CORE_HEADERS
     SecretStore.h
     CredentialRedactor.h
     Logger.h
+    UserPaths.h
+    IrcIdentity.h
     NotificationManager.h
     ThemeManager.h
     ServerChannelModel.h
     MessageModel.h
     ScriptManager.h
+    ScriptDispatch.h
     ImageDownloader.h
+    NetSafety.h
 )
 
 include(FindPkgConfig)
@@ -80,16 +87,19 @@ if(HUNSPELL_FOUND)
     target_compile_definitions(nuchatcore PUBLIC HAVE_HUNSPELL=1)
 endif()
 
+# PUBLIC feature macros: main.cpp is a separate target and branches on these.
+# Publishing them from the library keeps the executable (and the tests) on the
+# same feature set the library was compiled with.
 if(Python3_FOUND)
     target_include_directories(nuchatcore PRIVATE ${Python3_INCLUDE_DIRS})
     target_link_libraries(nuchatcore PRIVATE ${Python3_LIBRARIES})
-    target_compile_definitions(nuchatcore PRIVATE HAVE_PYTHON=1)
+    target_compile_definitions(nuchatcore PUBLIC HAVE_PYTHON=1)
 endif()
 
 if(LUA_FOUND)
     target_include_directories(nuchatcore PRIVATE ${LUA_INCLUDE_DIRS})
     target_link_libraries(nuchatcore PRIVATE ${LUA_LIBRARIES})
-    target_compile_definitions(nuchatcore PRIVATE HAVE_LUA=1)
+    target_compile_definitions(nuchatcore PUBLIC HAVE_LUA=1)
 endif()
 
 # Optional OS keychain (libsecret / Keychain / Credential Manager). Without it,
@@ -107,12 +117,29 @@ else()
 endif()
 
 target_compile_definitions(nuchatcore PRIVATE QT_DEPRECATED_WARNINGS)
+# Baked paths so a dev build finds in-tree scripts and an install finds
+# lib/<prefix>/nuchat/plugins and share/nuchat/scripts. Missing dirs are skipped.
+target_compile_definitions(nuchatcore PRIVATE
+    "NUCHAT_SOURCE_SCRIPTS_DIR=\"${CMAKE_SOURCE_DIR}/scripts\""
+    "NUCHAT_INSTALL_SCRIPTS_DIR=\"${CMAKE_INSTALL_FULL_DATAROOTDIR}/nuchat/scripts\""
+    "NUCHAT_PLUGIN_INSTALL_DIR=\"${CMAKE_INSTALL_FULL_LIBDIR}/nuchat/plugins\""
+)
 
 if(WIN32)
     target_compile_definitions(nuchatcore PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN)
 endif()
 
-target_include_directories(nuchatcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# Version.h is generated from PROJECT_VERSION (top-level CMakeLists.txt).
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/Version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/Version.h
+    @ONLY
+)
+
+target_include_directories(nuchatcore PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
 
 # ── Main executable ──
 # Use WIN32 subsystem on Windows (no console window) and a proper macOS bundle.
@@ -131,18 +158,7 @@ else()
     add_executable(nuchat main.cpp)
 endif()
 
-# include resources directly in the library so they are available
-set(nuchatcore_RESOURCE_FILES resources.qrc)
-
 target_link_libraries(nuchat PRIVATE nuchatcore Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::QuickControls2)
-
-if(Python3_FOUND)
-    target_compile_definitions(nuchat PRIVATE HAVE_PYTHON=1)
-endif()
-
-if(LUA_FOUND)
-    target_compile_definitions(nuchat PRIVATE HAVE_LUA=1)
-endif()
 
 if(WIN32)
     target_compile_definitions(nuchat PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN)

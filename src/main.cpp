@@ -20,10 +20,13 @@
 #include "MessageModel.h"
 #include "NotificationManager.h"
 #include "PluginManager.h"
+#include "ScriptDispatch.h"
+#include "ScriptEat.h"
 #include "ScriptManager.h"
 #include "ServerChannelModel.h"
 #include "Settings.h"
 #include "ThemeManager.h"
+#include "UserPaths.h"
 #include "Version.h"
 #ifdef HAVE_PYTHON
 #include "PythonScriptEngine.h"
@@ -104,6 +107,7 @@ int main(int argc, char *argv[]) {
   // Wire the manager to our models
   manager.setMessageModel(&msgModel);
   manager.setServerChannelModel(&treeModel);
+  logger.setSettings(&appSettings);
   manager.setLogger(&logger);
   manager.setSettings(&appSettings);
 
@@ -123,7 +127,11 @@ int main(int argc, char *argv[]) {
   // Update tray icon unread state when unread changes — reflect the real
   // aggregate state so the dot clears when the last unread channel is read
   QObject::connect(&manager, &IRCConnectionManager::unreadStateChanged,
-                   [&manager, &notifyMgr]() {
+                   [&manager, &notifyMgr, &appSettings]() {
+    if (!appSettings.getBool(QStringLiteral("notify/trayUnread"), true)) {
+      notifyMgr.clearUnreadState();
+      return;
+    }
     notifyMgr.setUnreadState(manager.anyUnread(), manager.anyHighlight());
   });
 
@@ -137,9 +145,9 @@ int main(int argc, char *argv[]) {
   Q_INIT_RESOURCE(resources);
 #endif
 
-  // try to load user scripts from workspace/scripts
-  scriptMgr->loadScripts(QCoreApplication::applicationDirPath() +
-                         "/../scripts");
+  // JS scripts: source tree when developing, install share/ when packaged,
+  // and ~/.config/NUchat/scripts/ for user files.
+  scriptMgr->loadScripts(ScriptManager::candidateDirectories());
 
 #ifdef HAVE_PYTHON
   // Load Python scripts from ~/.config/NUchat/scripts/
@@ -176,19 +184,18 @@ int main(int argc, char *argv[]) {
                                            ImageDownloader::instance());
   // DCC file transfer manager
   DccManager dccManager;
-  QString dccDownDir = appSettings.value("dcc/downloadDir", QDir::homePath() + "/Downloads").toString();
-  dccManager.setDownloadDir(dccDownDir);
-  dccManager.setAutoAccept(appSettings.value("dcc/autoAccept", false).toBool());
-  qint64 maxDcc = appSettings.value("dcc/maxFileSize", 100 * 1024 * 1024).toLongLong();
-  dccManager.setMaxFileSize(maxDcc);
+  dccManager.setDownloadDir(dccDownloadDirectory(&appSettings));
+  dccManager.setAutoAccept(appSettings.getBool(QStringLiteral("dcc/autoAccept"), false));
+  dccManager.setMaxFileSize(dccMaxFileBytes(&appSettings));
   manager.setDccManager(&dccManager);
   engine.rootContext()->setContextProperty("dccManager", &dccManager);
   engine.rootContext()->setContextProperty("appVersion",
                                            QString(NUCHAT_VERSION));
 #endif
 
-  // load plugins from build/plugins (or install directory)
-  pluginMgr.loadPlugins(QCoreApplication::applicationDirPath() + "/../plugins");
+  // Build tree, install libdir, user config, and the plugin/directory setting.
+  pluginMgr.loadPlugins(PluginManager::candidateDirectories(
+      appSettings.value(QStringLiteral("plugin/directory")).toString()));
 
   // when a new connection is added, hook it to plugin and script managers
   QObject::connect(
@@ -198,13 +205,9 @@ int main(int argc, char *argv[]) {
         QObject::connect(conn, &IrcConnection::rawLineReceived,
                          [&, conn](const QString &msg) {
                            pluginMgr.onMessage(conn, msg);
-                           scriptMgr->handleMessage(conn, QString(), msg);
-#ifdef HAVE_PYTHON
-                           pyEngine->handleServerLine(conn, msg);
-#endif
-#ifdef HAVE_LUA
-                           luaEngine->handleServerLine(conn, msg);
-#endif
+                           scriptMgr->handleRawServerLine(conn, msg);
+                           if (eatSuppressesCore(dispatchScriptServerLine(conn, msg)))
+                             conn->eatCurrentLine();
                          });
       });
 

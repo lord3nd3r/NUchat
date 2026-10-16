@@ -1,6 +1,7 @@
 # NUchat Scripting API
 
-NUchat provides a **HexChat-compatible scripting API** for both Python and Lua.
+NUchat provides a **HexChat-style scripting API** for both Python and Lua.
+It covers the calls most scripts use. It is not a full HexChat runtime; see [Current limitations](#current-limitations).
 Scripts are loaded automatically from `~/.config/NUchat/scripts/` on startup and
 hot-reloaded when modified on disk.
 
@@ -31,6 +32,7 @@ hot-reloaded when modified on disk.
   - [get_info Keys](#get_info-keys)
 - [Hook Callbacks](#hook-callbacks)
 - [Examples](#examples)
+- [JavaScript](#javascript)
 
 ---
 
@@ -49,7 +51,7 @@ __module_name__ = "myscript"
 __module_version__ = "1.0"
 __module_description__ = "My first NUchat script"
 
-def greet_cb(word, word_eol):
+def greet_cb(word, word_eol, userdata=None):
     hexchat.prnt(f"Hello, {hexchat.get_info('nick')}!")
     return hexchat.EAT_ALL
 
@@ -109,7 +111,7 @@ compatibility with both HexChat and NUchat naming conventions.
 |----------|-------------|
 | `hexchat.command(cmd)` | Execute an IRC command (without leading `/`). Example: `hexchat.command("JOIN #channel")` |
 | `hexchat.prnt(text)` | Print text to the current channel tab locally. Supports mIRC color codes (e.g. `\00303green\003`). |
-| `hexchat.emit_print(event, ...)` | Emit a print event with the given arguments. |
+| `hexchat.emit_print(event, ...)` | Print the arguments, joined by spaces, in the active tab. The event name is ignored. This does not dispatch HexChat text events. |
 | `hexchat.get_info(id)` | Retrieve information about the current context. See [get_info Keys](#get_info-keys). |
 | `hexchat.hook_command(name, cb, ...)` | Register a hook for a `/COMMAND`. See [hook_command](#hook_command). |
 | `hexchat.hook_server(name, cb, ...)` | Register a hook for raw server numerics/commands. See [hook_server](#hook_server). |
@@ -163,7 +165,18 @@ hook_id = hexchat.hook_server(name, callback [, userdata [, priority]])
 | `name` | string | Server numeric (e.g. `"376"` for end of MOTD) or command (e.g. `"PRIVMSG"`) |
 | `callback` | function | Handler receiving the raw line |
 | `userdata` | any | Optional data passed to the callback |
-| `priority` | int | Hook priority |
+| `priority` | int | Hook priority. Higher values run first (`PRI_HIGHEST` … `PRI_LOWEST`). Equal priorities keep registration order. |
+
+The command name is taken from the IRC line after IRCv3 message-tags and the
+optional `:prefix` are skipped:
+
+- `:nick!user@host PRIVMSG #chan :hello` matches `PRIVMSG`
+- `@time=2026-10-16T00:00:00.000Z :nick!user@host PRIVMSG #chan :hello` matches `PRIVMSG`
+- `PING :irc.example.net` matches `PING` (there is no prefix)
+
+`word` / `word_eol` are the space-split line **with tags removed**. A hook
+named `RAW LINE` receives every server line. Names are matched
+case-insensitively (`"privmsg"` and `"PRIVMSG"` are the same hook).
 
 #### hook_print
 
@@ -203,7 +216,7 @@ hook_id = hexchat.hook_timer(timeout_ms, callback [, userdata])
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `timeout_ms` | int | Delay in milliseconds |
-| `callback` | function | Called when the timer fires. Return `1` to repeat, `0` to cancel. |
+| `callback` | function | Called when the timer fires. Return `1` to repeat, `0` (or `false`) to cancel. Cancelling from inside the callback is safe. |
 | `userdata` | any | Optional data passed to the callback |
 
 ### Constants
@@ -218,6 +231,13 @@ hook_id = hexchat.hook_timer(timeout_ms, callback [, userdata])
 | `EAT_ALL` | 3 | Consume completely — no other hooks or NUchat processing |
 
 Lua also defines `EAT_XCHAT` as an alias for `EAT_HEXCHAT`.
+
+These values are honored:
+
+- Hooks run highest priority first. `EAT_PLUGIN` and `EAT_ALL` stop later hooks in that engine and skip the other language engine (Python runs before Lua).
+- For a **server line**, `EAT_HEXCHAT` and `EAT_ALL` skip NUchat's own handling of that line, including the automatic `PONG` for `PING`. A script that eats `PING` has to answer it itself.
+- For a **user command**, `EAT_HEXCHAT` and `EAT_ALL` skip the built-in command table. `EAT_PLUGIN` stops later script hooks but still lets NUchat run the command.
+- C++ plugins run before either script engine on `/command`. A plugin that returns true consumes the command.
 
 #### Hook Priorities
 
@@ -237,7 +257,17 @@ Lua also defines `EAT_XCHAT` as an alias for `EAT_HEXCHAT`.
 | `"server"` | Hostname of the active server |
 | `"topic"` | Topic of the active channel |
 | `"version"` | NUchat version string |
-| `"channel"` | Name of the active channel |
+| `"channel"` | Name of the active channel. Currently returns an empty string (see below). |
+| `"away"` | Empty string. Away state is not exposed here. |
+
+### Current limitations
+
+- `get_info("channel")` returns an empty string. The Python engine returns that directly. The Lua engine reads a Qt property named `activeChannel`, and `IRCConnectionManager` does not publish that property.
+- `get_info("away")` returns an empty string in both engines.
+- `emit_print` prints its arguments locally. It does not run print hooks or format a HexChat text event.
+- Python `get_list` returns an empty list. Python `get_prefs` returns `None`. `get_context`, `find_context`, and `set_context` are stubs (a constant context id, and `set_context` always succeeds). Lua does not define those functions.
+- Python command, server, and print callbacks are always called with three arguments: `word`, `word_eol`, and `userdata`. A function that only accepts the first two raises `TypeError`. Lua command and server callbacks are also called with those three values; Lua ignores extra arguments, so a shorter function still runs. Lua timer callbacks receive only userdata.
+- Lua `hook_print` stores the callback and never calls it. Python print hooks are invoked.
 
 ---
 
@@ -350,6 +380,36 @@ def on_endmotd(word, word_eol, userdata):
 hexchat.hook_server("372", on_motd)      # RPL_MOTD
 hexchat.hook_server("376", on_endmotd)   # RPL_ENDOFMOTD
 ```
+
+---
+
+## JavaScript
+
+NUchat also loads `*.js` files with Qt's JavaScript engine. This is separate
+from the HexChat Python/Lua API: there is no `hexchat` module.
+
+Scripts are loaded from the same places as the examples shipped with NUchat:
+the in-tree `scripts/` directory when running a dev build,
+`<prefix>/share/nuchat/scripts` after install, `scripts/` next to the
+executable, and `~/.config/NUchat/scripts/`.
+
+Define a global `onMessage(conn, sender, message)`. It is called for each
+`PRIVMSG` and `NOTICE` after IRCv3 tags are stripped. `sender` is the nick,
+`message` is the message text (so a body of `!ping` is exactly `"!ping"`, not
+the raw IRC line). `conn` is the live connection; `conn.sendRaw(line)` sends
+a protocol line. Other server lines (joins, numerics, `PING`) are not passed
+to `onMessage`. If several scripts each define `onMessage`, the last one
+loaded wins.
+
+```javascript
+function onMessage(conn, sender, message) {
+    if (message.indexOf("!ping") === 0) {
+        conn.sendRaw("PRIVMSG #general :PONG from script");
+    }
+}
+```
+
+See `scripts/hello.js`.
 
 ---
 

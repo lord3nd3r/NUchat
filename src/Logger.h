@@ -8,11 +8,14 @@
 #include <QStandardPaths>
 #include <QVector>
 
+class Settings;
+
 class Logger : public QObject
 {
     Q_OBJECT
 public:
     explicit Logger(QObject *parent = nullptr);
+    void setSettings(Settings *settings) { m_settings = settings; }
     void log(const QString &network, const QString &channel,
              const QString &type, const QString &message);
     QString logDir() const;
@@ -34,7 +37,12 @@ public:
 private:
     QString logFilePath(const QString &network, const QString &channel) const;
     void rotateIfNeeded(const QString &filePath) const;
+    bool loggingEnabled() const;
+    bool logPrivateMessages() const;
+    bool perChannelLogs() const;
+    bool writeTimestamps() const;
 
+    Settings *m_settings = nullptr;
     QString m_logDirOverride;
     qint64 m_maxBytes = 10 * 1024 * 1024;
     int m_maxBackups = 5;

@@ -2,6 +2,7 @@
 
 #include <QAbstractListModel>
 #include <QDateTime>
+#include <QHash>
 #include <QMap>
 #include <QSet>
 
@@ -45,6 +46,10 @@ public:
   Q_INVOKABLE void setHighlightEnabled(bool enabled);
   Q_INVOKABLE void setTimestampFormat(const QString &fmt);
   Q_INVOKABLE void toggleEventGroup(int groupId);
+  // Which buffer new messages and late image embeds belong to. Image
+  // downloads that finish after a tab switch are recorded for this buffer
+  // instead of whichever view happens to be on screen.
+  void setBufferContext(const QString &server, const QString &channel);
   // Batch-load mode: suppresses per-message signals during a channel switch.
   // Call beginBatch() before inserting, endBatch() when done; QML receives a
   // single reloaded() signal instead of N messageAdded() signals.
@@ -61,6 +66,9 @@ signals:
   void messageAdded(const QString &formattedLine);
   void cleared();
   void reloaded(); // emitted by endBatch() after a channel-switch load
+  // Local image preview for a specific buffer. Not written to the log.
+  void embedReady(const QString &server, const QString &channel,
+                  const QString &html);
 
 private slots:
   void onImageReady(const QString &url, const QString &localPath, int width,
@@ -72,8 +80,15 @@ private:
   static QString nickColor(const QString &nick);
   QList<Message> m_messages;
   int m_nextMessageId = 1;
-  QSet<QString> m_pendingImages;
+  struct PendingImage {
+    QString server;
+    QString channel;
+  };
+  QHash<QString, PendingImage> m_pendingImages;
+  QString m_contextServer;
+  QString m_contextChannel;
   QString m_nickname;
+  friend class TestMessageModel;
   bool m_highlightEnabled = false;
   bool m_batchMode = false;
   QString m_timestampFormat = QStringLiteral("hh:mm:ss");

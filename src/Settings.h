@@ -11,6 +11,7 @@ public:
 
     // Generic accessor (used from QML)
     Q_INVOKABLE QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
+    Q_INVOKABLE bool contains(const QString &key) const;
     Q_INVOKABLE void setValue(const QString &key, const QVariant &value);
     Q_INVOKABLE void remove(const QString &key);
     Q_INVOKABLE void sync();

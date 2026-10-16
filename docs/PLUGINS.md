@@ -1,7 +1,18 @@
 # NUchat C++ Plugin API
 
 NUchat supports C++ plugins loaded as shared libraries at runtime. Plugins are
-compiled against the `PluginInterface` header and placed in the `plugins/` directory.
+compiled against the `PluginInterface` header. Qt loads a plugin only when the
+class embeds `Q_PLUGIN_METADATA` for `com.nuchat.PluginInterface`. `Q_OBJECT`
+and `Q_INTERFACES` are not a substitute: the loader reads the IID from the
+plugin metadata and skips anything else.
+
+On startup NUchat scans, in order, any directory set in Preferences
+(`plugin/directory`, with a leading `~` expanded), `plugins/` next to the
+executable, `<build>/plugins` when `<build>/CMakeCache.txt` shows this is a
+build tree, `${CMAKE_INSTALL_LIBDIR}/nuchat/plugins` after install, and
+`~/.config/NUchat/plugins`. Directories that do not exist are skipped. An
+installed `/usr/bin/nuchat` does not scan `/usr/plugins`. The sample CMake
+file writes the library to `${CMAKE_BINARY_DIR}/plugins`.
 
 ---
 
@@ -27,9 +38,11 @@ compiled against the `PluginInterface` header and placed in the `plugins/` direc
 ## Quick Start
 
 1. Create a new directory under `plugins/` (e.g. `plugins/myplugin/`)
-2. Implement `PluginInterface` in a QObject subclass
+2. Implement `PluginInterface` in a QObject subclass and add
+   `Q_PLUGIN_METADATA(IID PluginInterface_iid)` — without it the library is
+   skipped
 3. Add a `CMakeLists.txt` to build the shared library
-4. Build — the `.so` is placed in the `plugins/` directory
+4. Build — the library is written to `<build>/plugins` (not the source tree)
 5. NUchat loads it automatically on startup
 
 ---
@@ -53,7 +66,7 @@ public:
     // Called once when the plugin is loaded
     virtual void initialize(QObject *parent) = 0;
 
-    // Called when a user command is dispatched
+    // Called for a user "/command" and for a channel/query "!command".
     // Return true if the plugin handled the command (prevents further processing)
     virtual bool handleCommand(const QString &command,
                                const QStringList &args,
@@ -73,7 +86,7 @@ Q_DECLARE_INTERFACE(PluginInterface, PluginInterface_iid)
 | Method | Description |
 |--------|-------------|
 | `initialize(QObject *parent)` | Called once after the plugin is loaded. Use this for setup, signal connections, etc. |
-| `handleCommand(command, args, connection)` | Called when the user enters a command. `command` is lowercase (e.g. `"hello"`). `args` contains space-separated arguments. `connection` is the active `IrcConnection*`. Return `true` to consume the command. |
+| `handleCommand(command, args, connection)` | Called for a user-typed `/command` and for a `PRIVMSG`/`NOTICE` whose text starts with `!command`. `command` is lowercase (e.g. `"hello"`). `args` contains the remaining words. `connection` is the `IrcConnection*` for that server. Return `true` to consume the command so later plugins and scripts do not see it. |
 
 ---
 
@@ -97,6 +110,8 @@ project(MyPlugin)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Network)
 
+set(CMAKE_AUTOMOC ON)
+
 add_library(MyPlugin SHARED MyPlugin.cpp)
 
 target_link_libraries(MyPlugin PRIVATE Qt6::Core Qt6::Network)
@@ -104,14 +119,26 @@ target_link_libraries(MyPlugin PRIVATE Qt6::Core Qt6::Network)
 # Include NUchat headers (PluginInterface.h, IrcConnection.h)
 target_include_directories(MyPlugin PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
-# Output to the plugins/ directory
+# Output into <build>/plugins, which is where NUchat looks during development.
+# On Windows the DLL is a RUNTIME output, so set both. Per-config generators
+# otherwise write under plugins/Release.
+set(_plugindir "${CMAKE_BINARY_DIR}/plugins")
 set_target_properties(MyPlugin PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../plugins"
+    LIBRARY_OUTPUT_DIRECTORY "${_plugindir}"
+    RUNTIME_OUTPUT_DIRECTORY "${_plugindir}"
 )
+foreach(cfg DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    set_target_properties(MyPlugin PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY_${cfg} "${_plugindir}"
+        RUNTIME_OUTPUT_DIRECTORY_${cfg} "${_plugindir}"
+    )
+endforeach()
 
-# Install
+# LIBRARY is the .so/.dylib; RUNTIME is the Windows DLL.
+include(GNUInstallDirs)
 install(TARGETS MyPlugin
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/nuchat/plugins)
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/nuchat/plugins
+        RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/nuchat/plugins)
 ```
 
 ### Header (MyPlugin.h)
@@ -125,6 +152,7 @@ install(TARGETS MyPlugin
 class MyPlugin : public QObject, public PluginInterface
 {
     Q_OBJECT
+    Q_PLUGIN_METADATA(IID PluginInterface_iid)
     Q_INTERFACES(PluginInterface)
 
 public:
@@ -167,11 +195,10 @@ bool MyPlugin::handleCommand(const QString &command,
 
 ## Plugin Lifecycle
 
-1. **Discovery** — NUchat scans the `plugins/` directory for `.so` files on startup
+1. **Discovery** — NUchat scans the directories listed at the top of this page for `.so` (Linux/BSD), `.dylib` (macOS), or `.dll` (Windows) files. A library is skipped unless its embedded Qt plugin IID is `com.nuchat.PluginInterface`.
 2. **Loading** — Each shared library is loaded with `QPluginLoader`
-3. **Initialization** — `initialize()` is called with the parent `QObject`
-4. **Command dispatch** — When a user types a command, `handleCommand()` is called on each
-   plugin in load order. The first plugin to return `true` consumes the command.
+3. **Initialization** — `initialize()` is called with the `PluginManager`
+4. **Command dispatch** — `handleCommand()` runs when the user types `/command`, and when a `PRIVMSG` or `NOTICE` body starts with `!command` (IRCv3 `@tags` are ignored). The command name is lowercased. Plugins run before Python and Lua scripts. The first plugin to return `true` consumes the command.
 5. **Unloading** — Plugins are unloaded when NUchat exits
 
 ---
@@ -201,11 +228,7 @@ The `IrcConnection` pointer passed to `handleCommand()` provides these methods:
 
 ## Example Plugin
 
-The bundled example plugin is in `plugins/exampleplugin/`. It demonstrates:
-
-- Implementing `PluginInterface`
-- Handling a custom `/hello` command
-- Sending a message to a channel via `IrcConnection`
+The bundled example plugin is in `plugins/exampleplugin/`. `ExamplePlugin.h` includes `Q_PLUGIN_METADATA(IID PluginInterface_iid)`, and its CMake file writes the library to `<build>/plugins`.
 
 ```cpp
 #include "ExamplePlugin.h"
@@ -232,7 +255,7 @@ bool ExamplePlugin::handleCommand(const QString &command,
 }
 ```
 
-Type `/hello` in NUchat to trigger the plugin.
+Type `/hello` in NUchat, or send `!hello` in a channel, to trigger the plugin. `/hello` is handled as a client command and is not sent to the server when the plugin returns `true`.
 
 ---
 

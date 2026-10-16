@@ -39,6 +39,11 @@ QVariant Settings::value(const QString &key, const QVariant &defaultValue) const
     return settings.value(key, defaultValue);
 }
 
+bool Settings::contains(const QString &key) const
+{
+    return settings.contains(key);
+}
+
 void Settings::setValue(const QString &key, const QVariant &value)
 {
     if (key == QLatin1String("networks/list")) {

@@ -1,11 +1,44 @@
 cmake_minimum_required(VERSION 3.16)
 project(NUchat VERSION 1.6.1 LANGUAGES CXX)
 
+# Single-config generators (Unix Makefiles, Ninja) otherwise compile with an
+# empty build type: no optimization and no debug symbols. Multi-config
+# generators (Visual Studio, Xcode, Ninja Multi-Config) select the
+# configuration at build time and ignore CMAKE_BUILD_TYPE.
+get_property(_nuchat_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(NOT _nuchat_multi_config)
+    if(NOT CMAKE_BUILD_TYPE)
+        set(CMAKE_BUILD_TYPE Release CACHE STRING
+            "Choose the type of build (Debug, Release, RelWithDebInfo, MinSizeRel)." FORCE)
+        message(STATUS "CMAKE_BUILD_TYPE was not set; defaulting to Release")
+    endif()
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+        Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
 # enable automoc so Qt signal/slot classes generate moc files automatically
 set(CMAKE_AUTOMOC ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra)
+endif()
+
+# Optional Linux/macOS CI job (and local builds) pass -DNUCHAT_ENABLE_SANITIZERS=ON.
+option(NUCHAT_ENABLE_SANITIZERS
+    "Build with AddressSanitizer and UndefinedBehaviorSanitizer (GCC/Clang)" OFF)
+if(NUCHAT_ENABLE_SANITIZERS)
+    if(MSVC)
+        message(FATAL_ERROR "NUCHAT_ENABLE_SANITIZERS is supported with GCC and Clang, not MSVC.")
+    endif()
+    message(STATUS "AddressSanitizer and UndefinedBehaviorSanitizer enabled")
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+endif()
 
 # find Qt6 components
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network Concurrent Quick QuickControls2)
@@ -36,7 +69,11 @@ else()
 endif()
 
 if(NOT Python3_FOUND)
-    message(WARNING "Python3 development libraries not found; Python scripting will be disabled.")
+    if(CMAKE_DISABLE_FIND_PACKAGE_Python3)
+        message(STATUS "Python3 find was disabled; Python scripting will be disabled.")
+    else()
+        message(WARNING "Python3 development libraries not found; Python scripting will be disabled.")
+    endif()
 endif()
 
 if(NOT LUA_FOUND)

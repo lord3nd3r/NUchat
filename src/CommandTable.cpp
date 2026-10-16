@@ -220,15 +220,20 @@ void IRCConnectionManager::initCommandTable() {
   T["QUIT"] = quitHandler; T["DISCONNECT"] = quitHandler; T["BYE"] = quitHandler;
 
   T["AWAY"] = [this](IrcConnection *conn, const QString &, const QString &args) -> bool {
+    const QString srv = serverNameFor(conn);
     if (args.isEmpty()) {
-      conn->setBack(); m_isAway = false; emit awayStateChanged(false);
+      conn->setBack();
+      setServerAway(srv, false, false);
     } else {
-      conn->setAway(args); m_isAway = true; m_awayLog.clear(); emit awayStateChanged(true);
+      conn->setAway(args);
+      setServerAway(srv, true, true);
     }
     return true;
   };
   T["BACK"] = [this](IrcConnection *conn, const QString &, const QString &) -> bool {
-    conn->setBack(); m_isAway = false; emit awayStateChanged(false); return true;
+    conn->setBack();
+    setServerAway(serverNameFor(conn), false, false);
+    return true;
   };
 
   auto rawHandler = [](IrcConnection *conn, const QString &, const QString &args) -> bool {

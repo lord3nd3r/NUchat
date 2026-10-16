@@ -21,31 +21,31 @@ See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
 - **Multi-server** — connect to multiple networks simultaneously
 - **SSL/TLS** on all connections with **per-network SASL** (PLAIN/EXTERNAL) and **NickServ auto-identify**
 - **25 built-in themes** — HexChat Dark, Monokai, Dracula, Nord, Gruvbox, Catppuccin, and more
-- **mIRC color codes** — full rendering (foreground, background, bold, italic, underline, hex colors) and input shortcuts
-- **Clickable URLs** with inline image previews
-- **DCC file transfer** — send/receive files with progress, ETA, and speed metrics
+- **mIRC color codes** — foreground (palette and hex), bold, italic, underline, and strikethrough, plus input shortcuts. Background color codes are parsed and then dropped when the message is turned into HTML.
+- **Clickable URLs** with inline image previews (off by default; enable under Preferences → URL Handlers)
+- **DCC file transfer** — send and receive with progress, ETA, and speed. Offers to loopback, unspecified, link-local, and other non-unicast addresses are rejected. Receives use the configured proxy, or they are refused when that proxy cannot be applied. An active send is refused while a proxy is configured, because it listens for a direct connection.
 - **Nick list** with multi-select (Ctrl+click, Shift+click) and mode buttons (Op, DeOp, Ban, Kick, Voice, DeVoice)
 - **Tab nick-completion** with cycling
 - **Input history** — Up/Down arrow keys recall previous messages
 - **Paste flood protection** — confirmation dialog when pasting multiple lines
-- **Spell checker** — integrated Hunspell support with squiggly underlines and right-click suggestions
+- **Spell checker** — Hunspell, when a dictionary such as `en_US.dic` is installed under `/usr/share/hunspell/` (the usual Linux path). Windows and macOS builds can link Hunspell and still have no suggestions, because the checker does not look anywhere else.
 - **Auto-focus input** — typing anywhere in the window goes to the input bar
 - **Smart chat area** — auto-scroll, jump-to-bottom button, and "new messages" marker line
 - **Collapsible event groups** — groups multiple joins/parts/quits into a single clickable summary line
 - **Lag meter** — visual PING/PONG RTT indicator in the status bar
 - **Scrollback** — loads last 200 lines from logs when rejoining a channel
-- **Channel logging** to `~/.config/NUchat/NUchat/logs/`
-- **60+ command aliases** — see [docs/COMMANDS.md](docs/COMMANDS.md)
+- **Channel logging** to `~/.config/NUchat/NUchat/logs/` on Linux, with a 10 MB rotation that keeps one `.log.1` backup
+- **Built-in commands and aliases** — see [docs/COMMANDS.md](docs/COMMANDS.md)
 - **Services menus** — NickServ, ChanServ, OperServ, HostServ, MemoServ, BotServ
 - **Right-click context menus** on nicks and links
 - **10 pre-configured networks** (Libera.Chat, OFTC, EFnet, DALnet, Rizon, and more)
 - **Per-network identity** override (nick, username, real name)
 - **Channel modes on join** — displays mode string when entering a channel
 - **Dynamic title bar** — shows channel, server, and topic (like HexChat)
-- **C++ plugin system**, **Python scripting engine**, and **Lua scripting engine** — HexChat-compatible API
+- **C++ plugin API**, **Python scripting**, and **Lua scripting** — a HexChat-style subset (see the docs for what is actually implemented)
 - **Migrate from HexChat** — first-launch wizard imports your scripts, server list, and identity
 - **ZNC bouncer** support
-- **Proxy support** — SOCKS4/5 and HTTP CONNECT
+- **Proxy support** — SOCKS5 and HTTP CONNECT. SOCKS4 is refused (Qt has no SOCKS4 client). A proxy with no host or an invalid port is refused instead of connecting directly.
 - **Desktop integration** — `.desktop` file, SVG icon, system tray, notifications, `make install` support
 
 ---
@@ -56,10 +56,15 @@ See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
 
 **Ubuntu/Debian:**
 ```
-sudo apt install build-essential cmake \
-  qt6-base-dev qt6-declarative-dev qt6-quickcontrols2-dev \
-  libgl1-mesa-dev
+sudo apt install build-essential cmake pkg-config \
+  qt6-base-dev qt6-declarative-dev \
+  qml6-module-qtquick-controls qml6-module-qtquick-layouts \
+  qml6-module-qtquick-templates \
+  libgl1-mesa-dev \
+  python3-dev liblua5.4-dev libhunspell-dev
 ```
+
+Python, Lua, and Hunspell are optional. CMake disables the matching feature when the development files are missing. On current Debian and Ubuntu, Qt Quick Controls ships in `qt6-declarative-dev`; there is no separate `qt6-quickcontrols2-dev` package. `find_package(Python3)` uses whichever Python 3 development files it finds first, and the embedded interpreter is tied to that ABI.
 
 **Fedora:**
 ```
@@ -79,10 +84,12 @@ sudo pacman -S cmake qt6-base qt6-declarative qt6-quickcontrols2
 git clone https://github.com/lord3nd3r/NUchat.git
 cd NUchat
 mkdir build && cd build
-cmake ..
+cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 ./src/nuchat
 ```
+
+On Make and Ninja, omitting `-DCMAKE_BUILD_TYPE` also selects Release. Pass `Debug` for an unoptimized build. Visual Studio and Xcode are multi-config generators: they ignore `CMAKE_BUILD_TYPE` and take `--config Release` (or `Debug`) on the build command.
 
 ### Install (optional)
 
@@ -92,6 +99,18 @@ sudo make install
 
 Uses GNUInstallDirs — installs binary, desktop file, icon, and plugin/script directories. Uninstall with `sudo make uninstall`.
 
+### Continuous integration
+
+| Workflow | Qt | Tests |
+|----------|----|-------|
+| Linux (`ubuntu-latest`) | Distro Qt 6 packages | `ctest` |
+| Linux ASan/UBSan | Distro Qt 6, Python disabled | `ctest` under AddressSanitizer and UndefinedBehaviorSanitizer |
+| Windows (`windows-2022`) | Qt 6.5.3 via aqtinstall | `ctest -C Release` |
+| macOS (`macos-15`) | Qt 6.8.3 via aqtinstall | `ctest` |
+| FreeBSD (VM on `ubuntu-latest`) | Ports Qt 6 | `ctest` |
+
+Windows stays on Qt 6.5.3 and `windows-2022` because newer MSVC standard-library headers removed an API that Qt 6.5.3 still uses. macOS stays on Qt 6.8.3 because that release's OpenGL find-module still references the AGL framework, which the Xcode 26 SDK removed.
+
 ---
 
 ## Configuration
@@ -99,8 +118,8 @@ Uses GNUInstallDirs — installs binary, desktop file, icon, and plugin/script d
 | Path | Purpose |
 |------|---------|
 | `~/.config/NUchat/NUchat.conf` | Settings (theme, window geometry, networks, identity). Password fields are blank when the OS keychain is in use |
-| `~/.config/NUchat/NUchat/logs/` | Channel logs (per-network, per-channel). Rotated (`.log.1` … `.log.5`), control characters and mIRC codes stripped |
-| `~/.config/NUchat/scripts/` | Python scripts |
+| `~/.config/NUchat/NUchat/logs/` | Channel logs. Directory, enable, timestamps, private messages, and per-channel files follow Preferences. Rotated `.log.1`–`.log.5`. Control characters and mIRC codes stripped |
+| `~/.config/NUchat/scripts/` | Python and Lua scripts |
 | `~/.cache/NUchat/images/` | Cached inline image previews |
 
 ### Passwords and the OS keychain
@@ -129,7 +148,15 @@ If your IRC server uses a self-signed certificate or one where the hostname does
 2. Check **"Accept self-signed / untrusted SSL certificates"**
 3. Reconnect
 
-This covers hostname mismatches, self-signed certs, and untrusted issuer chains. It does **not** suppress errors for expired certificates or other hard failures.
+The preference is global. When it is checked, the handshake continues for self-signed certificates, hostname mismatches, and untrusted issuer chains. Expired certificates and every other TLS error still abort the connection. The default is off, and then any TLS error aborts the connection.
+
+Outbound IRC lines have CR, LF, and NUL removed before they are sent. Debug logs redact `PASS`, `OPER`, SASL `AUTHENTICATE` payloads, and NickServ `IDENTIFY`. Inline image fetches use the IRC proxy or they are skipped, and they do not follow a redirect onto a private or special-use address.
+
+### Logging
+
+Logs are written under the directory from Preferences (`log/directory`). A leading `~` is expanded. When that setting is empty, the logger uses Qt's application config location plus `/logs` (`~/.config/NUchat/NUchat/logs/<network>/<channel>.log`). `log/enable` turns logging off. `log/privateMessages` skips queries when it is off; the server tab is still written. `log/perChannel` off folds every channel of a network into `messages.log`. `log/timestamps` off writes `[type] message` with no time prefix. `log/formatIndex` is stored by the preferences page and is not read by the logger.
+
+Each file rotates at 10 MB and keeps `.log.1` through `.log.5`. Lines strip C0 controls, ANSI escapes, and mIRC color codes so one message stays one line. Writes are flushed and `fsync`'d, and new log files and directories are owner-only. A name of `.` or `..` is kept inside the log directory (`_..`, not a parent path).
 
 ## Downloads
 
@@ -160,7 +187,7 @@ If you prefer to build locally on Windows:
 **Local build steps (recommended for testing):**
 
 1. Install **Visual Studio 2022** with the "Desktop development with C++" workload.
-2. Download and install **Qt 6.8.x** for **MSVC 2022 64-bit** from [qt.io](https://www.qt.io/download-open-source) (open source version is fine).
+2. Download and install **Qt 6.8.x** for **MSVC 2022 64-bit** from [qt.io](https://www.qt.io/download-open-source) (open source version is fine). The Windows CI job is different: it installs Qt 6.5.3 on `windows-2022`, because a newer MSVC standard library no longer provides an API that Qt 6.5.3's headers use. Local builds should stay on 6.8.x.
 3. Add the Qt bin directory to your PATH (e.g. `C:\Qt\6.8.3\msvc2022_64\bin`).
 4. Open **Developer Command Prompt for VS 2022**.
 5. In the project directory:
@@ -173,7 +200,7 @@ If you prefer to build locally on Windows:
 
 To bundle the Qt DLLs, run `windeployqt --qmldir ..\qml --no-translations build\src\Release\nuchat.exe`.
 
-**Note:** Python scripting is currently disabled on Windows builds (due to embedding complexities). Lua and C++ plugins work fine. HexChat migration also works.
+**Note:** The Windows CI job passes `-DCMAKE_DISABLE_FIND_PACKAGE_Python3=ON`, so that build has no Python scripting. A local Windows build enables Python when the development libraries are found. Lua is enabled when Lua is found. A C++ plugin is loaded only when it embeds `Q_PLUGIN_METADATA` for `com.nuchat.PluginInterface` (see [docs/PLUGINS.md](docs/PLUGINS.md)). HexChat migration also works.
 
 See `CMakeLists.txt` and `src/CMakeLists.txt` for the cross-platform setup. PRs welcome for improvements.
 
@@ -207,10 +234,11 @@ HexChat Dark (default), Monokai, Solarized Dark/Light, Dracula, Nord, Gruvbox Da
 
 | Document | Contents |
 |----------|----------|
-| [Commands](docs/COMMANDS.md) | All 60+ IRC commands and aliases |
+| [Commands](docs/COMMANDS.md) | Built-in IRC commands and aliases |
 | [Menus & Dialogs](docs/MENUS.md) | Menu bar reference, right-click menus, and dialog descriptions |
 | [Scripting API](docs/SCRIPTING.md) | Python and Lua scripting reference (HexChat-compatible) |
 | [Plugin API](docs/PLUGINS.md) | C++ plugin interface and build instructions |
+| [Third-party notices](THIRD-PARTY.md) | Licenses for Qt, Python, Lua, Hunspell, and related notes |
 
 ---
 
@@ -224,15 +252,15 @@ NUchat/
 │   ├── IRCConnectionManager.*  Multi-server management, command dispatch
 │   ├── MessageModel.*      Chat messages, IRC→HTML, image embeds, nick colors
 │   ├── Logger.*            Channel logging
-│   ├── Version.h           Single source of truth for version string
+│   ├── Version.h.in        Version header template. CMake writes Version.h from PROJECT_VERSION
 │   └── ...                 ThemeManager, Settings, ScriptManager, PluginManager
-├── qml/                    QML UI
+├── qml/                    QML UI (21 files)
 │   ├── main.qml            Main window (sidebar, chat, nick list, menus)
 │   ├── ThemeManager.qml    25 built-in themes (50+ color properties each)
 │   ├── NetworkListDialog.qml  Network manager with drag-and-drop reorder
-│   └── ...                 14 dialog/component files
+│   └── ...                 Dialogs (preferences, DCC, channel list, and others)
 ├── plugins/                C++ plugin directory
-├── scripts/                Python scripts
+├── scripts/                Example Python, Lua, and JavaScript scripts
 ├── resources/              Icons, .desktop file, theme JSON
 ├── tests/                  Unit tests
 └── docs/                   Extended documentation
@@ -244,11 +272,13 @@ NUchat/
 
 ### C++ Plugins
 
-Implement `PluginInterface` (see `src/PluginInterface.h`), compile as a shared library, drop into `plugins/`. Example in `plugins/exampleplugin/`.
+Implement `PluginInterface` (see `src/PluginInterface.h`) as a `QObject` with `Q_PLUGIN_METADATA(IID "com.nuchat.PluginInterface")`, and compile it as a shared library. The loader skips any library whose embedded IID is not `com.nuchat.PluginInterface`. On startup NUchat scans the Preferences plugin directory, `plugins/` next to the executable, `<build>/plugins` for an in-tree build, `${CMAKE_INSTALL_LIBDIR}/nuchat/plugins` after install, and `~/.config/NUchat/plugins`. The sample `plugins/exampleplugin/` CMake file writes the library to `${CMAKE_BINARY_DIR}/plugins`. See [docs/PLUGINS.md](docs/PLUGINS.md).
 
-### Python Scripts
+### Python and Lua scripts
 
-Place `.py` files in `~/.config/NUchat/scripts/`. Loaded automatically on startup. See `scripts/example.py`.
+Place `.py` and `.lua` files in `~/.config/NUchat/scripts/`. Both engines load that directory on startup. See `scripts/example.py` and [docs/SCRIPTING.md](docs/SCRIPTING.md).
+
+A separate JavaScript loader (`ScriptManager`) loads `*.js` from the in-tree `scripts/` directory on a dev build, `<prefix>/share/nuchat/scripts` after install, `scripts/` next to the executable, and `~/.config/NUchat/scripts/`. It is not the HexChat API. `scripts/hello.js` defines `onMessage` and is called for `PRIVMSG` and `NOTICE` text. See [docs/SCRIPTING.md](docs/SCRIPTING.md).
 
 ---
 
@@ -257,17 +287,14 @@ Place `.py` files in `~/.config/NUchat/scripts/`. Loaded automatically on startu
 ### Planned Features
 - **`echo-message` CAP** — Server echoes your messages back with proper timestamp
 - **`account-notify` / `extended-join`** — Show account info in join messages
-- **Channel LIST improvements** — User count, topic, min/max filter
-- **Per-network auto-join list** — Explicit auto-join channels in Network List dialog
-- **Log rotation** — Configurable per-channel logging enable/disable
 - **SASL SCRAM-SHA-256** — Modern SASL mechanism
 - **Detach/attach tabs** — Float channel tabs into separate windows
 - **AppImage / Flatpak / .deb packaging**
 
-See `TODO.md` for the full roadmap.
+Already in the client, and previously listed here: per-network auto-join (the Autojoin field in the Network List dialog), channel-list user counts, topics, search, and a minimum-user filter, size-based log rotation (`.log.1` through `.log.5`), and the Logging preferences for enable, directory, timestamps, private messages, and per-channel files.
 
 ---
 
 ## License
 
-Licensed under the [GNU General Public License v3.0](LICENSE).
+Licensed under the [GNU General Public License v3.0](LICENSE). Notes on Qt, Python, Lua, Hunspell, themes, and icons are in [THIRD-PARTY.md](THIRD-PARTY.md).

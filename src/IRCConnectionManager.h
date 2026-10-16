@@ -98,7 +98,8 @@ public:
   // ── Away log ──
   Q_INVOKABLE QVariantList awayLog() const;
   Q_INVOKABLE void clearAwayLog();
-  bool isAway() const { return m_isAway; }
+  bool isAway() const;
+  Q_INVOKABLE void openExternalUrl(const QString &url);
 
   // ── URL Grabber ──
   Q_INVOKABLE QVariantList grabbedUrls() const;
@@ -177,7 +178,9 @@ private:
                    const QString &channel);
   void executePerformCommands(const QString &server);
   void attemptReconnect(const QString &host);
-  void applyProxySettings(IrcConnection *conn);
+  // Empty on success. A non-empty string means the connection must not proceed
+  // (a configured proxy could not be applied, so a direct connection is refused).
+  QString applyProxySettings(IrcConnection *conn);
   void ensureScrollbackLoaded(const QString &server, const QString &channel);
   void cleanupChannelState(const QString &server, const QString &channel);
   // ── Command dispatch table ──
@@ -216,8 +219,18 @@ private:
   QSet<QString>
       m_scrollbackLoaded; // "server\nchannel" keys mapped to loaded scrollback
   QString unreadKey(const QString &server, const QString &channel) const {
-    return server + "\n" + channel;
+    return server.toLower() + "\n" + channel.toLower();
   }
+  bool isViewing(const QString &server, const QString &channel) const;
+  void showOnOriginServer(const QString &server, const QString &type,
+                          const QString &text);
+  void retireConnection(IrcConnection *conn);
+  void rememberEmbed(const QString &server, const QString &channel,
+                     const QString &html);
+  void trimHistory(QVector<StoredMessage> &hist);
+  void refreshDccSettings();
+  void setServerAway(const QString &server, bool away, bool clearLog);
+  friend class ManagerRoutingTest;
 
   // ── Structured WHOIS accumulation ──
   // Key: "server\nnick", Value: accumulated formatted lines
@@ -265,15 +278,18 @@ private:
   // for that host only — a global flag would break multi-server semantics)
   QSet<QString> m_userDisconnected;
 
-  // ── Away log ──
-  bool m_isAway = false;
+  // ── Away log (per server, not one flag for every connection) ──
   struct AwayLogEntry {
     QString timestamp;
     QString nick;
     QString channel;
     QString message;
   };
-  QVector<AwayLogEntry> m_awayLog;
+  struct AwayState {
+    bool away = false;
+    QVector<AwayLogEntry> log;
+  };
+  QHash<QString, AwayState> m_awayByServer;
 
   // ── URL Grabber ──
   struct GrabbedUrl {

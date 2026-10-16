@@ -9,6 +9,11 @@ All notable changes to NUchat are documented in this file.
 - **Service commands are redacted** in the chat buffer and channel logs. `/msg NickServ IDENTIFY`, and the same shape of command (`AUTH`, `REGISTER`, `GHOST`, `SET PASSWORD`, …) to NickServ and the other service nicks, still go out on the wire, but the password is shown as `***`.
 - **Raw log and debug traces** redact `PASS`, SASL `AUTHENTICATE` payloads, `OPER` passwords, and those service commands. Inbound lines delivered to plugins and scripts are not modified.
 - **Log hardening.** Log lines strip C0 controls, ANSI escapes, and mIRC color/formatting codes so one message stays one line. Writes are flushed and `fsync`'d, log files and directories are owner-only, names cannot escape the log directory, and rotation keeps five numbered backups (`.log.1` through `.log.5`) instead of a single `.log.1`.
+- Outbound IRC lines have CR, LF, and NUL stripped before they are sent, so one call cannot inject a second command.
+- "Accept self-signed" ignores only self-signed certificates, hostname mismatches, and untrusted issuer chains. Expired certificates and other hard failures still abort the connection.
+- A configured proxy with an empty host, an invalid port, or SOCKS4 no longer falls back to a direct connection or to SOCKS5.
+- Inline image previews are off by default. The downloader blocks private and special-use addresses, checks each redirect before following it, validates image bytes before caching, and caps the on-disk cache.
+- DCC offers to loopback, unspecified, link-local, and other non-unicast addresses are rejected. Receives use the configured proxy or fail closed. Active sends bind to the IRC connection's IPv4 address, time out, and partial downloads are deleted on failure.
 
 ## [1.6.1] — 2026-08-27
 

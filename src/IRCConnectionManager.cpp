@@ -1,14 +1,21 @@
 #include "IRCConnectionManager.h"
 #include "CredentialRedactor.h"
+#include "NetSafety.h"
 #include "DccManager.h"
 #include "IrcConnection.h"
+#include "IrcIdentity.h"
 #include "Logger.h"
 #include "MessageModel.h"
 #include "ServerChannelModel.h"
+#include "PluginManager.h"
+#include "ScriptDispatch.h"
+#include "ScriptEat.h"
 #include "Settings.h"
+#include "UserPaths.h"
 #include "Version.h"
 #include <QDateTime>
 #include <QDebug>
+#include <QDesktopServices>
 #include <QFile>
 #include <QNetworkProxy>
 #include <QProcess>
@@ -16,13 +23,8 @@
 #include <QSysInfo>
 #include <QTextStream>
 #include <QTimer>
+#include <QUrl>
 #include <algorithm>
-#ifdef HAVE_PYTHON
-#include "PythonScriptEngine.h"
-#endif
-#ifdef HAVE_LUA
-#include "LuaScriptEngine.h"
-#endif
 
 IRCConnectionManager::IRCConnectionManager(QObject *parent) : QObject(parent) {
   // ── Lag meter ── ping every connected server every 30s
@@ -47,7 +49,14 @@ IRCConnectionManager::~IRCConnectionManager() {
 }
 
 void IRCConnectionManager::setMessageModel(MessageModel *model) {
+  if (m_msgModel)
+    disconnect(m_msgModel, nullptr, this, nullptr);
   m_msgModel = model;
+  if (!m_msgModel)
+    return;
+  connect(m_msgModel, &MessageModel::embedReady, this,
+          [this](const QString &server, const QString &channel,
+                 const QString &html) { rememberEmbed(server, channel, html); });
 }
 
 void IRCConnectionManager::setServerChannelModel(ServerChannelModel *model) {
@@ -82,11 +91,8 @@ void IRCConnectionManager::connectToServer(
   // from network list, or user re-clicked Connect), evict it so we replace under
   // the existing tree row instead of stacking a duplicate. Also clear any stale
   // reconnect timer/info for this host (will be overwritten below).
-  if (auto *old = connectionForServer(name)) {
-    m_connections.removeOne(old);
-    m_connToName.remove(old);
-    old->deleteLater();
-  }
+  if (auto *old = connectionForServer(name))
+    retireConnection(old);
   if (m_reconnectInfo.contains(name) && m_reconnectInfo[name].timer) {
     m_reconnectInfo[name].timer->stop();
     m_reconnectInfo[name].timer->deleteLater();
@@ -146,6 +152,8 @@ void IRCConnectionManager::connectToServer(
   // Set as active server
   m_activeServer = name;
   m_activeChannel = name; // server tab
+  if (m_msgModel)
+    m_msgModel->setBufferContext(name, name);
 
   // Record a system message
   if (m_msgModel) {
@@ -157,7 +165,14 @@ void IRCConnectionManager::connectToServer(
                   "Connecting to " + host + ":" + QString::number(port) +
                       "...");
 
-  applyProxySettings(conn);
+  const QString proxyErr = applyProxySettings(conn);
+  if (!proxyErr.isEmpty()) {
+    appendToChannel(name, name, "system", proxyErr);
+    if (m_msgModel)
+      m_msgModel->addMessage("system", proxyErr);
+    qWarning() << "[Manager]" << proxyErr;
+    return;
+  }
   if (m_settings)
     conn->setAllowSelfSignedCerts(
         m_settings->getBool("conn/allowSelfSignedCerts", false));
@@ -230,9 +245,7 @@ void IRCConnectionManager::closeServer(const QString &serverName) {
     if (conn->isConnected()) {
       conn->disconnectFromServer("Closing server tab");
     }
-    m_connections.removeOne(conn);
-    m_connToName.remove(conn);
-    conn->deleteLater();
+    retireConnection(conn);
   }
 
   // Remove the top-level server entry from the tree (this is what "close tab" means for servers)
@@ -241,7 +254,7 @@ void IRCConnectionManager::closeServer(const QString &serverName) {
   }
 
   // If this was the active server, clear the active context (UI will react via bindings)
-  if (m_activeServer == serverName) {
+  if (ircSame(m_activeServer, serverName)) {
     m_activeServer = QString();
     m_activeChannel = QString();
   }
@@ -285,7 +298,7 @@ void IRCConnectionManager::sendMessage(const QString &target,
   }
   const QString shown = CredentialRedactor::redactOutgoingChat(target, message);
   QString text = "<" + displayNick + "> " + shown;
-  if (m_msgModel && m_activeChannel == target)
+  if (m_msgModel && ircSame(m_activeChannel, target))
     m_msgModel->addMessage("chat", text);
   appendToChannel(m_activeServer, target, "chat", text);
 }
@@ -295,18 +308,16 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
                                                const QString &cmd,
                                                const QString &args) {
   if (cmd == "ECHO") { if (m_msgModel) m_msgModel->addMessage("system", args); return true; }
-#ifdef HAVE_PYTHON
-  if (PythonScriptEngine::instance()) {
-    QStringList ap = args.isEmpty() ? QStringList() : args.split(' ');
-    if (PythonScriptEngine::instance()->handleCommand(cmd, ap)) return true;
+  const QStringList ap = args.isEmpty() ? QStringList() : args.split(' ');
+  // C++ plugins take priority over Python/Lua hooks (see docs/PLUGINS.md).
+  if (auto *plugins = PluginManager::instance()) {
+    if (plugins->handleUserCommand(cmd.toLower(), ap, conn))
+      return true;
   }
-#endif
-#ifdef HAVE_LUA
-  if (LuaScriptEngine::instance()) {
-    QStringList ap = args.isEmpty() ? QStringList() : args.split(' ');
-    if (LuaScriptEngine::instance()->handleCommand(cmd, ap)) return true;
-  }
-#endif
+  // EAT_HEXCHAT / EAT_ALL skip the built-in command table. EAT_PLUGIN stops
+  // later script engines but still falls through to the table.
+  if (eatSuppressesCore(dispatchScriptCommand(cmd, ap)))
+    return true;
   if (m_commandTable.isEmpty()) initCommandTable();
   auto it = m_commandTable.find(cmd);
   if (it != m_commandTable.end()) return it.value()(conn, target, args);
@@ -361,6 +372,8 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
                                            const QString &channel) {
   m_activeServer = serverName;
   m_activeChannel = channel;
+  if (m_msgModel)
+    m_msgModel->setBufferContext(serverName, channel);
 
   // Clear unread/highlight for this channel
   clearUnread(serverName, channel);
@@ -410,6 +423,7 @@ void IRCConnectionManager::switchToChannel(const QString &serverName,
   emit channelTopicChanged(channelTopic());
   emit channelUsersChanged(channelUsers());
   emit channelModesChanged(channelModes());
+  emit awayStateChanged(isAway());
 }
 
 void IRCConnectionManager::openQuery(const QString &serverName,
@@ -446,8 +460,10 @@ QString IRCConnectionManager::currentNick() const {
 QString IRCConnectionManager::channelTopic() const {
   ChannelKey key{m_activeServer, m_activeChannel};
   // Render mIRC color/format codes and make URLs clickable (mIRC-style bar)
-  return MessageModel::linkifyUrls(
-      MessageModel::ircToHtml(m_topics.value(key)));
+  const QString html = MessageModel::ircToHtml(m_topics.value(key));
+  if (m_settings && !m_settings->getBool(QStringLiteral("url/clickable"), true))
+    return html;
+  return MessageModel::linkifyUrls(html);
 }
 
 QString IRCConnectionManager::channelTopicRaw() const {
@@ -501,7 +517,22 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
   // Forward raw lines for Raw Log + lag meter PONG detection
   connect(conn, &IrcConnection::rawLineReceived, this,
           [this, conn](const QString &line) {
-            emit rawLineReceived("<<", CredentialRedactor::redactIrcLine(line));
+            const QString shown = CredentialRedactor::redactIrcLine(line);
+            emit rawLineReceived("<<", shown);
+            if (m_settings) {
+              bool showRaw = false;
+              if (m_settings->contains(QStringLiteral("adv/showRawIRC")))
+                showRaw = m_settings->getBool(QStringLiteral("adv/showRawIRC"), false);
+              else if (m_settings->contains(QStringLiteral("adv/showRaw")))
+                showRaw = m_settings->getBool(QStringLiteral("adv/showRaw"), false);
+              if (showRaw) {
+                const QString srv = serverNameFor(conn);
+                const QString text = QStringLiteral("<< ") + shown;
+                appendToChannel(srv, srv, QStringLiteral("system"), text);
+                if (m_msgModel && isViewing(srv, srv))
+                  m_msgModel->addMessage(QStringLiteral("system"), text);
+              }
+            }
             // Detect PONG response to our LAG ping — match the actual PONG
             // command with our LAG token as final param, not any chat line
             // that merely mentions both words
@@ -525,7 +556,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
     QString srv = serverNameFor(conn);
     QString msg = "Connected to " + srv + " as " + conn->nickname();
     appendToChannel(srv, srv, "system", msg);
-    if (m_msgModel && m_activeServer == srv) {
+    if (m_msgModel && ircSame(m_activeServer, srv)) {
       m_msgModel->addMessage("system", msg);
     }
     emit serverRegistered(srv);
@@ -587,7 +618,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
     QString srv = serverNameFor(conn);
     QString msg = "Disconnected from " + srv;
     appendToChannel(srv, srv, "system", msg);
-    if (m_msgModel && m_activeServer == srv) {
+    if (m_msgModel && ircSame(m_activeServer, srv)) {
       m_msgModel->addMessage("system", msg);
     }
 
@@ -622,7 +653,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           [this, conn](const QString &err) {
             QString srv = serverNameFor(conn);
             appendToChannel(srv, srv, "error", err);
-            if (m_msgModel && m_activeServer == srv)
+            if (m_msgModel && ircSame(m_activeServer, srv))
               m_msgModel->addMessage("error", err);
           });
 
@@ -666,8 +697,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
 
             QString text = "<" + displayNick + "> " + message;
             appendToChannel(srv, channel, "chat", text);
-            if (m_msgModel && m_activeServer == srv &&
-                m_activeChannel == channel) {
+            if (m_msgModel && isViewing(srv, channel)) {
               m_msgModel->addMessage("chat", text);
             }
           });
@@ -697,8 +727,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
               dest = srv;
             }
             appendToChannel(srv, dest, "system", text);
-            if (m_msgModel && m_activeServer == srv &&
-                m_activeChannel == dest) {
+            if (m_msgModel && isViewing(srv, dest)) {
               m_msgModel->addMessage("system", text);
             } else if (dest != srv) {
               // Mark channel/query tabs unread for notices (server tab excluded
@@ -718,7 +747,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         QString srv = serverNameFor(conn);
         QString nick =
             prefix.contains('!') ? prefix.section('!', 0, 0) : prefix;
-        if (nick == conn->nickname()) {
+        if (ircSame(nick, conn->nickname())) {
           // We joined — add channel to tree
           if (m_treeModel) {
             m_treeModel->addChannel(srv, channel);
@@ -732,21 +761,27 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           // ensureScrollbackLoaded) and replays the history into the model in
           // a single batch; loading the log again here as well would display
           // the scrollback duplicated.
-          switchToChannel(srv, channel);
+          // "Open tabs in background" keeps the user on the buffer they
+          // were already reading.
+          const bool background =
+              m_settings &&
+              m_settings->getBool(QStringLiteral("ui/tabsInBackground"), false);
+          if (!background)
+            switchToChannel(srv, channel);
           // Request channel modes so we can display them
           conn->sendRaw("MODE " + channel);
         } else {
           QString text = nick + " has joined " + channel;
           appendToChannel(srv, channel, "system", text);
-          if (m_msgModel && m_activeServer == srv &&
-              m_activeChannel == channel) {
+          if (m_msgModel && isViewing(srv, channel)) {
             m_msgModel->addMessage("system", text);
           }
           // Add to user list
           ChannelKey key{srv, channel};
-          if (m_users.contains(key) && !m_users[key].contains(nick)) {
+          if (m_users.contains(key) &&
+              !m_users[key].contains(nick, Qt::CaseInsensitive)) {
             m_users[key].append(nick);
-            if (m_activeServer == srv && m_activeChannel == channel)
+            if (isViewing(srv, channel))
               emit channelUsersChanged(channelUsers());
           }
         }
@@ -764,10 +799,10 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         if (!reason.isEmpty())
           text += " (" + reason + ")";
         appendToChannel(srv, channel, "system", text);
-        if (m_msgModel && m_activeServer == srv && m_activeChannel == channel) {
+        if (m_msgModel && isViewing(srv, channel)) {
           m_msgModel->addMessage("system", text);
         }
-        if (nick == conn->nickname()) {
+        if (ircSame(nick, conn->nickname())) {
           emit channelParted(srv, channel);
         }
         // Remove from user list
@@ -781,7 +816,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                             return bare.compare(nick, Qt::CaseInsensitive) == 0;
                           }),
                       users.end());
-          if (m_activeServer == srv && m_activeChannel == channel)
+          if (isViewing(srv, channel))
             emit channelUsersChanged(channelUsers());
         }
       });
@@ -799,7 +834,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         // Remove from all channels on this server and show quit message
         bool emitUpdate = false;
         for (auto it = m_users.begin(); it != m_users.end(); ++it) {
-          if (it.key().server != srv)
+          if (!ircSame(it.key().server, srv))
             continue;
           auto &users = it.value();
           int before = users.size();
@@ -813,7 +848,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           if (users.size() != before) {
             // User was in this channel — show quit message there
             appendToChannel(srv, it.key().channel, "system", text);
-            if (m_activeServer == srv && m_activeChannel == it.key().channel)
+            if (isViewing(srv, it.key().channel))
               emitUpdate = true;
           }
         }
@@ -836,7 +871,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         if (!reason.isEmpty())
           text += " (" + reason + ")";
         appendToChannel(srv, channel, "system", text);
-        if (m_msgModel && m_activeServer == srv && m_activeChannel == channel) {
+        if (m_msgModel && isViewing(srv, channel)) {
           m_msgModel->addMessage("system", text);
         }
         // Remove kicked user from list
@@ -851,7 +886,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                                                    Qt::CaseInsensitive) == 0;
                              }),
               users.end());
-          if (m_activeServer == srv && m_activeChannel == channel)
+          if (isViewing(srv, channel))
             emit channelUsersChanged(channelUsers());
         }
       });
@@ -861,7 +896,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           [this, conn](const QString &oldNick, const QString &newNick) {
             QString srv = serverNameFor(conn);
             QString text = oldNick + " is now known as " + newNick;
-            if (oldNick == conn->nickname() || newNick == conn->nickname()) {
+            if (ircSame(oldNick, conn->nickname()) || ircSame(newNick, conn->nickname())) {
               emit currentNickChanged(conn->nickname());
             }
             // Update nick in all channel user lists on this server
@@ -869,7 +904,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             // is present
             bool emitUpdate = false;
             for (auto it = m_users.begin(); it != m_users.end(); ++it) {
-              if (it.key().server != srv)
+              if (!ircSame(it.key().server, srv))
                 continue;
               auto &users = it.value();
               for (int i = 0; i < users.size(); i++) {
@@ -878,8 +913,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                 if (bare.compare(oldNick, Qt::CaseInsensitive) == 0) {
                   users[i] = prefix + newNick;
                   appendToChannel(srv, it.key().channel, "system", text);
-                  if (m_activeServer == srv &&
-                      m_activeChannel == it.key().channel) {
+                  if (isViewing(srv, it.key().channel)) {
                     emitUpdate = true;
                     if (m_msgModel)
                       m_msgModel->addMessage("system", text);
@@ -900,8 +934,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             m_topics[key] = topic;
             QString text = "Topic for " + channel + ": " + topic;
             appendToChannel(srv, channel, "system", text);
-            if (m_msgModel && m_activeServer == srv &&
-                m_activeChannel == channel) {
+            if (m_msgModel && isViewing(srv, channel)) {
               m_msgModel->addMessage("system", text);
               emit channelTopicChanged(topic);
             }
@@ -921,7 +954,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         text += " on " + target;
         QString dest = target.startsWith('#') ? target : srv;
         appendToChannel(srv, dest, "system", text);
-        if (m_msgModel && m_activeServer == srv && m_activeChannel == dest) {
+        if (m_msgModel && isViewing(srv, dest)) {
           m_msgModel->addMessage("system", text);
         }
 
@@ -1027,7 +1060,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           }
 
           // Re-emit sorted list if active channel
-          if (m_activeServer == srv && m_activeChannel == target) {
+          if (isViewing(srv, target)) {
             emit channelUsersChanged(channelUsers());
           }
         }
@@ -1055,8 +1088,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             if (command == "ACTION") {
               text = "* " + nick + " " + args;
               appendToChannel(srv, channel, "action", text);
-              if (m_msgModel && m_activeServer == srv &&
-                  m_activeChannel == channel) {
+              if (m_msgModel && isViewing(srv, channel)) {
                 m_msgModel->addMessage("action", text);
               }
             } else if (command == "DCC" && m_dccManager) {
@@ -1083,13 +1115,14 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                   quint16 port = parts[1].toUShort();
                   qint64 size = parts[2].toLongLong();
                   int token = parts.size() > 3 ? parts[3].toInt() : 0;
+                  refreshDccSettings();
                   m_dccManager->setConnection(conn);
                   m_dccManager->handleDccSend(nick, fileName, ip, port, size, token);
                   // Show in server buffer
                   text = "DCC SEND offer from " + nick + ": " + fileName +
                          " (" + DccTransfer::formatSize(size) + ")";
                   appendToChannel(srv, srv, "system", text);
-                  if (m_msgModel && m_activeServer == srv && m_activeChannel == srv)
+                  if (m_msgModel && isViewing(srv, srv))
                     m_msgModel->addMessage("system", text);
                 }
               }
@@ -1097,7 +1130,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
               text = "CTCP " + command + " from " + nick +
                      (args.isEmpty() ? "" : ": " + args);
               appendToChannel(srv, srv, "system", text);
-              if (m_msgModel && m_activeServer == srv && m_activeChannel == srv)
+              if (m_msgModel && isViewing(srv, srv))
                 m_msgModel->addMessage("system", text);
             }
           });
@@ -1109,7 +1142,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             ChannelKey key{srv, channel};
             m_users[key] = names;
             // Emit if this is the active channel
-            if (m_activeServer == srv && m_activeChannel == channel) {
+            if (isViewing(srv, channel)) {
               emit channelUsersChanged(channelUsers());
             }
           });
@@ -1120,6 +1153,10 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
       [this, conn](int code, const QStringList &params,
                    const QString &trailing) {
         QString srv = serverNameFor(conn);
+        // A replaced connection is no longer in the map. Drop the event
+        // instead of filing it under a fake "unknown" server.
+        if (srv.isEmpty())
+          return;
 
         // ── WHOIS replies (311–319, 330, 338, 378, 671) ──
         // Accumulate all WHOIS lines into a buffer, then display as a
@@ -1172,31 +1209,22 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             line += " | Signed on: " + signonTime;
           m_whoisBuffer[key] << line;
         } else if (code == 318) {
-          // RPL_ENDOFWHOIS — flush the accumulated WHOIS block
+          // RPL_ENDOFWHOIS — flush the accumulated WHOIS block onto this
+          // server's own buffer, never another server's active channel.
           QString nick = params.value(0);
           QString key = srv + "\n" + nick.toLower();
-          QString ch = m_activeChannel.isEmpty() ? srv : m_activeChannel;
 
           if (m_whoisBuffer.contains(key) && !m_whoisBuffer[key].isEmpty()) {
-            // Display as a structured block with separator
             QString sep = "━━━━━━━━ WHOIS " + nick + " ━━━━━━━━";
-            if (m_msgModel) m_msgModel->addMessage("system", sep);
-            appendToChannel(srv, ch, "system", sep);
-
-            for (const QString &line : m_whoisBuffer[key]) {
-              if (m_msgModel) m_msgModel->addMessage("system", line);
-              appendToChannel(srv, ch, "system", line);
-            }
-
-            QString endSep = "━━━━━━━━ End of WHOIS ━━━━━━━━";
-            if (m_msgModel) m_msgModel->addMessage("system", endSep);
-            appendToChannel(srv, ch, "system", endSep);
+            showOnOriginServer(srv, "system", sep);
+            for (const QString &line : m_whoisBuffer[key])
+              showOnOriginServer(srv, "system", line);
+            showOnOriginServer(srv, "system",
+                               "━━━━━━━━ End of WHOIS ━━━━━━━━");
             m_whoisBuffer.remove(key);
           } else {
-            // No data accumulated (shouldn't happen normally)
-            QString text = "[WHOIS] No information for " + nick;
-            if (m_msgModel) m_msgModel->addMessage("system", text);
-            appendToChannel(srv, ch, "system", text);
+            showOnOriginServer(srv, "system",
+                               "[WHOIS] No information for " + nick);
           }
         } else if (code == 319) {
           // RPL_WHOISCHANNELS: <nick> :<channels>
@@ -1236,10 +1264,10 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           // Store the mode string for display in the topic bar
           ChannelKey key{srv, channel};
           m_modes[key] = modes;
-          if (m_activeServer == srv && m_activeChannel == channel)
+          if (isViewing(srv, channel))
             emit channelModesChanged(modes);
           appendToChannel(srv, channel, "system", text);
-          if (m_msgModel && m_activeServer == srv && m_activeChannel == channel)
+          if (m_msgModel && isViewing(srv, channel))
             m_msgModel->addMessage("system", text);
         } else if (code == 329) {
           // RPL_CREATIONTIME: <channel> <timestamp>
@@ -1249,7 +1277,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
               "ddd MMM d hh:mm:ss yyyy");
           QString text = "Channel " + channel + " created on " + timeStr;
           appendToChannel(srv, channel, "system", text);
-          if (m_msgModel && m_activeServer == srv && m_activeChannel == channel)
+          if (m_msgModel && isViewing(srv, channel))
             m_msgModel->addMessage("system", text);
         } else if (code == 314) {
           // RPL_WHOWASUSER
@@ -1258,47 +1286,30 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           QString host = params.value(3);
           QString text = "[WHOWAS] " + nick + " was " + user + "@" + host +
                          " : " + trailing;
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
+          showOnOriginServer(srv, "system", text);
         }
 
-        // RPL_UNAWAY (305) and RPL_NOWAWAY (306) — track away state
+        // RPL_UNAWAY (305) and RPL_NOWAWAY (306) — per-server away state
         else if (code == 305) {
-          // You are no longer marked as being away
-          m_isAway = false;
-          emit awayStateChanged(false);
+          const int logged = m_awayByServer.value(srv).log.size();
+          setServerAway(srv, false, false);
           QString text = trailing.isEmpty()
                              ? "You are no longer marked as being away"
                              : trailing;
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
-          // Show away log summary if there were messages
-          if (!m_awayLog.isEmpty()) {
-            if (m_msgModel)
-              m_msgModel->addMessage(
-                  "system", "You have " + QString::number(m_awayLog.size()) +
-                                " message(s) in your away log. Use View > Away "
-                                "Log to see them.");
+          showOnOriginServer(srv, "system", text);
+          if (logged > 0) {
+            showOnOriginServer(
+                srv, "system",
+                "You have " + QString::number(logged) +
+                    " message(s) in your away log. Use View > Away "
+                    "Log to see them.");
           }
         } else if (code == 306) {
-          // You have been marked as being away
-          m_isAway = true;
-          m_awayLog.clear();
-          emit awayStateChanged(true);
+          setServerAway(srv, true, true);
           QString text = trailing.isEmpty()
                              ? "You have been marked as being away"
                              : trailing;
-          appendToChannel(srv,
-                          m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                          "system", text);
-          if (m_msgModel)
-            m_msgModel->addMessage("system", text);
+          showOnOriginServer(srv, "system", text);
         }
 
         // RPL_AWAY (301) — user is away
@@ -1308,12 +1319,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           if (m_whoisBuffer.contains(key)) {
             m_whoisBuffer[key] << "  Away: " + trailing;
           } else {
-            QString text = nick + " is away: " + trailing;
-            appendToChannel(srv,
-                            m_activeChannel.isEmpty() ? srv : m_activeChannel,
-                            "system", text);
-            if (m_msgModel)
-              m_msgModel->addMessage("system", text);
+            showOnOriginServer(srv, "system", nick + " is away: " + trailing);
           }
         }
 
@@ -1340,7 +1346,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                 ? QStringLiteral(" is online (notify)")
                 : QStringLiteral(" is offline (notify)"));
             appendToChannel(srv, srv, "system", text);
-            if (m_msgModel && m_activeServer == srv)
+            if (m_msgModel && ircSame(m_activeServer, srv))
               m_msgModel->addMessage("system", text);
             if (online)
               emit notifyUser(QStringLiteral("Notify"), text, false, false);
@@ -1373,8 +1379,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                  code == 253 || code == 254 || code == 255 || code == 265 ||
                  code == 266) {
           appendToChannel(srv, srv, "system", trailing);
-          if (m_activeServer == srv &&
-              (m_activeChannel.isEmpty() || m_activeChannel == srv)) {
+          if (ircSame(m_activeServer, srv) &&
+              (m_activeChannel.isEmpty() || ircSame(m_activeChannel, srv))) {
             if (m_msgModel)
               m_msgModel->addMessage("system", trailing);
           }
@@ -1398,7 +1404,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             }
           }
           appendToChannel(srv, dest, "error", text);
-          if (m_msgModel && m_activeServer == srv && m_activeChannel == dest)
+          if (m_msgModel && isViewing(srv, dest))
             m_msgModel->addMessage("error", text);
         }
       });
@@ -1408,6 +1414,9 @@ void IRCConnectionManager::appendToChannel(const QString &server,
                                            const QString &channel,
                                            const QString &type,
                                            const QString &text) {
+  if (server.isEmpty() || channel.isEmpty())
+    return;
+
   // Make sure scrollback is populated into history before we start appending
   // new messages
   ensureScrollbackLoaded(server, channel);
@@ -1419,25 +1428,14 @@ void IRCConnectionManager::appendToChannel(const QString &server,
   msg.timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
   auto &hist = m_history[key];
   hist.append(msg);
-
-  // Enforce per-channel history cap to prevent unbounded memory growth
-  int maxHistory = kMaxHistoryPerChannel;
-  if (m_settings) {
-    maxHistory = m_settings->getInt("ui/maxScrollback", kMaxHistoryPerChannel);
-    if (maxHistory < 100)
-      maxHistory = 100;
-  }
-  if (hist.size() > maxHistory) {
-    int excess = hist.size() - maxHistory;
-    hist.remove(0, excess);
-  }
+  trimHistory(hist);
 
   // Log to file
   if (m_logger)
     m_logger->log(server, channel, type, text);
 
   // Track unread state for non-active channels
-  bool isActive = (server == m_activeServer && channel == m_activeChannel);
+  bool isActive = isViewing(server, channel);
   if (!isActive && (type == "chat" || type == "action")) {
     QString ukey = unreadKey(server, channel);
     bool changed = false;
@@ -1501,20 +1499,21 @@ void IRCConnectionManager::appendToChannel(const QString &server,
     }
     extractUrls(text, urlNick, channel);
 
-    // ── Away log — capture messages while away ──
-    if (m_isAway) {
+    // ── Away log — only for the server that is actually away ──
+    auto awayIt = m_awayByServer.find(server);
+    if (awayIt != m_awayByServer.end() && awayIt->away) {
       AwayLogEntry entry;
       entry.timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
       entry.nick = urlNick;
       entry.channel = channel;
       entry.message = text;
-      m_awayLog.append(entry);
-      // Evict oldest entries when over the cap
-      if (m_awayLog.size() > kMaxAwayLogEntries) {
-        int excess = m_awayLog.size() - kMaxAwayLogEntries;
-        m_awayLog.remove(0, excess);
+      awayIt->log.append(entry);
+      if (awayIt->log.size() > kMaxAwayLogEntries) {
+        int excess = awayIt->log.size() - kMaxAwayLogEntries;
+        awayIt->log.remove(0, excess);
       }
-      emit awayLogUpdated();
+      if (ircSame(m_activeServer, server))
+        emit awayLogUpdated();
     }
   }
 }
@@ -1583,7 +1582,7 @@ void IRCConnectionManager::cleanupChannelState(const QString &server,
 }
 
 QString IRCConnectionManager::serverNameFor(IrcConnection *conn) const {
-  return m_connToName.value(conn, "unknown");
+  return m_connToName.value(conn);
 }
 
 bool IRCConnectionManager::hasUnread(const QString &server,
@@ -1862,7 +1861,7 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
     QString msg = "Auto-reconnect: max attempts (" +
                   QString::number(maxAttempts) + ") reached for " + host;
     appendToChannel(host, host, "system", msg);
-    if (m_msgModel && m_activeServer == host)
+    if (m_msgModel && ircSame(m_activeServer, host))
       m_msgModel->addMessage("system", msg);
     return;
   }
@@ -1873,16 +1872,12 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
                 QString::number(ri.attempts) + "/" +
                 (maxAttempts > 0 ? QString::number(maxAttempts) : "∞") + ")";
   appendToChannel(host, host, "system", msg);
-  if (m_msgModel && m_activeServer == host)
+  if (m_msgModel && ircSame(m_activeServer, host))
     m_msgModel->addMessage("system", msg);
 
   // Clean up old connection
-  IrcConnection *oldConn = connectionForServer(host);
-  if (oldConn) {
-    m_connections.removeOne(oldConn);
-    m_connToName.remove(oldConn);
-    oldConn->deleteLater();
-  }
+  if (IrcConnection *oldConn = connectionForServer(host))
+    retireConnection(oldConn);
 
   // Set up a timer
   if (ri.timer) {
@@ -1919,6 +1914,8 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
 
     m_activeServer = host;
     m_activeChannel = host;
+    if (m_msgModel)
+      m_msgModel->setBufferContext(host, host);
 
     QString reconnMsg =
         "Reconnecting to " + info.host + ":" + QString::number(info.port) + "...";
@@ -1926,7 +1923,14 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
     if (m_msgModel)
       m_msgModel->addMessage("system", reconnMsg);
 
-    applyProxySettings(conn);
+    const QString proxyErr = applyProxySettings(conn);
+    if (!proxyErr.isEmpty()) {
+      appendToChannel(host, host, "system", proxyErr);
+      if (m_msgModel && m_activeServer == host)
+        m_msgModel->addMessage("system", proxyErr);
+      qWarning() << "[Manager]" << proxyErr;
+      return;
+    }
     if (m_settings)
       conn->setAllowSelfSignedCerts(
           m_settings->getBool("conn/allowSelfSignedCerts", false));
@@ -1989,8 +1993,15 @@ void IRCConnectionManager::executePerformCommands(const QString &server) {
 void IRCConnectionManager::extractUrls(const QString &text, const QString &nick,
                                        const QString &channel) {
   // Check if URL grabbing is enabled
-  if (m_settings && !m_settings->getBool("url/autoGrab", true))
-    return;
+  if (m_settings) {
+    bool grab = true;
+    if (m_settings->contains(QStringLiteral("url/autoGrab")))
+      grab = m_settings->getBool(QStringLiteral("url/autoGrab"), true);
+    else if (m_settings->contains(QStringLiteral("url/grabber")))
+      grab = m_settings->getBool(QStringLiteral("url/grabber"), true);
+    if (!grab)
+      return;
+  }
 
   static QRegularExpression urlRe(R"((https?://[^\s<>"'\)\]]+))",
                                   QRegularExpression::CaseInsensitiveOption);
@@ -2034,7 +2045,10 @@ void IRCConnectionManager::clearGrabbedUrls() { m_grabbedUrls.clear(); }
 
 QVariantList IRCConnectionManager::awayLog() const {
   QVariantList result;
-  for (const auto &e : m_awayLog) {
+  const auto it = m_awayByServer.constFind(m_activeServer);
+  if (it == m_awayByServer.constEnd())
+    return result;
+  for (const auto &e : it->log) {
     QVariantMap m;
     m["timestamp"] = e.timestamp;
     m["nick"] = e.nick;
@@ -2046,52 +2060,151 @@ QVariantList IRCConnectionManager::awayLog() const {
 }
 
 void IRCConnectionManager::clearAwayLog() {
-  m_awayLog.clear();
+  auto it = m_awayByServer.find(m_activeServer);
+  if (it == m_awayByServer.end())
+    return;
+  it->log.clear();
   emit awayLogUpdated();
+}
+
+bool IRCConnectionManager::isAway() const {
+  const auto it = m_awayByServer.constFind(m_activeServer);
+  return it != m_awayByServer.constEnd() && it->away;
+}
+
+void IRCConnectionManager::setServerAway(const QString &server, bool away,
+                                         bool clearLog) {
+  if (server.isEmpty())
+    return;
+  AwayState &st = m_awayByServer[server];
+  st.away = away;
+  if (clearLog)
+    st.log.clear();
+  if (ircSame(m_activeServer, server))
+    emit awayStateChanged(away);
+}
+
+bool IRCConnectionManager::isViewing(const QString &server,
+                                     const QString &channel) const {
+  return ircSame(m_activeServer, server) && ircSame(m_activeChannel, channel);
+}
+
+void IRCConnectionManager::showOnOriginServer(const QString &server,
+                                              const QString &type,
+                                              const QString &text) {
+  if (server.isEmpty())
+    return;
+  // If the user is looking at this server, keep the reply in that buffer.
+  // Otherwise file it on the server tab so it cannot land in another
+  // network's active channel.
+  const QString dest =
+      (ircSame(m_activeServer, server) && !m_activeChannel.isEmpty())
+          ? m_activeChannel
+          : server;
+  appendToChannel(server, dest, type, text);
+  if (m_msgModel && isViewing(server, dest))
+    m_msgModel->addMessage(type, text);
+}
+
+void IRCConnectionManager::retireConnection(IrcConnection *conn) {
+  if (!conn)
+    return;
+  // Drop slots before the object leaves the name map, so a late numeric
+  // cannot be logged as server "unknown".
+  QObject::disconnect(conn, nullptr, this, nullptr);
+  m_connections.removeOne(conn);
+  m_connToName.remove(conn);
+  m_lagState.remove(conn);
+  conn->deleteLater();
+}
+
+void IRCConnectionManager::trimHistory(QVector<StoredMessage> &hist) {
+  int maxHistory = kMaxHistoryPerChannel;
+  if (m_settings) {
+    maxHistory = m_settings->getInt("ui/maxScrollback", kMaxHistoryPerChannel);
+    if (maxHistory < 100)
+      maxHistory = 100;
+  }
+  if (hist.size() > maxHistory) {
+    const int excess = hist.size() - maxHistory;
+    hist.remove(0, excess);
+  }
+}
+
+void IRCConnectionManager::rememberEmbed(const QString &server,
+                                         const QString &channel,
+                                         const QString &html) {
+  if (server.isEmpty() || channel.isEmpty() || html.isEmpty())
+    return;
+  ensureScrollbackLoaded(server, channel);
+  ChannelKey key{server, channel};
+  StoredMessage msg;
+  msg.type = QStringLiteral("embed");
+  msg.text = html;
+  msg.timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
+  auto &hist = m_history[key];
+  hist.append(msg);
+  trimHistory(hist);
+}
+
+void IRCConnectionManager::refreshDccSettings() {
+  if (!m_dccManager)
+    return;
+  m_dccManager->setDownloadDir(dccDownloadDirectory(m_settings));
+  if (!m_settings)
+    return;
+  m_dccManager->setAutoAccept(
+      m_settings->getBool(QStringLiteral("dcc/autoAccept"), false));
+  m_dccManager->setMaxFileSize(dccMaxFileBytes(m_settings));
+}
+
+void IRCConnectionManager::openExternalUrl(const QString &url) {
+  if (url.isEmpty())
+    return;
+  if (m_settings && !m_settings->getBool(QStringLiteral("url/clickable"), true))
+    return;
+  const QString cmd =
+      m_settings ? m_settings->getString(QStringLiteral("url/browserCmd"))
+                 : QString();
+  if (cmd.isEmpty() || cmd == QLatin1String("xdg-open %s")) {
+    QDesktopServices::openUrl(QUrl(url));
+    return;
+  }
+  QStringList parts = QProcess::splitCommand(cmd);
+  bool sawPlaceholder = false;
+  for (QString &part : parts) {
+    if (part.contains(QLatin1String("%s"))) {
+      part.replace(QLatin1String("%s"), url);
+      sawPlaceholder = true;
+    }
+  }
+  if (!sawPlaceholder)
+    parts.append(url);
+  if (parts.isEmpty())
+    return;
+  const QString program = parts.takeFirst();
+  QProcess::startDetached(program, parts);
 }
 
 // ═══════════════════════════════════════════════════════════════════
 //  Proxy Support
 // ═══════════════════════════════════════════════════════════════════
 
-void IRCConnectionManager::applyProxySettings(IrcConnection *conn) {
-  if (!m_settings || !conn)
-    return;
+QString IRCConnectionManager::applyProxySettings(IrcConnection *conn) {
+  if (!conn)
+    return QStringLiteral("No connection");
 
-  int typeIdx = m_settings->getInt("conn/proxyTypeIndex", 0);
-  if (typeIdx <= 0) {
+  const NetSafety::ProxyResolution resolved = NetSafety::proxyFromSettings();
+  if (resolved.result == NetSafety::ProxyResolution::Result::Rejected) {
     conn->setProxy(QNetworkProxy::NoProxy);
-    return;
+    return resolved.error;
   }
-
-  QString host = m_settings->getString("conn/proxyHost", "").trimmed();
-  int port = m_settings->getInt("conn/proxyPort", 1080);
-
-  if (host.isEmpty())
-    return;
-
-  QNetworkProxy::ProxyType proxyType = QNetworkProxy::NoProxy;
-  switch (typeIdx) {
-  case 1:
-    proxyType = QNetworkProxy::Socks5Proxy;
-    break; // SOCKS4 not in Qt, fallback to SOCKS5
-  case 2:
-    proxyType = QNetworkProxy::Socks5Proxy;
-    break; // SOCKS5
-  case 3:
-    proxyType = QNetworkProxy::HttpProxy;
-    break; // HTTP CONNECT
-  default:
-    return;
+  if (resolved.result == NetSafety::ProxyResolution::Result::UseProxy) {
+    const QNetworkProxy &p = resolved.proxy;
+    conn->setProxy(p.type(), p.hostName(), static_cast<quint16>(p.port()), p.user(),
+                   p.password());
+  } else {
+    conn->setProxy(QNetworkProxy::NoProxy);
   }
-
-  // Authentication (user/pass from settings if proxy auth is enabled)
-  bool useAuth = m_settings->getBool("conn/proxyAuth", false);
-  QString user, pass;
-  if (useAuth) {
-    user = m_settings->getString("conn/proxyUser", "");
-    pass = m_settings->getString("conn/proxyPass", "");
-  }
-
-  conn->setProxy(proxyType, host, static_cast<quint16>(port), user, pass);
+  return {};
 }

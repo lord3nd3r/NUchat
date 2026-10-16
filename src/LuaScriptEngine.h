@@ -46,9 +46,10 @@ public:
     Q_INVOKABLE QString scriptsDirectory() const { return m_directory; }
     Q_INVOKABLE QString scriptInfo(const QString &filename) const;
 
-    // Called by IRCConnectionManager
-    bool handleCommand(const QString &command, const QStringList &args);
-    bool handleServerLine(IrcConnection *conn, const QString &rawLine);
+    // Returns the combined EAT mask (see ScriptEat.h).
+    int handleCommand(const QString &command, const QStringList &args);
+    int handleServerLine(IrcConnection *conn, const QString &rawLine);
+    int hookCount() const { return m_hooks.size(); }
 
     // ── API called from Lua C functions ──
     void command(const QString &cmd);

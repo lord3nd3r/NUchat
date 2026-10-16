@@ -5,9 +5,12 @@ extern "C" {
 }
 
 #include "LuaScriptEngine.h"
+#include "HookOrder.h"
 #include "IRCConnectionManager.h"
 #include "IrcConnection.h"
+#include "IrcLineParse.h"
 #include "MessageModel.h"
+#include "ScriptEat.h"
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
@@ -47,10 +50,20 @@ static void *luaLimitedAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
 LuaScriptEngine *LuaScriptEngine::s_instance = nullptr;
 
 // Eat constants (same as HexChat/Python engine)
-static constexpr int EAT_NONE    = 0;
-static constexpr int EAT_HEXCHAT = 1;
-static constexpr int EAT_PLUGIN  = 2;
-static constexpr int EAT_ALL     = 3;
+static constexpr int EAT_NONE = NUCHAT_EAT_NONE;
+static constexpr int EAT_HEXCHAT = NUCHAT_EAT_HEXCHAT;
+static constexpr int EAT_PLUGIN = NUCHAT_EAT_PLUGIN;
+static constexpr int EAT_ALL = NUCHAT_EAT_ALL;
+
+static void releaseTimer(QTimer *&timer) {
+    if (!timer)
+        return;
+    QTimer *t = timer;
+    timer = nullptr;
+    t->stop();
+    t->disconnect();
+    t->deleteLater();
+}
 
 // Priority constants (HexChat compat)
 static constexpr int PRI_HIGHEST = 127;
@@ -275,12 +288,8 @@ void LuaScriptEngine::initLua()
 void LuaScriptEngine::shutdownLua()
 {
     // Clean up timer hooks
-    for (auto &h : m_hooks) {
-        if (h.timer) {
-            h.timer->stop();
-            delete h.timer;
-        }
-    }
+    for (auto &h : m_hooks)
+        releaseTimer(h.timer);
     m_hooks.clear();
 
     if (m_L) {
@@ -399,10 +408,7 @@ void LuaScriptEngine::unloadScript(const QString &filename)
     // Remove all hooks registered by this script
     for (int i = m_hooks.size() - 1; i >= 0; --i) {
         if (m_hooks[i].scriptFile == filename) {
-            if (m_hooks[i].timer) {
-                m_hooks[i].timer->stop();
-                delete m_hooks[i].timer;
-            }
+            releaseTimer(m_hooks[i].timer);
             luaL_unref(m_L, LUA_REGISTRYINDEX, m_hooks[i].luaRef);
             if (m_hooks[i].userdataRef != LUA_NOREF)
                 luaL_unref(m_L, LUA_REGISTRYINDEX, m_hooks[i].userdataRef);
@@ -536,33 +542,36 @@ int LuaScriptEngine::hookTimer(int timeout, int callbackRef, int userdataRef)
     timer->setInterval(timeout);
     int hookId = h.id;
     connect(timer, &QTimer::timeout, this, [this, hookId]() {
-        for (auto &hook : m_hooks) {
-            if (hook.id == hookId && hook.type == LuaHook::Timer) {
-                lua_rawgeti(m_L, LUA_REGISTRYINDEX, hook.luaRef);
-                if (hook.userdataRef != LUA_NOREF)
-                    lua_rawgeti(m_L, LUA_REGISTRYINDEX, hook.userdataRef);
-                else
-                    lua_pushnil(m_L);
-
-                if (lua_pcall(m_L, 1, 1, 0) != LUA_OK) {
-                    qWarning() << "Lua timer callback error:" << lua_tostring(m_L, -1);
-                    lua_pop(m_L, 1);
-                } else {
-                    // If callback returns 0 or false, remove the timer
-                    int keep = 1;
-                    if (lua_isboolean(m_L, -1))
-                        keep = lua_toboolean(m_L, -1);
-                    else if (lua_isinteger(m_L, -1))
-                        keep = (int)lua_tointeger(m_L, -1);
-                    lua_pop(m_L, 1);
-                    if (!keep) {
-                        unhook(hookId);
-                        return;
-                    }
-                }
-                break;
-            }
+        int luaRef = LUA_NOREF;
+        int udRef = LUA_NOREF;
+        if (const LuaHook *hook = findHookById(m_hooks, hookId)) {
+            if (hook->type != LuaHook::Timer)
+                return;
+            luaRef = hook->luaRef;
+            udRef = hook->userdataRef;
         }
+        if (luaRef == LUA_NOREF || !m_L)
+            return;
+
+        lua_rawgeti(m_L, LUA_REGISTRYINDEX, luaRef);
+        if (udRef != LUA_NOREF)
+            lua_rawgeti(m_L, LUA_REGISTRYINDEX, udRef);
+        else
+            lua_pushnil(m_L);
+
+        if (lua_pcall(m_L, 1, 1, 0) != LUA_OK) {
+            qWarning() << "Lua timer callback error:" << lua_tostring(m_L, -1);
+            lua_pop(m_L, 1);
+            return;
+        }
+        int keep = 1;
+        if (lua_isboolean(m_L, -1))
+            keep = lua_toboolean(m_L, -1);
+        else if (lua_isinteger(m_L, -1))
+            keep = (int)lua_tointeger(m_L, -1);
+        lua_pop(m_L, 1);
+        if (!keep)
+            unhook(hookId);
     });
     timer->start();
     h.timer = timer;
@@ -574,10 +583,7 @@ void LuaScriptEngine::unhook(int hookId)
 {
     for (int i = 0; i < m_hooks.size(); ++i) {
         if (m_hooks[i].id == hookId) {
-            if (m_hooks[i].timer) {
-                m_hooks[i].timer->stop();
-                delete m_hooks[i].timer;
-            }
+            releaseTimer(m_hooks[i].timer);
             luaL_unref(m_L, LUA_REGISTRYINDEX, m_hooks[i].luaRef);
             if (m_hooks[i].userdataRef != LUA_NOREF)
                 luaL_unref(m_L, LUA_REGISTRYINDEX, m_hooks[i].userdataRef);
@@ -591,107 +597,86 @@ void LuaScriptEngine::unhook(int hookId)
 //  Command / server line dispatch
 // ──────────────────────────────────────────────────────────────
 
-bool LuaScriptEngine::handleCommand(const QString &command, const QStringList &args)
+static int callLuaHook(lua_State *L, int luaRef, int userdataRef, const QStringList &parts)
 {
-    if (!m_L) return false;
+    lua_rawgeti(L, LUA_REGISTRYINDEX, luaRef);
 
-    QString cmdUpper = command.toUpper();
-    for (auto &hook : m_hooks) {
-        if (hook.type != LuaHook::Command || hook.name != cmdUpper)
-            continue;
-
-        lua_rawgeti(m_L, LUA_REGISTRYINDEX, hook.luaRef);
-
-        // Build word table (1-indexed)
-        lua_newtable(m_L);
-        for (int i = 0; i < args.size(); ++i) {
-            lua_pushstring(m_L, args[i].toUtf8().constData());
-            lua_rawseti(m_L, -2, i + 1);
-        }
-
-        // Build word_eol table (1-indexed)
-        lua_newtable(m_L);
-        for (int i = 0; i < args.size(); ++i) {
-            QStringList tail = args.mid(i);
-            lua_pushstring(m_L, tail.join(' ').toUtf8().constData());
-            lua_rawseti(m_L, -2, i + 1);
-        }
-
-        // Userdata or nil
-        if (hook.userdataRef != LUA_NOREF)
-            lua_rawgeti(m_L, LUA_REGISTRYINDEX, hook.userdataRef);
-        else
-            lua_pushnil(m_L);
-
-        if (lua_pcall(m_L, 3, 1, 0) != LUA_OK) {
-            qWarning() << "Lua command hook error:" << lua_tostring(m_L, -1);
-            lua_pop(m_L, 1);
-            continue;
-        }
-
-        int ret = EAT_NONE;
-        if (lua_isinteger(m_L, -1))
-            ret = (int)lua_tointeger(m_L, -1);
-        lua_pop(m_L, 1);
-
-        if (ret >= EAT_HEXCHAT)
-            return true;
+    lua_newtable(L);
+    for (int i = 0; i < parts.size(); ++i) {
+        lua_pushstring(L, parts[i].toUtf8().constData());
+        lua_rawseti(L, -2, i + 1);
     }
-    return false;
+
+    lua_newtable(L);
+    for (int i = 0; i < parts.size(); ++i) {
+        const QStringList tail = parts.mid(i);
+        lua_pushstring(L, tail.join(QLatin1Char(' ')).toUtf8().constData());
+        lua_rawseti(L, -2, i + 1);
+    }
+
+    if (userdataRef != LUA_NOREF)
+        lua_rawgeti(L, LUA_REGISTRYINDEX, userdataRef);
+    else
+        lua_pushnil(L);
+
+    if (lua_pcall(L, 3, 1, 0) != LUA_OK) {
+        qWarning() << "Lua hook error:" << lua_tostring(L, -1);
+        lua_pop(L, 1);
+        return EAT_NONE;
+    }
+
+    int ret = EAT_NONE;
+    if (lua_isinteger(L, -1))
+        ret = (int)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    return ret;
 }
 
-bool LuaScriptEngine::handleServerLine(IrcConnection * /*conn*/, const QString &rawLine)
+static int dispatchLuaHooks(lua_State *L, QVector<LuaHook> &hooks, LuaHook::Type type,
+                            const QString &name, const QStringList &parts, bool rawLineWildcard)
 {
-    if (!m_L) return false;
+    if (!L)
+        return EAT_NONE;
 
-    // Parse the numeric/command from the raw line
-    QStringList parts = rawLine.split(' ');
-    if (parts.size() < 2) return false;
-    QString cmd = parts[1].toUpper();
-
-    for (auto &hook : m_hooks) {
-        if (hook.type != LuaHook::Server)
-            continue;
-        if (hook.name != cmd && hook.name != "RAW LINE")
-            continue;
-
-        lua_rawgeti(m_L, LUA_REGISTRYINDEX, hook.luaRef);
-
-        // Build word table
-        lua_newtable(m_L);
-        for (int i = 0; i < parts.size(); ++i) {
-            lua_pushstring(m_L, parts[i].toUtf8().constData());
-            lua_rawseti(m_L, -2, i + 1);
-        }
-
-        // Build word_eol table
-        lua_newtable(m_L);
-        for (int i = 0; i < parts.size(); ++i) {
-            QStringList tail = parts.mid(i);
-            lua_pushstring(m_L, tail.join(' ').toUtf8().constData());
-            lua_rawseti(m_L, -2, i + 1);
-        }
-
-        if (hook.userdataRef != LUA_NOREF)
-            lua_rawgeti(m_L, LUA_REGISTRYINDEX, hook.userdataRef);
-        else
-            lua_pushnil(m_L);
-
-        if (lua_pcall(m_L, 3, 1, 0) != LUA_OK) {
-            qWarning() << "Lua server hook error:" << lua_tostring(m_L, -1);
-            lua_pop(m_L, 1);
-            continue;
-        }
-
-        int ret = EAT_NONE;
-        if (lua_isinteger(m_L, -1))
-            ret = (int)lua_tointeger(m_L, -1);
-        lua_pop(m_L, 1);
-
-        if (ret >= EAT_HEXCHAT)
+    const QVector<int> ids = orderedMatchingHookIds<LuaHook>(hooks, [&](const LuaHook &hook) {
+        if (hook.type != type)
+            return false;
+        if (hook.name == name)
             return true;
+        return rawLineWildcard && hook.name == QLatin1String("RAW LINE");
+    });
+
+    int eat = EAT_NONE;
+    for (int id : ids) {
+        const LuaHook *hook = findHookById(hooks, id);
+        if (!hook)
+            continue;
+        // Copy refs before the call. unhook() inside the callback frees the
+        // registry entries; the values already pushed by callLuaHook stay
+        // alive on the stack for the duration of the call.
+        const int luaRef = hook->luaRef;
+        const int udRef = hook->userdataRef;
+        const int ret = callLuaHook(L, luaRef, udRef, parts);
+        eat = foldEat(eat, ret);
+        if (eatStopsHooks(eat))
+            break;
     }
-    return false;
+    return eat;
+}
+
+int LuaScriptEngine::handleCommand(const QString &command, const QStringList &args)
+{
+    return dispatchLuaHooks(m_L, m_hooks, LuaHook::Command, command.toUpper(), args, false);
+}
+
+int LuaScriptEngine::handleServerLine(IrcConnection * /*conn*/, const QString &rawLine)
+{
+    if (!m_L)
+        return EAT_NONE;
+    const IrcLineView view = parseIrcLine(rawLine);
+    if (view.command.isEmpty() && view.parts.isEmpty())
+        return EAT_NONE;
+    return dispatchLuaHooks(m_L, m_hooks, LuaHook::Server, view.command, view.parts, true);
 }
 
 void LuaScriptEngine::openScriptsFolder()

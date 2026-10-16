@@ -186,7 +186,6 @@ Appears when right-clicking a URL in the chat area.
 | **Topic** | Edit channel topic |
 | **About** | Application info and version |
 | **Preferences** | Full settings editor (17 tabs — see below) |
-| **Emoji Picker** | Browse and insert emoji |
 | **Invite User** | Invite a user to the current channel |
 | **Server Password** | Set server password for connection |
 
@@ -203,12 +202,12 @@ Appears when right-clicking a URL in the chat area.
 | **User Info** | Primary nick + 3 alternates. Username, real name. Quit/part/away messages. |
 | **Connection** | Auto-reconnect (delay, max attempts). Auto-join. Proxy (SOCKS5, HTTP CONNECT; SOCKS4 is refused). Accept self-signed SSL certificates (`conn/allowSelfSignedCerts`) — hostname mismatches, self-signed certs, and untrusted issuers only. |
 | **SASL / Auth** | Auth method (PLAIN, EXTERNAL, SCRAM, ECDSA, NickServ, CERTFP). Certificate paths. |
-| **DCC** | Download folder. Auto-accept. Max file size. IP detection. Port range. |
-| **Logging** | Enable/disable. Directory. Format (Plain/HTML/JSON). PM logging. Per-channel files. |
+| **DCC** | Download folder. Auto-accept (public peers only, unless private-LAN peers are allowed). Max file size. IP detection. Port range. Loopback and non-unicast offers are rejected. Receives follow the proxy setting or fail closed. Active sends are refused while a proxy is on. |
+| **Logging** | Enable/disable, directory, format (Plain/HTML/JSON), PM logging, per-channel files. The dialog saves these keys. The logger does not read them: every channel is still written under the application config directory, with a 10 MB rotation. |
 | **Notifications** | Desktop notifications. Flash taskbar. Tray unread. Highlight on nick mention. Timeout. |
 | **Sounds** | Enable/disable. Per-event toggles (highlight, PM, connect). Custom beep command. |
 | **Auto-Replace** | Pattern/replacement rules for outgoing text. |
-| **URL Handlers** | Clickable URLs. Auto-grab. Custom browser command. Inline image previews (http/https only, 15 MB limit, image MIME types only; private/loopback addresses are blocked). |
+| **URL Handlers** | Clickable URLs. Auto-grab. Custom browser command. Inline image previews are off by default (http/https only, 15 MB limit). Private and special-use addresses are blocked, including after a redirect. A configured proxy that cannot be applied skips the fetch. |
 | **Text Events** | Format strings for join, part, quit, kick, nick change, topic, action, notice, CTCP. |
 | **Plugins** | Load/unload/reload C++ plugins. Plugin directory path. |
 | **Scripts** | Load/unload/reload scripts. Script editor. Script directory. |

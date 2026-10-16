@@ -1,0 +1,63 @@
+name: Linux ASan/UBSan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  asan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Cache ccache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ccache
+          key: ccache-linux-asan-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'src/**', 'tests/**', 'plugins/**', 'qml/**', 'cmake/**') }}
+          restore-keys: |
+            ccache-linux-asan-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential cmake ccache \
+            qt6-base-dev qt6-declarative-dev \
+            qml6-module-qtquick-controls qml6-module-qtquick-layouts \
+            qml6-module-qtquick-templates \
+            libgl1-mesa-dev \
+            liblua5.4-dev \
+            libhunspell-dev
+
+      # Python is left off. libpython is not built with ASan, and initializing
+      # an embedded interpreter under ASan/UBSan fails for reasons outside this
+      # tree. Lua and Hunspell stay enabled so the job still links those paths.
+      - name: Configure
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DNUCHAT_ENABLE_SANITIZERS=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Python3=ON \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Test
+        env:
+          # Qt and the C library are not instrumented. Leak detection reports
+          # their allocations. halt_on_error still fails the job on bugs in
+          # this tree.
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build --output-on-failure

@@ -1,8 +1,10 @@
 #include "DccManager.h"
 #include "IrcConnection.h"
+#include "NetSafety.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QHostAddress>
+#include <QSettings>
 #include <QUuid>
 #include <QtEndian>
 
@@ -14,10 +16,17 @@ DccTransfer::DccTransfer(QObject *parent) : QObject(parent) {
   id = QUuid::createUuid().toString(QUuid::Id128).left(8);
   m_speedTimer.setInterval(1000);
   connect(&m_speedTimer, &QTimer::timeout, this, &DccTransfer::updateSpeed);
+  m_idleTimer.setSingleShot(true);
+  connect(&m_idleTimer, &QTimer::timeout, this, &DccTransfer::onIdleTimeout);
 }
 
 DccTransfer::~DccTransfer() {
+  m_idleTimer.stop();
+  m_speedTimer.stop();
   if (m_file.isOpen()) m_file.close();
+  // A receive destroyed mid-transfer should not leave a partial file behind.
+  if (direction == Receive && state != Complete && !filePath.isEmpty())
+    QFile::remove(filePath);
   delete m_socket;
   delete m_server;
 }
@@ -70,14 +79,55 @@ void DccTransfer::updateSpeed() {
   emit progressUpdated();
 }
 
+void DccTransfer::armIdleTimer(int ms) { m_idleTimer.start(ms); }
+
+void DccTransfer::failTransfer(const QString &reason) {
+  if (state == Complete || state == Cancelled || state == Failed)
+    return;
+  state = Failed;
+  errorString = reason;
+  m_speedTimer.stop();
+  m_idleTimer.stop();
+  if (m_socket) m_socket->abort();
+  if (m_server) m_server->close();
+  if (m_file.isOpen()) m_file.close();
+  // Only downloads are ours to delete. A send uses the user's original file.
+  if (direction == Receive && !filePath.isEmpty())
+    QFile::remove(filePath);
+  emit stateChanged();
+}
+
+void DccTransfer::onIdleTimeout() {
+  if (state == Connecting)
+    failTransfer(QStringLiteral("Connection timed out"));
+  else if (state == Pending && direction == Send)
+    failTransfer(QStringLiteral("Timed out waiting for the peer to connect"));
+  else if (state == Transferring)
+    failTransfer(QStringLiteral("Transfer stalled"));
+}
+
 // ── Receive ──
 void DccTransfer::startReceive(const QString &downloadDir) {
   if (state != Pending) return;
 
-  // Sanitize filename
-  QString safeName = QFileInfo(fileName).fileName();
-  safeName.replace("..", "_").replace("/", "_").replace("\\", "_");
-  filePath = downloadDir + "/" + safeName;
+  // Manual accept is the opt-in for a private-LAN peer. Loopback and
+  // non-unicast addresses are still refused here.
+  const QString blocked = NetSafety::dccReceiveBlockReason(peerAddress, peerPort, true);
+  if (!blocked.isEmpty()) {
+    failTransfer(blocked);
+    return;
+  }
+
+  const NetSafety::ProxyResolution proxy = NetSafety::proxyFromSettings();
+  if (proxy.result == NetSafety::ProxyResolution::Result::Rejected) {
+    failTransfer(proxy.error);
+    return;
+  }
+
+  const QString safeName = NetSafety::sanitizeDccFileName(fileName);
+  QDir dir(downloadDir);
+  dir.mkpath(QStringLiteral("."));
+  filePath = dir.absoluteFilePath(safeName);
 
   // Avoid overwriting: append (1), (2), etc.
   if (QFile::exists(filePath)) {
@@ -85,8 +135,8 @@ void DccTransfer::startReceive(const QString &downloadDir) {
     QString ext = QFileInfo(filePath).suffix();
     int n = 1;
     while (QFile::exists(filePath)) {
-      filePath = downloadDir + "/" + base + "(" + QString::number(n++) + ")" +
-                 (ext.isEmpty() ? "" : "." + ext);
+      filePath = dir.absoluteFilePath(base + "(" + QString::number(n++) + ")" +
+                                       (ext.isEmpty() ? "" : "." + ext));
     }
   }
 
@@ -94,6 +144,7 @@ void DccTransfer::startReceive(const QString &downloadDir) {
   if (!m_file.open(QIODevice::WriteOnly)) {
     state = Failed;
     errorString = "Cannot open file for writing: " + m_file.errorString();
+    filePath.clear();
     emit stateChanged();
     return;
   }
@@ -107,20 +158,14 @@ void DccTransfer::startReceive(const QString &downloadDir) {
   connect(m_socket, &QTcpSocket::disconnected, this, &DccTransfer::onDisconnected);
   connect(m_socket, &QTcpSocket::errorOccurred, this, &DccTransfer::onError);
 
-  // Convert 32-bit int IP to QHostAddress
+  if (proxy.result == NetSafety::ProxyResolution::Result::UseProxy)
+    m_socket->setProxy(proxy.proxy);
+  else
+    m_socket->setProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+
   QHostAddress addr(peerAddress);
   m_socket->connectToHost(addr, peerPort);
-
-  // 30-second connection timeout
-  QTimer::singleShot(30000, this, [this]() {
-    if (state == Connecting) {
-      state = Failed;
-      errorString = "Connection timed out (30s)";
-      if (m_socket) m_socket->abort();
-      if (m_file.isOpen()) m_file.close();
-      emit stateChanged();
-    }
-  });
+  armIdleTimer(kConnectTimeoutMs);
 }
 
 void DccTransfer::onConnected() {
@@ -128,23 +173,24 @@ void DccTransfer::onConnected() {
   m_elapsed.start();
   m_lastBytes = 0;
   m_speedTimer.start();
+  armIdleTimer(kIdleTimeoutMs);
   emit stateChanged();
 }
 
 void DccTransfer::onDataReady() {
-  while (m_socket->bytesAvailable() > 0) {
+  armIdleTimer(kIdleTimeoutMs);
+  while (m_socket && m_socket->bytesAvailable() > 0) {
     QByteArray data = m_socket->read(CHUNK_SIZE);
-    m_file.write(data);
+    const qint64 wrote = m_file.write(data);
+    if (wrote != data.size()) {
+      failTransfer(QStringLiteral("Failed to write to disk"));
+      return;
+    }
     transferred += data.size();
     // A peer sending more than it offered is misbehaving — stop before it
     // can fill the disk (allow one chunk of slack for the final read)
     if (fileSize > 0 && transferred > fileSize + CHUNK_SIZE) {
-      state = Failed;
-      errorString = "Peer sent more data than the offered file size";
-      m_speedTimer.stop();
-      m_file.close();
-      m_socket->abort();
-      emit stateChanged();
+      failTransfer(QStringLiteral("Peer sent more data than the offered file size"));
       return;
     }
   }
@@ -155,8 +201,9 @@ void DccTransfer::onDataReady() {
   if (fileSize > 0 && transferred >= fileSize) {
     state = Complete;
     m_speedTimer.stop();
+    m_idleTimer.stop();
     m_file.close();
-    m_socket->disconnectFromHost();
+    if (m_socket) m_socket->disconnectFromHost();
     emit stateChanged();
   }
 
@@ -170,7 +217,30 @@ void DccTransfer::sendAck() {
 }
 
 // ── Send ──
-void DccTransfer::startSend(const QString &localPath, quint16 listenPort) {
+void DccTransfer::startSend(const QString &localPath, quint16 listenPort,
+                           const QHostAddress &bindAddr) {
+  direction = Send;
+  // Active DCC listens for a direct inbound connection and advertises our
+  // address. That bypasses a configured proxy, so refuse rather than leak.
+  const NetSafety::ProxyResolution proxy = NetSafety::proxyFromSettings();
+  if (proxy.result != NetSafety::ProxyResolution::Result::Direct) {
+    state = Failed;
+    errorString = proxy.result == NetSafety::ProxyResolution::Result::Rejected
+                      ? proxy.error
+                      : QStringLiteral(
+                            "Active DCC send opens a direct listening socket and would "
+                            "reveal your IP while a proxy is configured");
+    emit stateChanged();
+    return;
+  }
+  if (!NetSafety::isUsableDccBindAddress(bindAddr)) {
+    state = Failed;
+    errorString = QStringLiteral(
+        "Refusing to listen on all interfaces; no IPv4 address is available to advertise");
+    emit stateChanged();
+    return;
+  }
+
   filePath = localPath;
   m_file.setFileName(localPath);
   if (!m_file.open(QIODevice::ReadOnly)) {
@@ -184,21 +254,33 @@ void DccTransfer::startSend(const QString &localPath, quint16 listenPort) {
   m_server = new QTcpServer(this);
   connect(m_server, &QTcpServer::newConnection, this, &DccTransfer::onNewConnection);
 
-  if (!m_server->listen(QHostAddress::Any, listenPort)) {
+  if (!m_server->listen(bindAddr, listenPort)) {
     state = Failed;
-    errorString = "Cannot listen on port " + QString::number(listenPort) + ": " + m_server->errorString();
+    errorString = "Cannot listen on " + bindAddr.toString() + ":" +
+                  QString::number(listenPort) + ": " + m_server->errorString();
+    m_file.close();
     emit stateChanged();
     return;
   }
 
   peerPort = m_server->serverPort();
   state = Pending; // waiting for remote to connect
+  armIdleTimer(kAcceptTimeoutMs);
   emit stateChanged();
 }
 
 void DccTransfer::onNewConnection() {
+  if (!m_server)
+    return;
+  // One peer only. Anyone else who races the port is dropped.
   m_socket = m_server->nextPendingConnection();
-  m_server->close(); // only accept one connection
+  m_server->close();
+  if (!m_socket)
+    return;
+  if (QTcpSocket *extra = m_server->nextPendingConnection()) {
+    extra->abort();
+    extra->deleteLater();
+  }
 
   connect(m_socket, &QTcpSocket::readyRead, this, &DccTransfer::onSendDataReady);
   connect(m_socket, &QTcpSocket::disconnected, this, &DccTransfer::onDisconnected);
@@ -211,6 +293,7 @@ void DccTransfer::onNewConnection() {
   m_elapsed.start();
   m_lastBytes = 0;
   m_speedTimer.start();
+  armIdleTimer(kIdleTimeoutMs);
   emit stateChanged();
   sendNextChunk();
 }
@@ -223,6 +306,7 @@ void DccTransfer::sendNextChunk() {
   QByteArray data = m_file.read(CHUNK_SIZE);
   if (data.isEmpty()) return; // EOF — wait for ack
 
+  armIdleTimer(kIdleTimeoutMs);
   m_socket->write(data);
   transferred += data.size();
   emit progressUpdated();
@@ -233,6 +317,7 @@ void DccTransfer::sendNextChunk() {
 }
 
 void DccTransfer::onSendDataReady() {
+  armIdleTimer(kIdleTimeoutMs);
   // Read acknowledgment from receiver (4-byte big-endian)
   while (m_socket && m_socket->bytesAvailable() >= 4) {
     char ackBuf[4];
@@ -241,6 +326,7 @@ void DccTransfer::onSendDataReady() {
     if (acked >= static_cast<quint32>(fileSize & 0xFFFFFFFF) && transferred >= fileSize) {
       state = Complete;
       m_speedTimer.stop();
+      m_idleTimer.stop();
       m_file.close();
       m_socket->disconnectFromHost();
       emit stateChanged();
@@ -253,38 +339,35 @@ void DccTransfer::cancel() {
   if (state == Complete || state == Cancelled) return;
   state = Cancelled;
   m_speedTimer.stop();
+  m_idleTimer.stop();
   if (m_socket) m_socket->abort();
   if (m_server) m_server->close();
-  if (m_file.isOpen()) {
+  if (m_file.isOpen())
     m_file.close();
-    // Delete partial download
-    if (direction == Receive && !filePath.isEmpty())
-      QFile::remove(filePath);
-  }
+  if (direction == Receive && !filePath.isEmpty())
+    QFile::remove(filePath);
   emit stateChanged();
 }
 
 void DccTransfer::onDisconnected() {
-  if (state == Transferring) {
-    if (fileSize > 0 && transferred >= fileSize) {
-      state = Complete;
-    } else {
-      state = Failed;
-      errorString = "Connection closed prematurely";
-    }
-    m_speedTimer.stop();
+  if (state != Transferring)
+    return;
+  m_speedTimer.stop();
+  m_idleTimer.stop();
+  if (fileSize > 0 && transferred >= fileSize) {
+    state = Complete;
     if (m_file.isOpen()) m_file.close();
     emit stateChanged();
+    return;
   }
+  failTransfer(QStringLiteral("Connection closed prematurely"));
 }
 
 void DccTransfer::onError(QAbstractSocket::SocketError) {
-  if (state == Complete || state == Cancelled) return;
-  state = Failed;
-  errorString = m_socket ? m_socket->errorString() : "Socket error";
-  m_speedTimer.stop();
-  if (m_file.isOpen()) m_file.close();
-  emit stateChanged();
+  if (state == Complete || state == Cancelled || state == Failed)
+    return;
+  const QString why = m_socket ? m_socket->errorString() : QStringLiteral("Socket error");
+  failTransfer(why.isEmpty() ? QStringLiteral("Socket error") : why);
 }
 
 // ════════════════════════════════════════════════════════
@@ -346,6 +429,16 @@ DccTransfer *DccManager::findTransfer(const QString &id) {
   return nullptr;
 }
 
+int DccManager::activeTransferCount() const {
+  int n = 0;
+  for (auto *t : m_transfers) {
+    if (t->state == DccTransfer::Pending || t->state == DccTransfer::Connecting ||
+        t->state == DccTransfer::Transferring)
+      ++n;
+  }
+  return n;
+}
+
 // ── Handle incoming DCC SEND offer ──
 void DccManager::handleDccSend(const QString &nick, const QString &fileName,
                                quint32 ip, quint16 port, qint64 size, int token) {
@@ -361,6 +454,18 @@ void DccManager::handleDccSend(const QString &nick, const QString &fileName,
   if (m_maxFileSize > 0 && size > m_maxFileSize) {
     emit transferFailed(nick, fileName,
         "File exceeds maximum size limit (" + DccTransfer::formatSize(m_maxFileSize) + ")");
+    return;
+  }
+  // Loopback, 0.0.0.0, link-local, and other non-unicast targets are a
+  // connect-back / port-scan primitive. Private LAN addresses are kept as a
+  // pending offer so the user can accept them, but they are not auto-connected.
+  const QString blocked = NetSafety::dccReceiveBlockReason(ip, port, true);
+  if (!blocked.isEmpty()) {
+    emit transferFailed(nick, fileName, blocked);
+    return;
+  }
+  if (activeTransferCount() >= kMaxActiveTransfers) {
+    emit transferFailed(nick, fileName, "Too many DCC transfers already in progress");
     return;
   }
 
@@ -388,9 +493,13 @@ void DccManager::handleDccSend(const QString &nick, const QString &fileName,
   emit countChanged();
   emit transferAdded(nick, fileName, size);
 
-  // Auto-accept if enabled
+  // Auto-accept only public peers unless the user opted in via
+  // dcc/allowPrivatePeers. A manual accept still allows a private-LAN peer.
   if (m_autoAccept) {
-    t->startReceive(m_downloadDir);
+    const bool allowPrivate =
+        QSettings().value(QStringLiteral("dcc/allowPrivatePeers"), false).toBool();
+    if (NetSafety::dccReceiveBlockReason(ip, port, allowPrivate).isEmpty())
+      t->startReceive(m_downloadDir);
   }
 }
 
@@ -446,18 +555,30 @@ void DccManager::sendFile(const QString &nick, const QString &filePath) {
   endInsertRows();
   emit countChanged();
 
-  // Start listening on a random high port
-  t->startSend(filePath, 0); // 0 = OS picks port
-
-  // Send DCC SEND CTCP to the remote user
-  if (m_connection && t->peerPort > 0) {
-    // Advertise the local address of the IRC connection's socket.
-    // (TODO: configurable external IP / UPnP for NAT traversal)
-    quint32 myIp = 0;
+  // Bind to the IRC socket's own IPv4 address. Listening on Any, or
+  // advertising 0 for an IPv6 local address, would expose every interface
+  // or tell the peer to connect to 0.0.0.0.
+  QHostAddress bindAddr;
+  quint32 myIp = 0;
+  if (m_connection) {
     const QHostAddress local = m_connection->localAddress();
-    if (local.protocol() == QAbstractSocket::IPv4Protocol)
+    if (local.protocol() == QAbstractSocket::IPv4Protocol) {
+      bindAddr = local;
       myIp = local.toIPv4Address();
-    // Quote filenames containing spaces (matches our receive-side parsing)
+    } else if (local.protocol() == QAbstractSocket::IPv6Protocol) {
+      bool ok = false;
+      const quint32 v4 = local.toIPv4Address(&ok);
+      if (ok && v4 != 0) {
+        bindAddr = QHostAddress(v4);
+        myIp = v4;
+      }
+    }
+  }
+  t->startSend(filePath, 0, bindAddr); // 0 = OS picks port
+
+  // Send DCC SEND CTCP to the remote user. Skip when listen failed or we
+  // have nothing but 0.0.0.0 to advertise.
+  if (m_connection && t->state != DccTransfer::Failed && t->peerPort > 0 && myIp != 0) {
     QString offerName = t->fileName.contains(' ')
         ? "\"" + t->fileName + "\"" : t->fileName;
     QString ctcp = "DCC SEND " + offerName + " " +

@@ -123,7 +123,7 @@ Dialog {
         // URL Handlers (tab 12)
         chkClickableUrls.checked    = boolSetting("url/clickable", true)
         chkUrlGrabber.checked       = boolSetting("url/autoGrab", true)
-        chkShowInlineImages.checked = boolSetting("ui/showInlineImages", true)
+        chkShowInlineImages.checked = boolSetting("ui/showInlineImages", false)
         txtBrowserCmd.text          = appSettings.value("url/browserCmd", "xdg-open %s")
 
         // Advanced (tab 16)

@@ -201,7 +201,7 @@ Appears when right-clicking a URL in the chat area.
 | **Text and Fonts** | Font family/size. Timestamps + format. Max scrollback. Indent. Highlight words. |
 | **Input** | Spell check. Tab completion settings + suffix. Per-channel history + max size. |
 | **User Info** | Primary nick + 3 alternates. Username, real name. Quit/part/away messages. |
-| **Connection** | Auto-reconnect (delay, max attempts). Auto-join. Proxy (SOCKS4/5, HTTP). Accept self-signed SSL certificates (`conn/allowSelfSignedCerts`). |
+| **Connection** | Auto-reconnect (delay, max attempts). Auto-join. Proxy (SOCKS5, HTTP CONNECT; SOCKS4 is refused). Accept self-signed SSL certificates (`conn/allowSelfSignedCerts`) — hostname mismatches, self-signed certs, and untrusted issuers only. |
 | **SASL / Auth** | Auth method (PLAIN, EXTERNAL, SCRAM, ECDSA, NickServ, CERTFP). Certificate paths. |
 | **DCC** | Download folder. Auto-accept. Max file size. IP detection. Port range. |
 | **Logging** | Enable/disable. Directory. Format (Plain/HTML/JSON). PM logging. Per-channel files. |

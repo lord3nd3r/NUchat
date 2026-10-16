@@ -101,9 +101,9 @@ private slots:
             QStringLiteral("../../etc.log"))));
 
         const QString dotLog =
-            QDir(root).filePath(QStringLiteral("_../#chan.log"));
+            QDir(root).filePath(QStringLiteral("_.._/#chan.log"));
         const QString etcLog =
-            QDir(root).filePath(QStringLiteral(".._.._etc/_...log"));
+            QDir(root).filePath(QStringLiteral(".._.._etc/_.._.log"));
         QVERIFY2(QFile::exists(dotLog), qPrintable(dotLog));
         QVERIFY2(QFile::exists(etcLog), qPrintable(etcLog));
 
@@ -126,7 +126,7 @@ private slots:
             const QString dirName = QFileInfo(path).dir().dirName();
             QVERIFY(dirName != QLatin1String(".."));
             QVERIFY(dirName != QLatin1String("."));
-            if (dirName == QLatin1String("_.."))
+            if (dirName == QLatin1String("_.._"))
                 sawDot = true;
             if (dirName == QLatin1String(".._.._etc"))
                 sawEtc = true;
@@ -301,7 +301,7 @@ private slots:
         scratch.logger.log(QStringLiteral(".."), QStringLiteral(".."),
                            QStringLiteral("chat"), token);
         const QString path =
-            scratch.logger.logDir() + QStringLiteral("/_../_...log");
+            scratch.logger.logDir() + QStringLiteral("/_.._/_.._.log");
         QVERIFY2(QFile::exists(path), qPrintable(path));
         QVERIFY(readFile(path).contains(token));
         QVERIFY(!QFile::exists(scratch.dir.path() + QStringLiteral("/_.log")));

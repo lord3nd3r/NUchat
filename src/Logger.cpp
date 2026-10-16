@@ -70,7 +70,9 @@ void Logger::setRotationLimits(qint64 maxBytes, int maxBackups) {
 // Replace characters that are invalid in filenames (Windows is the strictest:
 // \ / : * ? " < > |) so channels like #foo|bar still get a log file.
 // A component of "." or ".." would walk out of the log directory, so those
-// names are prefixed with '_' (".." -> "_..") and stay inside the log root.
+// names are prefixed with '_' (".." -> "_.."). Windows then strips trailing
+// dots and spaces, which would store "_.." as "_", so a trailing '_' is
+// added until the name no longer ends in either (".." -> "_.._").
 static QString sanitizeFileName(QString name) {
   name = name.trimmed();
   QString out;
@@ -84,6 +86,8 @@ static QString sanitizeFileName(QString name) {
   }
   if (out.isEmpty() || out == QLatin1String(".") || out == QLatin1String(".."))
     out = QLatin1Char('_') + out;
+  while (out.endsWith(QLatin1Char('.')) || out.endsWith(QLatin1Char(' ')))
+    out += QLatin1Char('_');
   return out;
 }
 

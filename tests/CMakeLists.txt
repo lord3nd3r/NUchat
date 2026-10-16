@@ -99,3 +99,15 @@ if(NOT WIN32 AND NOT APPLE)
         PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
+# Linking Qt Gui marks these WIN32 executables, so a failed QCOMPARE never
+# reaches the ctest log. Keep them console programs.
+if(WIN32)
+    set(_nuchat_console_tests
+        test_messageparser test_settings test_ircparsing test_hexchatimport
+        test_secrets test_redact test_messagemodel test_logger
+        test_managerrouting test_netsecurity test_protocol test_plugins)
+    foreach(t IN LISTS _nuchat_console_tests)
+        set_target_properties(${t} PROPERTIES WIN32_EXECUTABLE FALSE)
+    endforeach()
+endif()
+

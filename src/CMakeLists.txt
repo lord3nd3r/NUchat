@@ -10,6 +10,7 @@ set(CORE_SRC
     PluginManager.cpp
     Settings.cpp
     Logger.cpp
+    UserPaths.cpp
     NotificationManager.cpp
     ThemeManager.cpp
     ServerChannelModel.cpp
@@ -27,6 +28,8 @@ set(CORE_HEADERS
     PluginManager.h
     Settings.h
     Logger.h
+    UserPaths.h
+    IrcIdentity.h
     NotificationManager.h
     ThemeManager.h
     ServerChannelModel.h

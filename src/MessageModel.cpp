@@ -1,12 +1,31 @@
 #include "MessageModel.h"
 #include "ImageDownloader.h"
+#include "IrcIdentity.h"
 #include <QRegularExpression>
 #include <QSettings>
 #include <QUrl>
 
+static bool s_darkMode = true;
+
+static bool prefBool(const char *key, bool def) {
+  static QSettings prefs;
+  const QVariant v = prefs.value(QLatin1String(key));
+  if (!v.isValid())
+    return def;
+  return v.toBool();
+}
+
 MessageModel::MessageModel(QObject *parent) : QAbstractListModel(parent) {
   connect(ImageDownloader::instance(), &ImageDownloader::imageReady, this,
           &MessageModel::onImageReady);
+  connect(ImageDownloader::instance(), &ImageDownloader::downloadFailed, this,
+          [this](const QString &url) { m_pendingImages.remove(url); });
+}
+
+void MessageModel::setBufferContext(const QString &server,
+                                    const QString &channel) {
+  m_contextServer = server;
+  m_contextChannel = channel;
 }
 
 int MessageModel::rowCount(const QModelIndex &parent) const {
@@ -82,9 +101,11 @@ void MessageModel::addMessage(const QString &type, const QString &text,
   // Static QSettings: Qt shares one cache per file within a process, so
   // writes from the QML Settings wrapper are visible here without re-reading
   // the file on every message.
+  // Skip during history replay (batch mode): an embed already stored for this
+  // line is replayed as its own message, and a second fetch would duplicate it.
   bool showInlineImages =
       prefs.value(QStringLiteral("ui/showInlineImages"), true).toBool();
-  if (showInlineImages &&
+  if (!m_batchMode && showInlineImages &&
       (type == QLatin1String("chat") || type == QLatin1String("action"))) {
     static const QRegularExpression urlRe(QStringLiteral(
         "(https?://[^\\s\\x02\\x03\\x04\\x0F\\x16\\x1D\\x1E\\x1F]+)"));
@@ -97,7 +118,12 @@ void MessageModel::addMessage(const QString &type, const QString &text,
              url.endsWith('"'))
         url.chop(1);
       if (ImageDownloader::isImageUrl(url)) {
-        m_pendingImages.insert(url);
+        if (m_pendingImages.size() > 50)
+          m_pendingImages.erase(m_pendingImages.begin());
+        PendingImage pending;
+        pending.server = m_contextServer;
+        pending.channel = m_contextChannel;
+        m_pendingImages.insert(url, pending);
         ImageDownloader::instance()->download(url);
       }
     }
@@ -109,10 +135,8 @@ void MessageModel::clear() {
   m_messages.clear();
   endResetModel();
   m_expandedGroups.clear();
-  // Drop pending image downloads — otherwise an image requested in the
-  // previous channel would embed into whichever channel is shown when the
-  // download finishes.
-  m_pendingImages.clear();
+  // Pending downloads keep the buffer they were requested for and are
+  // delivered there (see onImageReady), including after a tab switch.
   emit cleared();
 }
 
@@ -150,70 +174,61 @@ static QString mircColor(int idx) {
   return QString();
 }
 
-// Strip literal HTML tags from incoming IRC text, but only real HTML tags.
-// IRC messages use <nick> patterns which must not be removed.
-// A "real" HTML tag has attributes (contains a space/slash) or matches a
-// known HTML element name.
-static const QSet<QString> s_htmlTagNames = {
-    "a",          "b",        "i",     "u",      "s",      "em",      "strong",
-    "span",       "div",      "p",     "br",     "hr",     "img",     "font",
-    "small",      "big",      "sub",   "sup",    "ul",     "ol",      "li",
-    "table",      "tr",       "td",    "th",     "thead",  "tbody",   "h1",
-    "h2",         "h3",       "h4",    "h5",     "h6",     "pre",     "code",
-    "blockquote", "script",   "style", "html",   "head",   "body",    "meta",
-    "link",       "title",    "input", "button", "form",   "label",   "select",
-    "option",     "textarea", "nav",   "header", "footer", "section", "article",
-    "aside",      "main"};
-
-static bool isHtmlTag(const QString &tagContent) {
-  if (tagContent.isEmpty())
-    return false;
-  // Closing tag: </tagname>
-  QString inner = tagContent;
-  if (inner.startsWith('/'))
-    inner = inner.mid(1);
-  // Get the tag name (up to first space or end)
-  int spacePos = inner.indexOf(' ');
-  QString tagName = (spacePos >= 0) ? inner.left(spacePos) : inner;
-  tagName = tagName.toLower();
-  // Only treat it as HTML if the tag name is a known element — with or
-  // without attributes.  Requiring the name match prevents eating user text
-  // like "<3 you>" or pasted generics like "<QMap K, V>".
-  return s_htmlTagNames.contains(tagName);
+// Drop mIRC color / reverse codes when the user asked to strip colors.
+// Bold, italic, underline and strikethrough are left intact.
+static QString stripMircColors(const QString &text) {
+  QString out;
+  out.reserve(text.size());
+  for (int i = 0; i < text.size(); ++i) {
+    const ushort code = text[i].unicode();
+    if (code == 0x16)
+      continue;
+    if (code == 0x03 || code == 0x04) {
+      auto isHex = [](const QChar c) {
+        return c.isDigit() || (c >= QLatin1Char('a') && c <= QLatin1Char('f')) ||
+               (c >= QLatin1Char('A') && c <= QLatin1Char('F'));
+      };
+      auto eat = [&](int maxDigits, bool hex) {
+        int n = 0;
+        while (n < maxDigits && i + 1 < text.size()) {
+          const QChar c = text[i + 1];
+          if (hex ? !isHex(c) : !c.isDigit())
+            break;
+          ++i;
+          ++n;
+        }
+      };
+      if (code == 0x03) {
+        if (i + 1 < text.size() && text[i + 1].isDigit())
+          eat(2, false);
+        if (i + 1 < text.size() && text[i + 1] == QLatin1Char(',')) {
+          ++i;
+          eat(2, false);
+        }
+      } else {
+        eat(6, true);
+        if (i + 1 < text.size() && text[i + 1] == QLatin1Char(',')) {
+          ++i;
+          eat(6, true);
+        }
+      }
+      continue;
+    }
+    out += text[i];
+  }
+  return out;
 }
 
-static QString stripHtmlTags(const QString &text) {
-  if (!text.contains(QLatin1Char('<')))
-    return text;
-
-  QString result;
-  result.reserve(text.size());
-  int i = 0;
-  int len = text.size();
-  while (i < len) {
-    if (text[i] == '<') {
-      // Find the closing >
-      int end = text.indexOf('>', i + 1);
-      if (end < 0) {
-        // No closing >, keep everything as-is
-        result += text.mid(i);
-        break;
-      }
-      QString tagContent = text.mid(i + 1, end - i - 1).trimmed();
-      if (isHtmlTag(tagContent)) {
-        // Skip this tag entirely
-        i = end + 1;
-      } else {
-        // Not an HTML tag (e.g. IRC nick like <blondie>) — keep it
-        result += text[i];
-        i++;
-      }
-    } else {
-      result += text[i];
-      i++;
-    }
+static bool isSafeCssColor(const QString &c) {
+  if (c.size() != 7 || c[0] != QLatin1Char('#'))
+    return false;
+  for (int i = 1; i < 7; ++i) {
+    const QChar ch = c[i];
+    if (!ch.isDigit() && (ch < QLatin1Char('a') || ch > QLatin1Char('f')) &&
+        (ch < QLatin1Char('A') || ch > QLatin1Char('F')))
+      return false;
   }
-  return result;
+  return true;
 }
 
 // Wrap emoji grapheme clusters with an explicit emoji-capable fallback stack.
@@ -331,13 +346,15 @@ static QString wrapEmojiWithFontFallback(const QString &html) {
 }
 
 QString MessageModel::ircToHtml(const QString &text) {
-  // Strip any literal HTML tags first (relay bots sometimes embed HTML)
-  const QString stripped = stripHtmlTags(text);
+  // Literal "<code>" / "<a>" text is escaped below, so it cannot become a
+  // tag. Deleting those spans used to eat the words the user actually sent.
+  const QString source =
+      prefBool("ui/stripMircColors", false) ? stripMircColors(text) : text;
 
   // HTML-escape first
   QString escaped;
-  escaped.reserve(stripped.size() * 1.2);
-  for (const QChar &ch : stripped) {
+  escaped.reserve(source.size() * 1.2);
+  for (const QChar &ch : source) {
     if (ch == '<')
       escaped += "&lt;";
     else if (ch == '>')
@@ -360,17 +377,22 @@ QString MessageModel::ircToHtml(const QString &text) {
 
   auto closeAllFonts = [&]() {
     for (int s = 0; s < openFonts; s++)
-      result += "</font>";
+      result += "</span>";
     openFonts = 0;
   };
 
   auto openColorFont = [&]() {
-    if (fgColor.isEmpty() && bgColor.isEmpty())
+    const bool fgOk = isSafeCssColor(fgColor);
+    const bool bgOk = isSafeCssColor(bgColor);
+    if (!fgOk && !bgOk)
       return;
-    if (!fgColor.isEmpty()) {
-      result += "<font color=\"" + fgColor + "\">";
-      openFonts++;
-    }
+    result += QStringLiteral("<span style=\"");
+    if (fgOk)
+      result += QStringLiteral("color:") + fgColor + QLatin1Char(';');
+    if (bgOk)
+      result += QStringLiteral("background-color:") + bgColor + QLatin1Char(';');
+    result += QStringLiteral("\">");
+    openFonts++;
   };
 
   int i = 0;
@@ -410,8 +432,21 @@ QString MessageModel::ircToHtml(const QString &text) {
     } else if (code == 0x16) { // Reverse — swap fg/bg
       closeAllFonts();
       std::swap(fgColor, bgColor);
-      if (fgColor.isEmpty() && !bgColor.isEmpty())
-        fgColor = "#000000";
+      if (fgColor.isEmpty() && bgColor.isEmpty()) {
+        // No colors yet: swap the theme's default foreground/background.
+        if (s_darkMode) {
+          fgColor = QStringLiteral("#111111");
+          bgColor = QStringLiteral("#dddddd");
+        } else {
+          fgColor = QStringLiteral("#f5f5f5");
+          bgColor = QStringLiteral("#222222");
+        }
+      } else if (fgColor.isEmpty()) {
+        fgColor = QStringLiteral("#000000");
+      } else if (bgColor.isEmpty()) {
+        bgColor = s_darkMode ? QStringLiteral("#1e1e1e")
+                             : QStringLiteral("#ffffff");
+      }
       openColorFont();
       i++;
     } else if (code == 0x0F) { // Reset
@@ -448,28 +483,29 @@ QString MessageModel::ircToHtml(const QString &text) {
           fg = fg * 10 + escaped[i].digitValue();
           i++;
         }
-        // Parse optional background
-        if (i < len && escaped[i] == ',') {
-          i++; // skip comma
+      }
+      // Background may follow a foreground (\x03FG,BG) or stand alone (\x03,BG).
+      if (i < len && escaped[i] == ',') {
+        i++; // skip comma
+        if (i < len && escaped[i].isDigit()) {
+          bg = escaped[i].digitValue();
+          i++;
           if (i < len && escaped[i].isDigit()) {
-            bg = escaped[i].digitValue();
+            bg = bg * 10 + escaped[i].digitValue();
             i++;
-            if (i < len && escaped[i].isDigit()) {
-              bg = bg * 10 + escaped[i].digitValue();
-              i++;
-            }
           }
         }
       }
 
-      if (fg >= 0) {
-        fgColor = mircColor(fg);
-        if (bg >= 0)
-          bgColor = mircColor(bg);
-      } else {
+      if (fg < 0 && bg < 0) {
         // Bare \x03 resets color
         fgColor.clear();
         bgColor.clear();
+      } else {
+        if (fg >= 0)
+          fgColor = mircColor(fg);
+        if (bg >= 0)
+          bgColor = mircColor(bg);
       }
       openColorFont();
     } else if (code == 0x04) { // Hex color: \x04RRGGBB[,RRGGBB]
@@ -582,27 +618,38 @@ void MessageModel::onImageReady(const QString &url, const QString &localPath,
                                 int width, int height) {
   if (!m_pendingImages.contains(url))
     return;
-  m_pendingImages.remove(url);
+  const PendingImage ctx = m_pendingImages.take(url);
 
   int displayW = qMin(width, 400);
   int displayH = (width > 0) ? (height * displayW / width) : 0;
 
-  // Build an embed message with clickable image
+  // Build an embed message with clickable image. The path is local, but
+  // still escaped so a quote in the filename cannot break out of the tag.
   QString html = QStringLiteral("<a href=\"") + url.toHtmlEscaped() +
-                 QStringLiteral("\"><img src=\"file://") + localPath +
+                 QStringLiteral("\"><img src=\"file://") +
+                 localPath.toHtmlEscaped() +
                  QStringLiteral("\" width=\"%1\" height=\"%2\"></a>")
                      .arg(displayW)
                      .arg(displayH);
 
-  beginInsertRows(QModelIndex(), m_messages.count(), m_messages.count());
-  Message msg;
-  msg.id = m_nextMessageId++;
-  msg.type = QStringLiteral("embed");
-  msg.text = html;
-  msg.timestamp = QDateTime::currentDateTime();
-  m_messages.append(msg);
-  endInsertRows();
-  emit messageAdded(html);
+  const QString server = ctx.server.isEmpty() ? m_contextServer : ctx.server;
+  const QString channel = ctx.channel.isEmpty() ? m_contextChannel : ctx.channel;
+  const bool showHere =
+      m_contextServer.isEmpty() ||
+      (ircSame(server, m_contextServer) && ircSame(channel, m_contextChannel));
+  if (showHere) {
+    beginInsertRows(QModelIndex(), m_messages.count(), m_messages.count());
+    Message msg;
+    msg.id = m_nextMessageId++;
+    msg.type = QStringLiteral("embed");
+    msg.text = html;
+    msg.formattedText = html;
+    msg.timestamp = QDateTime::currentDateTime();
+    m_messages.append(msg);
+    endInsertRows();
+    emit messageAdded(html);
+  }
+  emit embedReady(server, channel, html);
 }
 
 // ── Nick colorization ──
@@ -645,7 +692,6 @@ static const char *nickPaletteLight[] = {
     "#887a09", // olive
 };
 static const int nickColorCount = 16;
-static bool s_darkMode = true;
 
 void MessageModel::setDarkMode(bool dark) { s_darkMode = dark; }
 
@@ -780,29 +826,48 @@ QString MessageModel::formatLine(const Message &msg) const {
   else if (msg.type == QLatin1String("error"))
     prefix = QStringLiteral("<font color=\"#f44747\">! </font>");
 
-  QString htmlBody = linkifyUrls(colorizeNicks(ircToHtml(msg.text)));
+  QString htmlBody = ircToHtml(msg.text);
+  if (prefBool("ui/showNickColors", true))
+    htmlBody = colorizeNicks(htmlBody);
+  if (prefBool("url/clickable", true))
+    htmlBody = linkifyUrls(htmlBody);
 
-  // Highlight other people's chat messages that mention our nick
+  // Highlight other people's chat messages that mention our nick, plus any
+  // extra words from Preferences → highlight words.
   bool isHighlight = false;
-  if (m_highlightEnabled && !m_nickname.isEmpty() &&
-      msg.type == QLatin1String("chat")) {
+  if (m_highlightEnabled && msg.type == QLatin1String("chat")) {
+    QString msgBody = msg.text;
     // Extract sender nick from "<[+@~&%]nick> ..." format
     int lt = msg.text.indexOf(QLatin1Char('<'));
     int gt = msg.text.indexOf(QLatin1Char('>'));
+    QString senderRaw;
     if (lt >= 0 && gt > lt) {
-      QString senderRaw = msg.text.mid(lt + 1, gt - lt - 1);
+      senderRaw = msg.text.mid(lt + 1, gt - lt - 1);
       // Strip mode prefixes (+, @, ~, &, %)
       while (!senderRaw.isEmpty() &&
              (senderRaw[0] == '+' || senderRaw[0] == '@' ||
               senderRaw[0] == '~' || senderRaw[0] == '&' ||
               senderRaw[0] == '%'))
         senderRaw = senderRaw.mid(1);
+      msgBody = msg.text.mid(gt + 1);
+    }
 
-      // Only highlight if the sender is NOT us
-      if (senderRaw.compare(m_nickname, Qt::CaseInsensitive) != 0) {
-        // Check the body after the <nick> prefix for our nick (whole word)
-        QString msgBody = msg.text.mid(gt + 1);
-        isHighlight = containsNickWord(msgBody, m_nickname);
+    if (prefBool("notify/highlightNick", true) && !m_nickname.isEmpty() &&
+        senderRaw.compare(m_nickname, Qt::CaseInsensitive) != 0)
+      isHighlight = containsNickWord(msgBody, m_nickname);
+
+    if (!isHighlight) {
+      static QSettings prefs;
+      const QString words =
+          prefs.value(QStringLiteral("ui/highlightWords")).toString();
+      const QStringList parts =
+          words.split(QRegularExpression(QStringLiteral("[,\\s]+")),
+                      Qt::SkipEmptyParts);
+      for (const QString &w : parts) {
+        if (containsNickWord(msg.text, w)) {
+          isHighlight = true;
+          break;
+        }
       }
     }
   }

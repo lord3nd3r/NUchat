@@ -47,6 +47,13 @@ ApplicationWindow {
     }
 
     // ── Save window geometry on close ──
+    property bool closeConfirmed: false
+
+    function boolPref(key, def) {
+        var v = appSettings.value(key, def)
+        return v === true || v === "true"
+    }
+
     onClosing: function(close) {
         appSettings.setValue("window/width", root.width)
         appSettings.setValue("window/height", root.height)
@@ -59,6 +66,11 @@ ApplicationWindow {
         if ((minToTray === true || minToTray === "true") && typeof notifyMgr !== "undefined") {
             root.hide()
             close.accepted = false
+            return
+        }
+        if (boolPref("ui/confirmClose", true) && !root.closeConfirmed && currentServer !== "") {
+            close.accepted = false
+            closeConfirmDialog.open()
             return
         }
         close.accepted = true
@@ -184,12 +196,49 @@ ApplicationWindow {
     property string currentServer: ""
     property string pendingAutoJoin: ""
 
-    onCurrentChannelChanged: { if (messageInput) messageInput.forceActiveFocus() }
+    onCurrentChannelChanged: {
+        historyIndex = -1
+        historyStash = ""
+        if (messageInput) messageInput.forceActiveFocus()
+    }
 
     // ── Command history (Up/Down arrow) ──
     property var commandHistory: []
+    property var commandHistoryByChannel: ({})
     property int historyIndex: -1
     property string historyStash: ""  // stash current input when browsing history
+
+    function historyLimit() {
+        var n = parseInt(appSettings.value("input/maxHistory", 100), 10)
+        if (isNaN(n) || n < 1) n = 100
+        return n
+    }
+    function historyStorageKey() {
+        return (currentServer || "") + "\n" + (currentChannel || "")
+    }
+    function activeCommandHistory() {
+        if (!boolPref("input/historyPerChannel", false))
+            return commandHistory
+        var existing = commandHistoryByChannel[historyStorageKey()]
+        return existing ? existing : []
+    }
+    function pushCommandHistory(txt) {
+        var cap = historyLimit()
+        if (boolPref("input/historyPerChannel", false)) {
+            var key = historyStorageKey()
+            var arr = commandHistoryByChannel[key] ? commandHistoryByChannel[key].slice() : []
+            if (arr.length === 0 || arr[arr.length - 1] !== txt)
+                arr.push(txt)
+            if (arr.length > cap)
+                arr.splice(0, arr.length - cap)
+            commandHistoryByChannel[key] = arr
+        } else {
+            if (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== txt)
+                commandHistory.push(txt)
+            if (commandHistory.length > cap)
+                commandHistory.splice(0, commandHistory.length - cap)
+        }
+    }
     property string channelTopic: ircManager.channelTopic
     property string channelModes: ""
     property var channelUsers: ircManager.channelUsers
@@ -1145,7 +1194,7 @@ ApplicationWindow {
                             // enters inline edit mode (mIRC topic box behavior)
                             var link = topicText.linkAt(mouse.x, mouse.y)
                             if (link !== "") {
-                                Qt.openUrlExternally(link)
+                                ircManager.openExternalUrl(link)
                                 return
                             }
                             topicBarRect.startTopicEdit()
@@ -1255,7 +1304,7 @@ ApplicationWindow {
                                 chatArea.pendingScrollToBottom = false
                             })
                         } else {
-                            Qt.openUrlExternally(link)
+                            ircManager.openExternalUrl(link)
                         }
                     }
 
@@ -1597,6 +1646,7 @@ ApplicationWindow {
 
                         Keys.onTabPressed: function(event) {
                             event.accepted = true
+                            if (!boolPref("input/tabCompletion", true)) return
                             if (!channelUsers || channelUsers.length === 0) return
                             var txt = messageInput.text
                             var curPos = messageInput.cursorPosition
@@ -1632,7 +1682,9 @@ ApplicationWindow {
 
                             if (messageInput.tabMatches.length === 0) return
                             var completion = messageInput.tabMatches[messageInput.tabIndex]
-                            var suffix = (messageInput.tabWordStart === 0) ? ": " : " "
+                            var suf = appSettings.value("input/completionSuffix", ":")
+                            if (suf === undefined || suf === null) suf = ":"
+                            var suffix = (messageInput.tabWordStart === 0) ? (suf + " ") : " "
                             messageInput.tabInserted = completion + suffix
                             
                             var after = txt.substring(curPos)
@@ -1680,24 +1732,26 @@ ApplicationWindow {
                             // Up arrow: browse history backwards
                             if (event.key === Qt.Key_Up) {
                                 event.accepted = true
-                                if (commandHistory.length === 0) return
+                                var histUp = activeCommandHistory()
+                                if (histUp.length === 0) return
                                 if (historyIndex === -1) {
                                     historyStash = messageInput.text
-                                    historyIndex = commandHistory.length - 1
+                                    historyIndex = histUp.length - 1
                                 } else if (historyIndex > 0) {
                                     historyIndex--
                                 }
-                                messageInput.text = commandHistory[historyIndex]
+                                messageInput.text = histUp[historyIndex]
                                 messageInput.cursorPosition = messageInput.text.length
                                 return
                             }
                             // Down arrow: browse history forwards
                             if (event.key === Qt.Key_Down) {
                                 event.accepted = true
+                                var histDown = activeCommandHistory()
                                 if (historyIndex === -1) return
-                                if (historyIndex < commandHistory.length - 1) {
+                                if (historyIndex < histDown.length - 1) {
                                     historyIndex++
-                                    messageInput.text = commandHistory[historyIndex]
+                                    messageInput.text = histDown[historyIndex]
                                 } else {
                                     historyIndex = -1
                                     messageInput.text = historyStash
@@ -2119,7 +2173,7 @@ ApplicationWindow {
 
         Action {
             text: "Open URL"
-            onTriggered: Qt.openUrlExternally(chatLinkMenu.targetUrl)
+            onTriggered: ircManager.openExternalUrl(chatLinkMenu.targetUrl)
         }
         Action {
             text: "Copy Link"
@@ -2188,12 +2242,7 @@ ApplicationWindow {
     }
 
     function doSendMessage(txt) {
-        // Add to command history (avoid duplicating last entry)
-        if (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== txt)
-            commandHistory.push(txt)
-        // Cap history at 200 entries
-        if (commandHistory.length > 200)
-            commandHistory.splice(0, commandHistory.length - 200)
+        pushCommandHistory(txt)
         historyIndex = -1
         historyStash = ""
         var target = currentChannel !== "" ? currentChannel : (currentServer !== "" ? currentServer : "")
@@ -2342,6 +2391,25 @@ ApplicationWindow {
         }
         function onChannelModesChanged(modes) {
             root.channelModes = modes
+        }
+    }
+
+    Dialog {
+        id: closeConfirmDialog
+        title: "Quit NUchat"
+        modal: true
+        anchors.centerIn: parent
+        width: 360
+        standardButtons: Dialog.Yes | Dialog.No
+        contentItem: Text {
+            text: "Close NUchat?"
+            color: "#ddd"
+            wrapMode: Text.WordWrap
+            font.pixelSize: 13
+        }
+        onAccepted: {
+            root.closeConfirmed = true
+            root.close()
         }
     }
 

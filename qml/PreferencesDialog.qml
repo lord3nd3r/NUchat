@@ -19,7 +19,8 @@ Dialog {
     // helper: read an int setting
     function intSetting(key, def) {
         var v = appSettings.value(key, def)
-        return parseInt(v) || def
+        var n = parseInt(v, 10)
+        return isNaN(n) ? def : n
     }
 
     // Load ALL saved settings when dialog opens
@@ -91,7 +92,7 @@ Dialog {
         // DCC (tab 7)
         txtDccDownloadDir.text      = appSettings.value("dcc/downloadDir", "~/Downloads")
         chkDccAutoAccept.checked    = boolSetting("dcc/autoAccept", false)
-        spnDccMaxSize.value         = intSetting("dcc/maxSize", 0)
+        spnDccMaxSize.value         = intSetting("dcc/maxSize", 100)
         cboDccIpMethod.currentIndex = intSetting("dcc/ipMethodIndex", 0)
         txtDccManualIp.text         = appSettings.value("dcc/manualIp", "")
         spnDccPortLow.value         = intSetting("dcc/portLow", 1024)
@@ -100,7 +101,7 @@ Dialog {
         // Logging (tab 8)
         chkEnableLogging.checked    = boolSetting("log/enable", true)
         txtLogDir.text              = appSettings.value("log/directory", "~/.config/NUchat/logs")
-        cboLogFormat.currentIndex   = intSetting("log/formatIndex", 0)
+        cboLogFormat.currentIndex   = 0
         chkLogTimestamps.checked    = boolSetting("log/timestamps", true)
         chkLogPMs.checked           = boolSetting("log/privateMessages", true)
         chkLogPerChannel.checked    = boolSetting("log/perChannel", true)
@@ -127,12 +128,12 @@ Dialog {
         txtBrowserCmd.text          = appSettings.value("url/browserCmd", "xdg-open %s")
 
         // Advanced (tab 16)
-        cboEncoding.currentIndex    = intSetting("adv/encodingIndex", 0)
+        cboEncoding.currentIndex    = 0
         chkIdentifyFirst.checked    = boolSetting("adv/identifyFirst", true)
         chkIPv6.checked             = boolSetting("adv/ipv6", false)
         chkCAP.checked              = boolSetting("adv/capNegotiation", true)
         txtPerformCmds.text         = appSettings.value("adv/performCommands", "/mode %n +x")
-        chkShowRawIRC.checked       = boolSetting("adv/showRawIRC", false)
+        chkShowRawIRC.checked       = boolSetting("adv/showRawIRC", boolSetting("adv/showRaw", false))
         txtCmdChar.text             = appSettings.value("adv/cmdChar", "/")
 
         // Plugin/Script dirs (tabs 14, 15)
@@ -365,9 +366,9 @@ Dialog {
                             onValueChanged: { saveSetting("ui/maxScrollback", value); root.prefMaxScrollback = value }
                         }
                     }
-                    CheckBox { id: chkIndentWrap; text: "Indent wrapped text"
-                        onCheckedChanged: saveSetting("ui/indentWrap", checked)
-                        contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
+                    CheckBox { id: chkIndentWrap; text: "Indent wrapped text (not available)"
+                        enabled: false
+                        contentItem: Text { text: parent.text; color: "#666"; font.pixelSize: 12; leftPadding: 22 } }
                     CheckBox { id: chkCollapseEvents; text: "Collapse consecutive join/part/quit events"
                         onCheckedChanged: saveSetting("ui/collapseEvents", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
@@ -411,9 +412,10 @@ Dialog {
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
                     }
-                    CheckBox { id: chkCompletionMenu; text: "Show nick completion menu"
-                        onCheckedChanged: saveSetting("input/completionMenu", checked)
-                        contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
+                    CheckBox { id: chkCompletionMenu; text: "Show nick completion menu (not available)"
+                        enabled: false
+                        contentItem: Text { text: parent.text; color: "#666"; font.pixelSize: 12; leftPadding: 22 } }
+                    Text { text: "Completions cycle in the input line. A popup menu is not available."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     CheckBox { id: chkHistoryPerChannel; text: "Input history per channel"
                         onCheckedChanged: saveSetting("input/historyPerChannel", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
@@ -584,8 +586,9 @@ Dialog {
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
                     }
-                    Text { text: "Client Certificate:"; color: "#ccc"; font.pixelSize: 13; font.bold: true }
+                    Text { text: "Client Certificate:"; color: "#666"; font.pixelSize: 13; font.bold: true }
                     GridLayout {
+                        enabled: false
                         columns: 2; columnSpacing: 10; rowSpacing: 6; Layout.fillWidth: true
                         Text { text: "Cert file (PEM):"; color: "#ccc"; font.pixelSize: 12 }
                         RowLayout {
@@ -618,9 +621,10 @@ Dialog {
                             }
                         }
                     }
-                    CheckBox { id: chkAcceptInvalidSSL; text: "Accept invalid SSL certificates"
-                        onCheckedChanged: saveSetting("auth/acceptInvalidSSL", checked)
-                        contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
+                    Text { text: "Certificate checks are controlled by Connection → Allow self-signed certificates. This client does not load a client certificate."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    CheckBox { id: chkAcceptInvalidSSL; text: "Accept invalid SSL certificates (use Connection settings)"
+                        enabled: false
+                        contentItem: Text { text: parent.text; color: "#666"; font.pixelSize: 12; leftPadding: 22 } }
                 }
             }
 
@@ -653,34 +657,35 @@ Dialog {
                     RowLayout {
                         spacing: 8
                         Text { text: "Max file size (MB, 0=unlimited):"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { id: spnDccMaxSize; from: 0; to: 10000; value: 0; Layout.preferredWidth: 120
+                        SpinBox { id: spnDccMaxSize; from: 0; to: 10000; value: 100; Layout.preferredWidth: 120
                             onValueChanged: saveSetting("dcc/maxSize", value) }
                     }
-                    Text { text: "DCC IP:"; color: "#ccc"; font.pixelSize: 13; font.bold: true }
+                    Text { text: "IP method and listen-port range are not applied. Offers use the address the server sees and an ephemeral port."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Text { text: "DCC IP:"; color: "#666"; font.pixelSize: 13; font.bold: true }
                     RowLayout {
                         spacing: 8
-                        Text { text: "IP method:"; color: "#ccc"; font.pixelSize: 12 }
-                        ComboBox { id: cboDccIpMethod; model: ["Auto-detect", "Get from server (DCC)", "Specify manually"]; Layout.preferredWidth: 200
-                            onCurrentIndexChanged: saveSetting("dcc/ipMethodIndex", currentIndex) }
+                        enabled: false
+                        Text { text: "IP method:"; color: "#666"; font.pixelSize: 12 }
+                        ComboBox { id: cboDccIpMethod; model: ["Auto-detect", "Get from server (DCC)", "Specify manually"]; Layout.preferredWidth: 200 }
                     }
                     RowLayout {
                         spacing: 8
-                        Text { text: "Manual IP:"; color: "#ccc"; font.pixelSize: 12 }
+                        enabled: false
+                        Text { text: "Manual IP:"; color: "#666"; font.pixelSize: 12 }
                         TextField {
                             id: txtDccManualIp
-                            Layout.fillWidth: true; placeholderText: "0.0.0.0"; placeholderTextColor: "#666"
-                            color: "#ddd"; font.pixelSize: 12
-                            background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                            Layout.fillWidth: true; placeholderText: "Not available"; placeholderTextColor: "#666"
+                            color: "#666"; font.pixelSize: 12
+                            background: Rectangle { color: "#2a2a2a"; border.color: "#444"; radius: 2 }
                         }
                     }
                     RowLayout {
                         spacing: 8
-                        Text { text: "Port range:"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { id: spnDccPortLow; from: 1024; to: 65535; value: 1024; Layout.preferredWidth: 100
-                            onValueChanged: saveSetting("dcc/portLow", value) }
-                        Text { text: "to"; color: "#ccc"; font.pixelSize: 12 }
-                        SpinBox { id: spnDccPortHigh; from: 1024; to: 65535; value: 5000; Layout.preferredWidth: 100
-                            onValueChanged: saveSetting("dcc/portHigh", value) }
+                        enabled: false
+                        Text { text: "Port range:"; color: "#666"; font.pixelSize: 12 }
+                        SpinBox { id: spnDccPortLow; from: 1024; to: 65535; value: 1024; Layout.preferredWidth: 100 }
+                        Text { text: "to"; color: "#666"; font.pixelSize: 12 }
+                        SpinBox { id: spnDccPortHigh; from: 1024; to: 65535; value: 5000; Layout.preferredWidth: 100 }
                     }
                 }
             }
@@ -711,11 +716,12 @@ Dialog {
                             contentItem: Text { text: "Browse"; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                         }
                     }
+                    Text { text: "Logs are plain text. HTML and JSON formats are not available."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     RowLayout {
                         spacing: 8
-                        Text { text: "Log format:"; color: "#ccc"; font.pixelSize: 12 }
-                        ComboBox { id: cboLogFormat; model: ["Plain text", "HTML", "JSON"]; Layout.preferredWidth: 160
-                            onCurrentIndexChanged: saveSetting("log/formatIndex", currentIndex) }
+                        enabled: false
+                        Text { text: "Log format:"; color: "#666"; font.pixelSize: 12 }
+                        ComboBox { id: cboLogFormat; model: ["Plain text"]; Layout.preferredWidth: 160 }
                     }
                     CheckBox { id: chkLogTimestamps; text: "Log timestamps"
                         onCheckedChanged: saveSetting("log/timestamps", checked)
@@ -744,9 +750,9 @@ Dialog {
                     CheckBox { id: chkNotifyPM; text: "Desktop notifications on private message"
                         onCheckedChanged: saveSetting("notify/privateMessage", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { id: chkFlashTaskbar; text: "Flash taskbar on activity"
-                        onCheckedChanged: saveSetting("notify/flashTaskbar", checked)
-                        contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
+                    CheckBox { id: chkFlashTaskbar; text: "Flash taskbar on activity (not available)"
+                        enabled: false
+                        contentItem: Text { text: parent.text; color: "#666"; font.pixelSize: 12; leftPadding: 22 } }
                     CheckBox { id: chkTrayUnread; text: "Show unread count in tray icon"
                         onCheckedChanged: saveSetting("notify/trayUnread", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
@@ -861,7 +867,7 @@ Dialog {
                         onCheckedChanged: saveSetting("url/clickable", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     CheckBox { id: chkUrlGrabber; text: "Auto-grab URLs to URL Grabber"
-                        onCheckedChanged: saveSetting("url/grabber", checked)
+                        onCheckedChanged: saveSetting("url/autoGrab", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     CheckBox { id: chkShowInlineImages; text: "Show inline images from links"
                         onCheckedChanged: saveSetting("ui/showInlineImages", checked)
@@ -963,13 +969,15 @@ Dialog {
                             contentItem: Text { text: "Reload"; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                         }
                     }
+                    Text { text: "Plugins load from the application directory. This path is not used."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     RowLayout {
                         spacing: 8
-                        Text { text: "Plugin directory:"; color: "#ccc"; font.pixelSize: 12 }
+                        enabled: false
+                        Text { text: "Plugin directory:"; color: "#666"; font.pixelSize: 12 }
                         TextField {
                             id: txtPluginDir
-                            Layout.fillWidth: true; text: "~/.config/NUchat/plugins"; color: "#ddd"; font.pixelSize: 12
-                            background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                            Layout.fillWidth: true; text: "Application directory"; color: "#666"; font.pixelSize: 12; readOnly: true
+                            background: Rectangle { color: "#2a2a2a"; border.color: "#444"; radius: 2 }
                         }
                     }
                 }
@@ -1007,13 +1015,15 @@ Dialog {
                             contentItem: Text { text: "Open Script Editor"; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                         }
                     }
+                    Text { text: "Scripts load from the application script directory. This path is not used."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     RowLayout {
                         spacing: 8
-                        Text { text: "Script directory:"; color: "#ccc"; font.pixelSize: 12 }
+                        enabled: false
+                        Text { text: "Script directory:"; color: "#666"; font.pixelSize: 12 }
                         TextField {
                             id: txtScriptDir
-                            Layout.fillWidth: true; text: "~/.config/NUchat/scripts"; color: "#ddd"; font.pixelSize: 12
-                            background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                            Layout.fillWidth: true; text: "Application directory"; color: "#666"; font.pixelSize: 12; readOnly: true
+                            background: Rectangle { color: "#2a2a2a"; border.color: "#444"; radius: 2 }
                         }
                     }
 
@@ -1068,26 +1078,26 @@ Dialog {
                     anchors.margins: 16
 
                     Text { text: "Advanced"; color: "#ddd"; font.pixelSize: 16; font.bold: true }
+                    Text { text: "Messages are UTF-8. Encoding, IPv6, identify-before-join, and turning CAP off are not available. CAP negotiation stays on."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     RowLayout {
                         spacing: 8
-                        Text { text: "Encoding:"; color: "#ccc"; font.pixelSize: 12 }
+                        enabled: false
+                        Text { text: "Encoding:"; color: "#666"; font.pixelSize: 12 }
                         ComboBox {
                             id: cboEncoding
-                            model: ["UTF-8", "ISO-8859-1 (Latin-1)", "ISO-8859-15", "Windows-1252",
-                                    "KOI8-R", "Shift_JIS", "EUC-JP", "GB2312", "Big5"]
+                            model: ["UTF-8"]
                             Layout.preferredWidth: 220
-                            onCurrentIndexChanged: saveSetting("adv/encodingIndex", currentIndex)
                         }
                     }
-                    CheckBox { id: chkIdentifyFirst; text: "Identify to services before joining channels"
-                        onCheckedChanged: saveSetting("adv/identifyFirst", checked)
-                        contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { id: chkIPv6; text: "Enable IPv6"
-                        onCheckedChanged: saveSetting("adv/ipv6", checked)
-                        contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
-                    CheckBox { id: chkCAP; text: "Enable CAP negotiation"
-                        onCheckedChanged: saveSetting("adv/cap", checked)
-                        contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
+                    CheckBox { id: chkIdentifyFirst; text: "Identify to services before joining channels (not available)"
+                        enabled: false
+                        contentItem: Text { text: parent.text; color: "#666"; font.pixelSize: 12; leftPadding: 22 } }
+                    CheckBox { id: chkIPv6; text: "Enable IPv6 (not available)"
+                        enabled: false
+                        contentItem: Text { text: parent.text; color: "#666"; font.pixelSize: 12; leftPadding: 22 } }
+                    CheckBox { id: chkCAP; text: "CAP negotiation is always on"
+                        enabled: false; checked: true
+                        contentItem: Text { text: parent.text; color: "#666"; font.pixelSize: 12; leftPadding: 22 } }
                     Text { text: "Perform on connect:"; color: "#ccc"; font.pixelSize: 12 }
                     Rectangle {
                         Layout.fillWidth: true; height: 80; color: "#333"; border.color: "#555"; radius: 2
@@ -1099,15 +1109,16 @@ Dialog {
                         }
                     }
                     CheckBox { id: chkShowRawIRC; text: "Show raw IRC in server tab"
-                        onCheckedChanged: saveSetting("adv/showRaw", checked)
+                        onCheckedChanged: saveSetting("adv/showRawIRC", checked)
                         contentItem: Text { text: parent.text; color: "#ccc"; font.pixelSize: 12; leftPadding: 22 } }
                     RowLayout {
                         spacing: 8
-                        Text { text: "Command character:"; color: "#ccc"; font.pixelSize: 12 }
+                        enabled: false
+                        Text { text: "Command character (always /):"; color: "#666"; font.pixelSize: 12 }
                         TextField {
                             id: txtCmdChar
-                            text: "/"; Layout.preferredWidth: 40; color: "#ddd"; font.pixelSize: 12
-                            background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
+                            text: "/"; Layout.preferredWidth: 40; color: "#666"; font.pixelSize: 12; readOnly: true
+                            background: Rectangle { color: "#2a2a2a"; border.color: "#444"; radius: 2 }
                         }
                     }
                 }

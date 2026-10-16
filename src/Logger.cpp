@@ -1,33 +1,108 @@
 #include "Logger.h"
+#include "IrcIdentity.h"
+#include "Settings.h"
+#include "UserPaths.h"
+
+#include <QFileDevice>
 #include <QFileInfo>
+#include <QRegularExpression>
 
 Logger::Logger(QObject *parent) : QObject(parent) {}
 
+bool Logger::loggingEnabled() const {
+  if (!m_settings)
+    return true;
+  return m_settings->getBool(QStringLiteral("log/enable"), true);
+}
+
+bool Logger::logPrivateMessages() const {
+  if (!m_settings)
+    return true;
+  return m_settings->getBool(QStringLiteral("log/privateMessages"), true);
+}
+
+bool Logger::perChannelLogs() const {
+  if (!m_settings)
+    return true;
+  return m_settings->getBool(QStringLiteral("log/perChannel"), true);
+}
+
+bool Logger::writeTimestamps() const {
+  if (!m_settings)
+    return true;
+  return m_settings->getBool(QStringLiteral("log/timestamps"), true);
+}
+
 QString Logger::logDir() const {
-  return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) +
-         QStringLiteral("/logs");
+  QString dir;
+  if (m_settings)
+    dir = m_settings->getString(QStringLiteral("log/directory"));
+  if (dir.isEmpty()) {
+    dir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) +
+          QStringLiteral("/logs");
+  } else {
+    dir = expandHomePath(dir);
+  }
+  return QDir::cleanPath(dir);
 }
 
 // Replace characters that are invalid in filenames (Windows is the strictest:
 // \ / : * ? " < > |) so channels like #foo|bar still get a log file.
+// A component of "." or ".." would walk out of the log directory.
 static QString sanitizeFileName(QString name) {
-  static const QString invalid = QStringLiteral("/\\:*?\"<>|");
-  for (const QChar &c : invalid)
-    name.replace(c, QLatin1Char('_'));
-  return name;
+  name = name.trimmed();
+  QString out;
+  out.reserve(name.size());
+  for (const QChar &c : name) {
+    const ushort u = c.unicode();
+    if (u < 32 || u == 127 || QStringLiteral("/\\:*?\"<>|").contains(c))
+      out += QLatin1Char('_');
+    else
+      out += c;
+  }
+  if (out.isEmpty() || out == QLatin1String(".") || out == QLatin1String(".."))
+    out = QLatin1Char('_') + out;
+  return out;
+}
+
+static void restrictToOwner(const QString &path, bool isDir) {
+  const QFileDevice::Permissions perms =
+      isDir ? (QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+               QFileDevice::ExeOwner)
+            : (QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+  QFile::setPermissions(path, perms);
 }
 
 QString Logger::logFilePath(const QString &network,
                             const QString &channel) const {
+  const QString channelPart =
+      perChannelLogs() ? channel : QStringLiteral("messages");
   return logDir() + "/" + sanitizeFileName(network.toLower()) + "/" +
-         sanitizeFileName(channel.toLower()) + ".log";
+         sanitizeFileName(channelPart.toLower()) + ".log";
 }
 
 void Logger::log(const QString &network, const QString &channel,
                  const QString &type, const QString &message) {
-  // Ensure log directory exists: ~/.config/NUchat/logs/<network>/
-  QString dir = logDir() + "/" + sanitizeFileName(network.toLower());
+  if (!loggingEnabled() || network.isEmpty() || channel.isEmpty())
+    return;
+
+  const bool isChannel =
+      channel.startsWith(QLatin1Char('#')) || channel.startsWith(QLatin1Char('&'));
+  const bool isServerTab = ircSame(channel, network);
+  if (!isChannel && !isServerTab && !logPrivateMessages())
+    return;
+
+  const QString root = logDir();
+  const bool rootExisted = QFileInfo::exists(root);
+  QDir().mkpath(root);
+  if (!rootExisted)
+    restrictToOwner(root, true);
+
+  const QString dir = root + "/" + sanitizeFileName(network.toLower());
+  const bool dirExisted = QFileInfo::exists(dir);
   QDir().mkpath(dir);
+  if (!dirExisted)
+    restrictToOwner(dir, true);
 
   QString filePath = logFilePath(network, channel);
 
@@ -41,10 +116,22 @@ void Logger::log(const QString &network, const QString &channel,
 
   QFile file(filePath);
   if (file.open(QIODevice::Append | QIODevice::Text)) {
+    restrictToOwner(filePath, false);
     QTextStream stream(&file);
-    QString ts = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
-    stream << ts << " [" << type << "] " << message << "\n";
+    if (writeTimestamps()) {
+      QString ts = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+      stream << ts << " [" << type << "] " << message << "\n";
+    } else {
+      stream << "[" << type << "] " << message << "\n";
+    }
+    stream.flush();
   }
+}
+
+static bool hasTimestampPrefix(const QString &line) {
+  static const QRegularExpression re(
+      QStringLiteral("^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}"));
+  return re.match(line).hasMatch();
 }
 
 QVector<Logger::LogEntry> Logger::loadScrollback(const QString &network,
@@ -92,30 +179,42 @@ QVector<Logger::LogEntry> Logger::loadScrollback(const QString &network,
   int start = qMax(0, allLines.size() - maxLines);
   for (int i = start; i < allLines.size(); ++i) {
     const QString &line = allLines[i];
-    if (line.length() < 20)
-      continue; // skip malformed lines
-
     LogEntry entry;
-    entry.timestamp = line.left(19); // "yyyy-MM-dd HH:mm:ss"
 
-    // Parse type: new format has " [type] ", old format has no brackets
-    int bracketOpen = line.indexOf('[', 20);
-    int bracketClose = (bracketOpen >= 0) ? line.indexOf(']', bracketOpen) : -1;
-    if (bracketOpen == 20 && bracketClose > bracketOpen) {
-      // New format: "yyyy-MM-dd HH:mm:ss [chat] <nick> message"
-      entry.type = line.mid(bracketOpen + 1, bracketClose - bracketOpen - 1);
-      entry.text = line.mid(bracketClose + 2); // skip "] "
+    if (hasTimestampPrefix(line)) {
+      if (line.length() < 20)
+        continue;
+      entry.timestamp = line.left(19); // "yyyy-MM-dd HH:mm:ss"
+
+      // Parse type: new format has " [type] ", old format has no brackets
+      int bracketOpen = line.indexOf('[', 20);
+      int bracketClose = (bracketOpen >= 0) ? line.indexOf(']', bracketOpen) : -1;
+      if (bracketOpen == 20 && bracketClose > bracketOpen) {
+        // New format: "yyyy-MM-dd HH:mm:ss [chat] <nick> message"
+        entry.type = line.mid(bracketOpen + 1, bracketClose - bracketOpen - 1);
+        entry.text = line.mid(bracketClose + 2); // skip "] "
+      } else {
+        // Old format: "yyyy-MM-dd HH:mm:ss <nick> message" — guess type
+        QString rest = line.mid(20);
+        if (rest.startsWith('<') || rest.startsWith('-'))
+          entry.type = QStringLiteral("chat");
+        else if (rest.startsWith('*'))
+          entry.type = QStringLiteral("action");
+        else
+          entry.type = QStringLiteral("system");
+        entry.text = rest;
+      }
+    } else if (line.startsWith(QLatin1Char('['))) {
+      // Timestamps disabled: "[type] message"
+      const int bracketClose = line.indexOf(QLatin1Char(']'));
+      if (bracketClose <= 1)
+        continue;
+      entry.type = line.mid(1, bracketClose - 1);
+      entry.text = line.mid(bracketClose + 1).trimmed();
     } else {
-      // Old format: "yyyy-MM-dd HH:mm:ss <nick> message" — guess type
-      QString rest = line.mid(20);
-      if (rest.startsWith('<') || rest.startsWith('-'))
-        entry.type = QStringLiteral("chat");
-      else if (rest.startsWith('*'))
-        entry.type = QStringLiteral("action");
-      else
-        entry.type = QStringLiteral("system");
-      entry.text = rest;
+      continue;
     }
+
     // Filter out noisy system messages from scrollback
     if (entry.type == "system") {
       const QString &t = entry.text;

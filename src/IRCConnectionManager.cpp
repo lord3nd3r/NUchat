@@ -1,10 +1,14 @@
 #include "IRCConnectionManager.h"
+#include "NetSafety.h"
 #include "DccManager.h"
 #include "IrcConnection.h"
 #include "IrcIdentity.h"
 #include "Logger.h"
 #include "MessageModel.h"
 #include "ServerChannelModel.h"
+#include "PluginManager.h"
+#include "ScriptDispatch.h"
+#include "ScriptEat.h"
 #include "Settings.h"
 #include "UserPaths.h"
 #include "Version.h"
@@ -20,12 +24,6 @@
 #include <QTimer>
 #include <QUrl>
 #include <algorithm>
-#ifdef HAVE_PYTHON
-#include "PythonScriptEngine.h"
-#endif
-#ifdef HAVE_LUA
-#include "LuaScriptEngine.h"
-#endif
 
 IRCConnectionManager::IRCConnectionManager(QObject *parent) : QObject(parent) {
   // ── Lag meter ── ping every connected server every 30s
@@ -166,7 +164,14 @@ void IRCConnectionManager::connectToServer(
                   "Connecting to " + host + ":" + QString::number(port) +
                       "...");
 
-  applyProxySettings(conn);
+  const QString proxyErr = applyProxySettings(conn);
+  if (!proxyErr.isEmpty()) {
+    appendToChannel(name, name, "system", proxyErr);
+    if (m_msgModel)
+      m_msgModel->addMessage("system", proxyErr);
+    qWarning() << "[Manager]" << proxyErr;
+    return;
+  }
   if (m_settings)
     conn->setAllowSelfSignedCerts(
         m_settings->getBool("conn/allowSelfSignedCerts", false));
@@ -301,18 +306,16 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
                                                const QString &cmd,
                                                const QString &args) {
   if (cmd == "ECHO") { if (m_msgModel) m_msgModel->addMessage("system", args); return true; }
-#ifdef HAVE_PYTHON
-  if (PythonScriptEngine::instance()) {
-    QStringList ap = args.isEmpty() ? QStringList() : args.split(' ');
-    if (PythonScriptEngine::instance()->handleCommand(cmd, ap)) return true;
+  const QStringList ap = args.isEmpty() ? QStringList() : args.split(' ');
+  // C++ plugins take priority over Python/Lua hooks (see docs/PLUGINS.md).
+  if (auto *plugins = PluginManager::instance()) {
+    if (plugins->handleUserCommand(cmd.toLower(), ap, conn))
+      return true;
   }
-#endif
-#ifdef HAVE_LUA
-  if (LuaScriptEngine::instance()) {
-    QStringList ap = args.isEmpty() ? QStringList() : args.split(' ');
-    if (LuaScriptEngine::instance()->handleCommand(cmd, ap)) return true;
-  }
-#endif
+  // EAT_HEXCHAT / EAT_ALL skip the built-in command table. EAT_PLUGIN stops
+  // later script engines but still falls through to the table.
+  if (eatSuppressesCore(dispatchScriptCommand(cmd, ap)))
+    return true;
   if (m_commandTable.isEmpty()) initCommandTable();
   auto it = m_commandTable.find(cmd);
   if (it != m_commandTable.end()) return it.value()(conn, target, args);
@@ -1917,7 +1920,14 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
     if (m_msgModel)
       m_msgModel->addMessage("system", reconnMsg);
 
-    applyProxySettings(conn);
+    const QString proxyErr = applyProxySettings(conn);
+    if (!proxyErr.isEmpty()) {
+      appendToChannel(host, host, "system", proxyErr);
+      if (m_msgModel && m_activeServer == host)
+        m_msgModel->addMessage("system", proxyErr);
+      qWarning() << "[Manager]" << proxyErr;
+      return;
+    }
     if (m_settings)
       conn->setAllowSelfSignedCerts(
           m_settings->getBool("conn/allowSelfSignedCerts", false));
@@ -2177,44 +2187,21 @@ void IRCConnectionManager::openExternalUrl(const QString &url) {
 //  Proxy Support
 // ═══════════════════════════════════════════════════════════════════
 
-void IRCConnectionManager::applyProxySettings(IrcConnection *conn) {
-  if (!m_settings || !conn)
-    return;
+QString IRCConnectionManager::applyProxySettings(IrcConnection *conn) {
+  if (!conn)
+    return QStringLiteral("No connection");
 
-  int typeIdx = m_settings->getInt("conn/proxyTypeIndex", 0);
-  if (typeIdx <= 0) {
+  const NetSafety::ProxyResolution resolved = NetSafety::proxyFromSettings();
+  if (resolved.result == NetSafety::ProxyResolution::Result::Rejected) {
     conn->setProxy(QNetworkProxy::NoProxy);
-    return;
+    return resolved.error;
   }
-
-  QString host = m_settings->getString("conn/proxyHost", "").trimmed();
-  int port = m_settings->getInt("conn/proxyPort", 1080);
-
-  if (host.isEmpty())
-    return;
-
-  QNetworkProxy::ProxyType proxyType = QNetworkProxy::NoProxy;
-  switch (typeIdx) {
-  case 1:
-    proxyType = QNetworkProxy::Socks5Proxy;
-    break; // SOCKS4 not in Qt, fallback to SOCKS5
-  case 2:
-    proxyType = QNetworkProxy::Socks5Proxy;
-    break; // SOCKS5
-  case 3:
-    proxyType = QNetworkProxy::HttpProxy;
-    break; // HTTP CONNECT
-  default:
-    return;
+  if (resolved.result == NetSafety::ProxyResolution::Result::UseProxy) {
+    const QNetworkProxy &p = resolved.proxy;
+    conn->setProxy(p.type(), p.hostName(), static_cast<quint16>(p.port()), p.user(),
+                   p.password());
+  } else {
+    conn->setProxy(QNetworkProxy::NoProxy);
   }
-
-  // Authentication (user/pass from settings if proxy auth is enabled)
-  bool useAuth = m_settings->getBool("conn/proxyAuth", false);
-  QString user, pass;
-  if (useAuth) {
-    user = m_settings->getString("conn/proxyUser", "");
-    pass = m_settings->getString("conn/proxyPass", "");
-  }
-
-  conn->setProxy(proxyType, host, static_cast<quint16>(port), user, pass);
+  return {};
 }

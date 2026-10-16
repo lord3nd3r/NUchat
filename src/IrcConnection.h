@@ -69,6 +69,12 @@ public:
     Q_INVOKABLE void who(const QString &mask);
     Q_INVOKABLE void whois(const QString &nick);
 
+    // Called from a rawLineReceived slot while processLine() is on the
+    // stack. NUchat then skips its own handling of that line (script
+    // EAT_HEXCHAT / EAT_ALL). Direct connections only — a queued slot
+    // runs after processLine() has already continued.
+    void eatCurrentLine() { m_eatCurrentLine = true; }
+
 signals:
     void socketConnected();              // TCP/SSL connected (before registration)
     void registered();                   // RPL_WELCOME received — fully logged in
@@ -150,6 +156,9 @@ private:
 
     // ── Multi-line CAP LS accumulation ──
     QString m_pendingCapLs;  // caps seen so far when server sends CAP * LS *
+
+    // Set by eatCurrentLine() during rawLineReceived; consumed by processLine().
+    bool m_eatCurrentLine = false;
 
     // ── IRCv3 message-tags ──
     QMap<QString, QString> m_lastTags;  // tags from the most recently parsed line

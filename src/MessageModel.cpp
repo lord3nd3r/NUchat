@@ -104,7 +104,7 @@ void MessageModel::addMessage(const QString &type, const QString &text,
   // Skip during history replay (batch mode): an embed already stored for this
   // line is replayed as its own message, and a second fetch would duplicate it.
   bool showInlineImages =
-      prefs.value(QStringLiteral("ui/showInlineImages"), true).toBool();
+      prefs.value(QStringLiteral("ui/showInlineImages"), false).toBool();
   if (!m_batchMode && showInlineImages &&
       (type == QLatin1String("chat") || type == QLatin1String("action"))) {
     static const QRegularExpression urlRe(QStringLiteral(

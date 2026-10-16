@@ -16,7 +16,9 @@ set(CORE_SRC
     ServerChannelModel.cpp
     MessageModel.cpp
     ScriptManager.cpp
+    ScriptDispatch.cpp
     ImageDownloader.cpp
+    NetSafety.cpp
 )
 
 set(CORE_HEADERS
@@ -35,7 +37,9 @@ set(CORE_HEADERS
     ServerChannelModel.h
     MessageModel.h
     ScriptManager.h
+    ScriptDispatch.h
     ImageDownloader.h
+    NetSafety.h
 )
 
 include(FindPkgConfig)
@@ -92,6 +96,13 @@ if(LUA_FOUND)
 endif()
 
 target_compile_definitions(nuchatcore PRIVATE QT_DEPRECATED_WARNINGS)
+# Baked paths so a dev build finds in-tree scripts and an install finds
+# lib/<prefix>/nuchat/plugins and share/nuchat/scripts. Missing dirs are skipped.
+target_compile_definitions(nuchatcore PRIVATE
+    "NUCHAT_SOURCE_SCRIPTS_DIR=\"${CMAKE_SOURCE_DIR}/scripts\""
+    "NUCHAT_INSTALL_SCRIPTS_DIR=\"${CMAKE_INSTALL_FULL_DATAROOTDIR}/nuchat/scripts\""
+    "NUCHAT_PLUGIN_INSTALL_DIR=\"${CMAKE_INSTALL_FULL_LIBDIR}/nuchat/plugins\""
+)
 
 if(WIN32)
     target_compile_definitions(nuchatcore PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN)

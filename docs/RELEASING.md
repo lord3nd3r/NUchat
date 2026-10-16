@@ -11,7 +11,7 @@ GitHub Release assets are built by [`.github/workflows/release.yml`](../.github/
 | `nuchat-macos.zip` | macOS | `nuchat-macos.dmg` |
 | `nuchat-windows-installer.zip` | Windows | `NUchat_<version>_Windows_x64.exe` |
 
-`<version>` is `project(NUchat VERSION ...)` in `CMakeLists.txt`. The Windows CI job passes that version to CPack, so the installer filename inside the zip changes when the project version changes.
+`<version>` is `project(NUchat VERSION ...)` in `CMakeLists.txt`. CPack reads that project version (`CPACK_PACKAGE_FILE_NAME`), so the installer filename inside the zip changes when the project version changes. The Windows job runs `cpack -C Release -G NSIS` and does not pass a separate version flag.
 
 Linux ASan/UBSan stays a pull-request check. It does not produce a release asset.
 

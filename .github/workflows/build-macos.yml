@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # release.yml calls this same job to build the GitHub Release asset.
+  workflow_call:
 
 permissions:
   contents: read

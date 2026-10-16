@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # release.yml calls this same job to build the GitHub Release asset.
+  workflow_call:
 
 # contents: read is enough for checkout and artifacts.
 # actions: write lets actions/cache save the ccache directory.

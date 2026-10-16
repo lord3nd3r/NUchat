@@ -1,0 +1,188 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to upload assets to. Leave empty to build and package only.'
+        required: false
+        type: string
+        default: ''
+
+# Platform jobs keep the called workflows' read access (plus actions: write
+# where those workflows save a cache). contents: write is only on upload.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-assets-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  linux:
+    name: Linux
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/build-linux.yml
+
+  freebsd:
+    name: FreeBSD
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-freebsd.yml
+
+  macos:
+    name: macOS
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/build-macos.yml
+
+  windows:
+    name: Windows
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/build-windows.yml
+
+  package:
+    name: Package
+    needs: [linux, freebsd, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: nuchat-*
+          path: artifacts
+
+      - name: Install zip
+        run: sudo apt-get update -qq && sudo apt-get install -y zip
+
+      - name: Package release assets
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          root="$PWD"
+          for name in nuchat-linux nuchat-freebsd nuchat-macos nuchat-windows-installer; do
+            src="artifacts/${name}"
+            if [ ! -d "$src" ]; then
+              echo "missing artifact: ${name}" >&2
+              find artifacts -print >&2 || true
+              exit 1
+            fi
+            # The Linux and FreeBSD artifacts are the nuchat binary, mode 0755.
+            if [ -f "${src}/nuchat" ]; then
+              chmod 755 "${src}/nuchat"
+            fi
+            (
+              cd "$src"
+              zip -r "${root}/dist/${name}.zip" .
+            )
+          done
+          python3 - <<'PY'
+          import os, re, sys, zipfile
+          expected = [
+              "nuchat-linux.zip",
+              "nuchat-freebsd.zip",
+              "nuchat-macos.zip",
+              "nuchat-windows-installer.zip",
+          ]
+          found = sorted(os.listdir("dist"))
+          if found != sorted(expected):
+              sys.exit(f"unexpected dist contents: {found}")
+          patterns = {
+              "nuchat-linux.zip": re.compile(r"nuchat"),
+              "nuchat-freebsd.zip": re.compile(r"nuchat"),
+              "nuchat-macos.zip": re.compile(r"nuchat-macos\.dmg"),
+              "nuchat-windows-installer.zip": re.compile(r"NUchat_.+_Windows_x64\.exe"),
+          }
+          for name, pattern in patterns.items():
+              path = os.path.join("dist", name)
+              with zipfile.ZipFile(path) as archive:
+                  infos = [info for info in archive.infolist() if not info.is_dir()]
+              names = [info.filename for info in infos]
+              if len(names) != 1 or "/" in names[0] or "\\" in names[0] or not pattern.fullmatch(names[0]):
+                  sys.exit(f"{name} contents {names!r} do not match {pattern.pattern}")
+              mode = (infos[0].external_attr >> 16) & 0o777
+              if names[0] == "nuchat" and mode != 0o755:
+                  sys.exit(f"{name} has mode {mode:o}, expected 755")
+              print(f"{name}: {names[0]} mode {mode:o} ({os.path.getsize(path)} bytes)")
+          PY
+
+      - name: Upload packaged assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-zips
+          path: dist/*.zip
+          if-no-files-found: error
+
+  upload:
+    name: Upload
+    needs: package
+    if: github.event_name != 'workflow_dispatch' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-zips
+          path: dist
+
+      - name: Upload assets to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in
+            v*) ;;
+            *)
+              echo "expected a v* tag, got: ${RELEASE_TAG}" >&2
+              exit 1
+              ;;
+          esac
+          for name in nuchat-linux.zip nuchat-freebsd.zip nuchat-macos.zip nuchat-windows-installer.zip; do
+            if [ ! -f "dist/${name}" ]; then
+              echo "missing packaged asset: dist/${name}" >&2
+              find dist -print >&2 || true
+              exit 1
+            fi
+          done
+          # Publishing a release also pushes the tag. Give that release a
+          # moment to show up, then fail if it still does not exist.
+          # This workflow does not create releases or tags.
+          ok=0
+          for attempt in 1 2 3 4 5 6; do
+            if err=$(gh release view "$RELEASE_TAG" 2>&1 >/dev/null); then
+              ok=1
+              break
+            fi
+            echo "release ${RELEASE_TAG} is not visible yet (attempt ${attempt}): ${err}"
+            sleep 10
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "no GitHub release for ${RELEASE_TAG}; publish the release before uploading assets" >&2
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" \
+            dist/nuchat-linux.zip \
+            dist/nuchat-freebsd.zip \
+            dist/nuchat-macos.zip \
+            dist/nuchat-windows-installer.zip \
+            --clobber
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name'

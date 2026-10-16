@@ -1,5 +1,7 @@
 #pragma once
 
+#include "IrcIdentity.h"
+#include <QDateTime>
 #include <QObject>
 #include <QQueue>
 #include <QSet>
@@ -7,6 +9,8 @@
 #include <QMap>
 #include <QTimer>
 #include <QtNetwork/QSslSocket>
+#include <QtNetwork/QSslCertificate>
+#include <QtNetwork/QSslKey>
 #include <QtNetwork/QNetworkProxy>
 #include <QtNetwork/QHostAddress>
 
@@ -26,7 +30,8 @@ public:
     void disconnectFromServer(const QString &quitMsg = "NUchat");
     Q_INVOKABLE void sendRaw(const QString &line);
 
-    // Strip IRC mode prefixes (~&@%+) from a nick; returns {prefix, bare_nick}
+    // Strip the default PREFIX symbols (~&@%+) from a nick. Connected
+    // sessions should use IrcSupport::splitNick() so ISUPPORT PREFIX applies.
     static QPair<QString, QString> stripNickPrefix(const QString &nick);
 
     // Identity
@@ -47,9 +52,16 @@ public:
 
     // SSL options
     void setAllowSelfSignedCerts(bool allow);
+    // PEM paths for the TLS client certificate (SASL EXTERNAL / CertFP).
+    // Empty paths mean "present no certificate". Encrypted keys are refused.
+    void setClientCertificateFiles(const QString &certPath, const QString &keyPath);
 
     QString serverHost() const { return m_host; }
     bool isConnected() const { return m_registered; }
+    const IrcSupport &support() const { return m_support; }
+    // Server-time of the line currently being dispatched. Invalid when the
+    // line had no time tag. Cleared after the line's slots have returned.
+    QDateTime serverTime() const { return m_serverTime; }
 
     // Local address of the connected socket (used for DCC SEND offers)
     QHostAddress localAddress() const { return m_socket->localAddress(); }
@@ -117,6 +129,8 @@ private:
     quint16 m_port;
     bool m_useSsl;
     bool m_allowSelfSignedCerts = false;
+    QString m_clientCertPath;
+    QString m_clientKeyPath;
     QString m_nickname;
     QString m_username;
     QString m_realname;
@@ -148,6 +162,16 @@ private:
     QTimer m_sendTimer;
     int m_burstRemaining = kBurst;
 
+    // ── TCP/TLS connect timeout ──
+    static constexpr int kConnectTimeoutMs = 30000;
+    QTimer m_connectTimeoutTimer;
+    bool m_socketReady = false;
+    bool m_connectPending = false;
+
+    // ISUPPORT and the server-time of the line in flight.
+    IrcSupport m_support;
+    QDateTime m_serverTime;
+
     // ── Registration / CAP negotiation timeout ──
     // If the CAP/SASL dance stalls (server ACKs sasl but never completes),
     // bail out with CAP END so registration can finish instead of hanging.
@@ -171,4 +195,18 @@ private:
     friend class IrcConnectionTestable;
     void sendRegistration();
     static QString nickFromPrefix(const QString &prefix);
+    bool applyClientCertificate();
+    void handleConnectTimeout();
 };
+
+struct ClientCertMaterial {
+  QList<QSslCertificate> chain;
+  QSslKey key;
+  QString error; // empty when no certificate was requested, or it loaded
+  bool requested = false;
+};
+
+// Loads a PEM certificate chain and an unencrypted PEM private key.
+// Both paths empty: requested stays false and error stays empty.
+ClientCertMaterial loadClientCertificate(const QString &certPath,
+                                         const QString &keyPath);

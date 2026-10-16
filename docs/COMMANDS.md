@@ -2,6 +2,8 @@
 
 All commands are case-insensitive and prefixed with `/`. Unknown commands are forwarded to the server as raw IRC.
 
+A line that starts with `//` is sent as a normal message with one slash removed, so `//hello` sends `/hello`. A first word that itself contains a slash, such as `/etc/passwd`, is also sent as text and is not treated as a command. Pasting more than three lines asks for confirmation even when the paste starts with `/`.
+
 ---
 
 ## General
@@ -120,7 +122,7 @@ These are handled inside NUchat. They are not IRC protocol commands.
 | Command | Aliases | Description |
 |---------|---------|-------------|
 | `/SERVER` | `/NEWSERVER` | Connect to `<host> [port] [password]`. A port that starts with `+` turns TLS on (default port 6697). Otherwise the default port is 6667 and TLS is off. Nick, username, and real name come from saved settings. |
-| `/TIMER` | | `/TIMER <seconds> <command or text>` runs once after the delay, on the server and channel that were active when the timer was set. A leading `/` runs a command; other text is sent as a message. |
+| `/TIMER` | | `/TIMER <seconds> <command or text>` runs once after the delay, on the server and channel that were active when the timer was set. A leading `/` runs a command; other text is sent as a message. Delays that do not fit in a timer (including values past about 24 days) are rejected. |
 | `/LASTLOG` | | `/LASTLOG <text>` prints lines from the current buffer whose text contains that string, case-insensitive. At most the latest 100 matches are shown. |
 | `/EXEC` | | `/EXEC [-o] <command>` runs the command in a shell (`/bin/sh -c` on Unix, `cmd /c` on Windows). Output is shown locally. `-o` sends up to 20 lines to the current channel instead. The process is killed after 15 seconds. |
 | `/ALIAS` | | `/ALIAS` lists aliases. `/ALIAS <name> <expansion>` saves one. `$*` in the expansion is replaced with the arguments; if `$*` is absent, the arguments are appended. Names are stored in uppercase. Alias expansion stops after 5 nested aliases. |

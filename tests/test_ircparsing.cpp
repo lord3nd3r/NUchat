@@ -12,7 +12,7 @@ public:
     void feedLine(const QString &line) { processLine(line); }
     int foldedNameCount(const QString &channel) const
     {
-        return m_channelNames.value(channel.toLower()).size();
+        return m_channelNames.value(m_support.fold(channel)).size();
     }
 };
 

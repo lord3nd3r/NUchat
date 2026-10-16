@@ -2230,8 +2230,10 @@ ApplicationWindow {
         if (txt === "") return
 
         // ── Paste flood protection ──
+        // Slash-initial pastes are included: a multi-line blob of commands
+        // can flood a channel the same way ordinary text can.
         var lines = txt.split(/\r?\n/).filter(function(l) { return l !== "" })
-        if (lines.length > 3 && !txt.startsWith("/")) {
+        if (lines.length > 3) {
             root.pendingPasteText = txt
             pasteFloodDialog.lineCount = lines.length
             pasteFloodDialog.open()

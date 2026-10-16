@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QDir>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileDevice>
@@ -133,6 +134,7 @@ private slots:
             // bits stay set even after restrictToOwner().
 #if defined(Q_OS_UNIX)
             const QFileDevice::Permissions perms = QFile::permissions(path);
+            QVERIFY(perms & QFileDevice::ReadOwner);
             QVERIFY(!(perms & (QFileDevice::ReadGroup | QFileDevice::WriteGroup |
                                QFileDevice::ExeGroup | QFileDevice::ReadOther |
                                QFileDevice::WriteOther | QFileDevice::ExeOther)));
@@ -265,6 +267,7 @@ private slots:
 #if defined(Q_OS_UNIX)
         const auto perms = QFile::permissions(path);
         QVERIFY(perms & QFileDevice::ReadOwner);
+        QVERIFY(perms & QFileDevice::WriteOwner);
         QVERIFY(!(perms & QFileDevice::ReadGroup));
         QVERIFY(!(perms & QFileDevice::ReadOther));
         QVERIFY(!(perms & QFileDevice::WriteOther));

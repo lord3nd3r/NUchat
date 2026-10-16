@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import QtQuick.Dialogs
 import QtQuick.Layouts 1.15
 
 Dialog {
@@ -87,7 +88,6 @@ Dialog {
         txtNickServCmd.text         = appSettings.value("auth/nickservCmd", "/msg NickServ IDENTIFY %p")
         txtCertFile.text            = appSettings.value("auth/certFile", "")
         txtKeyFile.text             = appSettings.value("auth/keyFile", "")
-        chkAcceptInvalidSSL.checked = boolSetting("auth/acceptInvalidSSL", false)
 
         // DCC (tab 7)
         txtDccDownloadDir.text      = appSettings.value("dcc/downloadDir", "~/Downloads")
@@ -490,6 +490,7 @@ Dialog {
                         SpinBox { id: spnReconnectDelay; from: 1; to: 300; value: 10; Layout.preferredWidth: 100
                             onValueChanged: saveSetting("conn/reconnectDelay", value) }
                     }
+                    Text { text: "The delay doubles after each attempt, up to 15 minutes. A connection that does not complete within 30 seconds is aborted."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     RowLayout {
                         spacing: 8
                         Text { text: "Max reconnect attempts:"; color: "#ccc"; font.pixelSize: 12 }
@@ -586,9 +587,8 @@ Dialog {
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
                     }
-                    Text { text: "Client Certificate:"; color: "#666"; font.pixelSize: 13; font.bold: true }
+                    Text { text: "Client Certificate:"; color: "#ccc"; font.pixelSize: 13; font.bold: true }
                     GridLayout {
-                        enabled: false
                         columns: 2; columnSpacing: 10; rowSpacing: 6; Layout.fillWidth: true
                         Text { text: "Cert file (PEM):"; color: "#ccc"; font.pixelSize: 12 }
                         RowLayout {
@@ -601,6 +601,7 @@ Dialog {
                             }
                             Button {
                                 text: "Browse"
+                                onClicked: certFileDialog.open()
                                 background: Rectangle { color: parent.down ? "#555" : "#444"; radius: 3 }
                                 contentItem: Text { text: "Browse"; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                             }
@@ -616,15 +617,13 @@ Dialog {
                             }
                             Button {
                                 text: "Browse"
+                                onClicked: keyFileDialog.open()
                                 background: Rectangle { color: parent.down ? "#555" : "#444"; radius: 3 }
                                 contentItem: Text { text: "Browse"; color: "#ccc"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                             }
                         }
                     }
-                    Text { text: "Certificate checks are controlled by Connection → Allow self-signed certificates. This client does not load a client certificate."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    CheckBox { id: chkAcceptInvalidSSL; text: "Accept invalid SSL certificates (use Connection settings)"
-                        enabled: false
-                        contentItem: Text { text: parent.text; color: "#666"; font.pixelSize: 12; leftPadding: 22 } }
+                    Text { text: "The certificate is presented during the TLS handshake for SASL EXTERNAL and CertFP. The key must be an unencrypted PEM. Which certificate errors are ignored is set on the Connection tab (expired certificates are still rejected)."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
             }
 
@@ -660,32 +659,32 @@ Dialog {
                         SpinBox { id: spnDccMaxSize; from: 0; to: 10000; value: 100; Layout.preferredWidth: 120
                             onValueChanged: saveSetting("dcc/maxSize", value) }
                     }
-                    Text { text: "IP method and listen-port range are not applied. Offers use the address the server sees and an ephemeral port."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Text { text: "DCC IP:"; color: "#666"; font.pixelSize: 13; font.bold: true }
+                    Text { text: "The listen socket always binds to the IRC connection's local IPv4 address. Auto-detect and \"Get from server\" advertise that address. Manual overrides only the address written into the DCC offer (for NAT). Sends try ports from the range below, up to 64 of them."; color: "#888"; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Text { text: "DCC IP:"; color: "#ccc"; font.pixelSize: 13; font.bold: true }
                     RowLayout {
                         spacing: 8
-                        enabled: false
-                        Text { text: "IP method:"; color: "#666"; font.pixelSize: 12 }
-                        ComboBox { id: cboDccIpMethod; model: ["Auto-detect", "Get from server (DCC)", "Specify manually"]; Layout.preferredWidth: 200 }
+                        Text { text: "IP method:"; color: "#ccc"; font.pixelSize: 12 }
+                        ComboBox { id: cboDccIpMethod; model: ["Auto-detect", "Get from server (DCC)", "Specify manually"]; Layout.preferredWidth: 200
+                            onCurrentIndexChanged: saveSetting("dcc/ipMethodIndex", currentIndex) }
                     }
                     RowLayout {
                         spacing: 8
-                        enabled: false
-                        Text { text: "Manual IP:"; color: "#666"; font.pixelSize: 12 }
+                        Text { text: "Manual IP:"; color: "#ccc"; font.pixelSize: 12 }
                         TextField {
                             id: txtDccManualIp
-                            Layout.fillWidth: true; placeholderText: "Not available"; placeholderTextColor: "#666"
-                            color: "#666"; font.pixelSize: 12
-                            background: Rectangle { color: "#2a2a2a"; border.color: "#444"; radius: 2 }
+                            Layout.fillWidth: true; placeholderText: "203.0.113.10"; placeholderTextColor: "#666"
+                            color: "#ddd"; font.pixelSize: 12
+                            background: Rectangle { color: "#333"; border.color: "#555"; radius: 2 }
                         }
                     }
                     RowLayout {
                         spacing: 8
-                        enabled: false
-                        Text { text: "Port range:"; color: "#666"; font.pixelSize: 12 }
-                        SpinBox { id: spnDccPortLow; from: 1024; to: 65535; value: 1024; Layout.preferredWidth: 100 }
-                        Text { text: "to"; color: "#666"; font.pixelSize: 12 }
-                        SpinBox { id: spnDccPortHigh; from: 1024; to: 65535; value: 5000; Layout.preferredWidth: 100 }
+                        Text { text: "Port range:"; color: "#ccc"; font.pixelSize: 12 }
+                        SpinBox { id: spnDccPortLow; from: 1024; to: 65535; value: 1024; Layout.preferredWidth: 100
+                            onValueChanged: saveSetting("dcc/portLow", value) }
+                        Text { text: "to"; color: "#ccc"; font.pixelSize: 12 }
+                        SpinBox { id: spnDccPortHigh; from: 1024; to: 65535; value: 5000; Layout.preferredWidth: 100
+                            onValueChanged: saveSetting("dcc/portHigh", value) }
                     }
                 }
             }
@@ -1177,6 +1176,28 @@ Dialog {
                 }
             }
         }
+    }
+
+    function localFilePath(fileUrl) {
+        var s = fileUrl.toString()
+        if (s.indexOf("file://") === 0)
+            s = s.substring(7)
+        if (s.length > 2 && s.charAt(0) === "/" && s.charAt(2) === ":")
+            s = s.substring(1)
+        return decodeURIComponent(s)
+    }
+
+    FileDialog {
+        id: certFileDialog
+        title: "Client certificate"
+        nameFilters: ["PEM certificates (*.pem *.crt *.cer)", "All files (*)"]
+        onAccepted: txtCertFile.text = dlg.localFilePath(selectedFile)
+    }
+    FileDialog {
+        id: keyFileDialog
+        title: "Client private key"
+        nameFilters: ["PEM keys (*.pem *.key)", "All files (*)"]
+        onAccepted: txtKeyFile.text = dlg.localFilePath(selectedFile)
     }
 
     footer: Rectangle {

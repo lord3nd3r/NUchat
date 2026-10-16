@@ -16,7 +16,7 @@ should read the license that applies to each component.
 | Qt 6 (Core, Gui, Widgets, Network, Concurrent, Quick, QuickControls2) | Required. Linked into `nuchat`. | GNU LGPL version 3 (the open-source Qt distribution). Some Qt add-on modules are GPL-only; this client uses the LGPL modules listed above. | A GPL-3.0 program may link LGPL Qt. |
 | Python 3 | Optional embedded interpreter (`PythonScriptEngine`). | Python Software Foundation License. | `find_package(Python3)` selects whichever Python 3 development files CMake finds. The embedded interpreter is tied to that ABI. The Windows CI job disables Python. |
 | Lua 5.4 | Optional embedded interpreter (`LuaScriptEngine`). | MIT License. | Built when CMake's FindLua or pkg-config finds Lua. |
-| Hunspell | Optional spell checking. | Tri-license: MPL 1.1, GNU GPL 2.0, and GNU LGPL 2.1. | Dictionaries are system files with their own licenses. NUchat only opens `/usr/share/hunspell/<lang>.dic` and the matching `.aff` file. |
+| Hunspell | Optional spell checking. | Tri-license: MPL 1.1, GNU GPL 2.0, and GNU LGPL 2.1. | Dictionaries are system files with their own licenses. NUchat looks for `<lang>.dic` and the matching `.aff` under `DICPATH`, a `hunspell` or `dictionaries` folder beside the executable, `/usr/share/hunspell` and `/usr/share/myspell/dicts` on Unix, Homebrew paths on macOS, and the per-user data directory. |
 
 Qt, Python, Lua, and Hunspell are not vendored in this repository.
 

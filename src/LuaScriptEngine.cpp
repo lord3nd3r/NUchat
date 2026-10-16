@@ -237,8 +237,9 @@ static int lua_nuchat_nickcmp(lua_State *L)
 {
     const char *a = luaL_checkstring(L, 1);
     const char *b = luaL_checkstring(L, 2);
-    // IRC nick comparison is case-insensitive
-    lua_pushinteger(L, QString::fromUtf8(a).compare(QString::fromUtf8(b), Qt::CaseInsensitive));
+    // IRC nick comparison per the CASEMAPPING default (rfc1459).
+    lua_pushinteger(L, ircCompare(QString::fromUtf8(a), QString::fromUtf8(b),
+                                  IrcCaseMapping::Rfc1459));
     return 1;
 }
 

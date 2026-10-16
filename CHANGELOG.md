@@ -4,11 +4,21 @@ All notable changes to NUchat are documented in this file.
 
 ## [Unreleased]
 
+### Protocol
+- **ISUPPORT** — `PREFIX`, `CHANTYPES`, `CHANMODES`, and `CASEMAPPING` (`ascii`, `rfc1459`, `strict-rfc1459`) are parsed and used for channel detection, nick prefixes, mode parameters, and nick/channel identity. Until 005 arrives the client assumes rfc1459 and the usual `#&` / `qaohv` defaults.
+- **server-time** timestamps are applied to messages that carry a `time` tag.
+- **SASL** `AUTHENTICATE` payloads are split into 400-byte chunks. A PEM client certificate and unencrypted key from Preferences are presented on the TLS handshake.
+- Connections that do not complete within 30 seconds are aborted. Auto-reconnect waits the configured delay on the first attempt and doubles it after each later attempt, up to 15 minutes.
+- `//text` sends the literal message `/text`. A token such as `/etc/passwd` is sent as text rather than as a command. Multi-line pastes that start with `/` still ask for confirmation.
+- `/TIMER` rejects delays that overflow the timer.
+- Spell checking looks for Hunspell dictionaries on Windows, macOS, and Linux, not only `/usr/share/hunspell`.
+- DCC sends listen in the configured port range and can advertise a manual IPv4 while still binding to the IRC connection's local address. DCC filenames treat `\` the same on every platform: it is escaped, not used as a directory separator.
+
 ### Security
 - **OS keychain for passwords.** Server `PASS`, SASL, NickServ, ZNC, and proxy passwords are stored via QtKeychain when it is available. Existing `NUchat.conf` values are migrated on read and removed from the file only after the keychain accepts them. Non-password settings are unchanged. If QtKeychain is not linked, or a keychain write fails, the plaintext values stay in the config so nothing is lost.
 - **Service commands are redacted** in the chat buffer and channel logs. `/msg NickServ IDENTIFY`, and the same shape of command (`AUTH`, `REGISTER`, `GHOST`, `SET PASSWORD`, …) to NickServ and the other service nicks, still go out on the wire, but the password is shown as `***`.
 - **Raw log and debug traces** redact `PASS`, SASL `AUTHENTICATE` payloads, `OPER` passwords, and those service commands. Inbound lines delivered to plugins and scripts are not modified.
-- **Log hardening.** Log lines strip C0 controls, ANSI escapes, and mIRC color/formatting codes so one message stays one line. Writes are flushed and `fsync`'d, log files and directories are owner-only, names cannot escape the log directory, and rotation keeps five numbered backups (`.log.1` through `.log.5`) instead of a single `.log.1`.
+- **Log hardening.** Log lines strip C0 controls, ANSI escapes, and mIRC color/formatting codes so one message stays one line. Writes are flushed and `fsync`'d, log files and directories are owner-only, names cannot escape the log directory, and rotation keeps five numbered backups (`.log.1` through `.log.5`) instead of a single `.log.1`. Trailing dots and spaces are removed from log names before they are written, so `..` is stored as `_` on every platform instead of a name Windows would silently shorten. Log lines end in `\n` on every platform, so a Windows text-mode `\r` is not left on the message.
 - Outbound IRC lines have CR, LF, and NUL stripped before they are sent, so one call cannot inject a second command.
 - "Accept self-signed" ignores only self-signed certificates, hostname mismatches, and untrusted issuer chains. Expired certificates and other hard failures still abort the connection.
 - A configured proxy with an empty host, an invalid port, or SOCKS4 no longer falls back to a direct connection or to SOCKS5.

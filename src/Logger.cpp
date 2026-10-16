@@ -71,7 +71,8 @@ void Logger::setRotationLimits(qint64 maxBytes, int maxBackups) {
 // \ / : * ? " < > |) so channels like #foo|bar still get a log file.
 // "." / ".." would walk out of the log directory. Win32 also strips trailing
 // dots and spaces, so a prefixed "_.." would be created as "_" and the path
-// the logger computes would not be the path on disk.
+// the logger computes would not be the path on disk. Trailing dots and spaces
+// are removed first, and an empty result becomes "_".
 static QString sanitizeFileName(QString name) {
   name = name.trimmed();
   QString out;
@@ -355,6 +356,8 @@ QVector<Logger::LogEntry> Logger::loadScrollback(const QString &network,
     QString line = allLines[i];
     if (line.endsWith(QLatin1Char('\r')))
       line.chop(1);
+    if (line.isEmpty())
+      continue;
     LogEntry entry;
 
     if (hasTimestampPrefix(line)) {

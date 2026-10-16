@@ -1,5 +1,6 @@
 #pragma once
 
+#include "IrcIdentity.h"
 #include <QElapsedTimer>
 #include <QHash>
 #include <QMap>
@@ -121,14 +122,18 @@ public:
       int cmp = server.compare(o.server, Qt::CaseInsensitive);
       if (cmp != 0)
         return cmp < 0;
-      return channel.compare(o.channel, Qt::CaseInsensitive) < 0;
+      const IrcCaseMapping mapping = IrcNetworkRegistry::factsFor(server).mapping;
+      return ircLower(channel, mapping).compare(ircLower(o.channel, mapping)) < 0;
     }
     bool operator==(const ChannelKey &o) const {
+      const IrcCaseMapping mapping = IrcNetworkRegistry::factsFor(server).mapping;
       return server.compare(o.server, Qt::CaseInsensitive) == 0 &&
-             channel.compare(o.channel, Qt::CaseInsensitive) == 0;
+             ircEquals(channel, o.channel, mapping);
     }
     friend size_t qHash(const ChannelKey &k, size_t seed = 0) {
-      return qHash(k.server.toLower(), seed) ^ qHash(k.channel.toLower(), seed);
+      const IrcCaseMapping mapping = IrcNetworkRegistry::factsFor(k.server).mapping;
+      return qHash(k.server.toLower(), seed) ^
+             qHash(ircLower(k.channel, mapping), seed);
     }
   };
 
@@ -219,9 +224,16 @@ private:
   QSet<QString>
       m_scrollbackLoaded; // "server\nchannel" keys mapped to loaded scrollback
   QString unreadKey(const QString &server, const QString &channel) const {
-    return server.toLower() + "\n" + channel.toLower();
+    const IrcCaseMapping mapping = IrcNetworkRegistry::factsFor(server).mapping;
+    return server.toLower() + "\n" + ircLower(channel, mapping);
   }
   bool isViewing(const QString &server, const QString &channel) const;
+  bool sameIdentity(const QString &server, const QString &a,
+                    const QString &b) const;
+  bool isChannelName(const QString &server, const QString &name) const;
+  void publishSupport(const QString &server, const IrcSupport &support);
+  void applyTlsPreferences(IrcConnection *conn);
+  QString messageTimestamp(const QString &server) const;
   void showOnOriginServer(const QString &server, const QString &type,
                           const QString &text);
   void retireConnection(IrcConnection *conn);
@@ -231,6 +243,7 @@ private:
   void refreshDccSettings();
   void setServerAway(const QString &server, bool away, bool clearLog);
   friend class ManagerRoutingTest;
+  friend class TestProtocol;
 
   // ── Structured WHOIS accumulation ──
   // Key: "server\nnick", Value: accumulated formatted lines

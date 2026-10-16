@@ -69,8 +69,9 @@ void Logger::setRotationLimits(qint64 maxBytes, int maxBackups) {
 
 // Replace characters that are invalid in filenames (Windows is the strictest:
 // \ / : * ? " < > |) so channels like #foo|bar still get a log file.
-// A component of "." or ".." would walk out of the log directory, so those
-// names are prefixed with '_' (".." -> "_..") and stay inside the log root.
+// "." / ".." would walk out of the log directory. Win32 also strips trailing
+// dots and spaces, so a prefixed "_.." would be created as "_" and the path
+// the logger computes would not be the path on disk.
 static QString sanitizeFileName(QString name) {
   name = name.trimmed();
   QString out;
@@ -82,8 +83,14 @@ static QString sanitizeFileName(QString name) {
     else
       out += c;
   }
+  while (out.endsWith(QLatin1Char('.')) || out.endsWith(QLatin1Char(' ')))
+    out.chop(1);
   if (out.isEmpty() || out == QLatin1String(".") || out == QLatin1String(".."))
     out = QLatin1Char('_') + out;
+  while (out.endsWith(QLatin1Char('.')) || out.endsWith(QLatin1Char(' ')))
+    out.chop(1);
+  if (out.isEmpty())
+    out = QLatin1Char('_');
   return out;
 }
 
@@ -265,7 +272,9 @@ void Logger::log(const QString &network, const QString &channel,
 #ifdef Q_OS_UNIX
   const mode_t oldMask = umask(0077);
 #endif
-  const bool opened = file.open(QIODevice::Append | QIODevice::Text);
+  // Binary mode so Windows does not translate \n to \r\n. Scrollback splits
+  // on \n and would otherwise keep the CR in the message text.
+  const bool opened = file.open(QIODevice::Append | QIODevice::WriteOnly);
 #ifdef Q_OS_UNIX
   umask(oldMask);
 #endif
@@ -343,7 +352,9 @@ QVector<Logger::LogEntry> Logger::loadScrollback(const QString &network,
 
   int start = qMax(0, allLines.size() - maxLines);
   for (int i = start; i < allLines.size(); ++i) {
-    const QString &line = allLines[i];
+    QString line = allLines[i];
+    if (line.endsWith(QLatin1Char('\r')))
+      line.chop(1);
     LogEntry entry;
 
     if (hasTimestampPrefix(line)) {

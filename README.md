@@ -156,7 +156,7 @@ Outbound IRC lines have CR, LF, and NUL removed before they are sent. Debug logs
 
 Logs are written under the directory from Preferences (`log/directory`). A leading `~` is expanded. When that setting is empty, the logger uses Qt's application config location plus `/logs` (`~/.config/NUchat/NUchat/logs/<network>/<channel>.log`). `log/enable` turns logging off. `log/privateMessages` skips queries when it is off; the server tab is still written. `log/perChannel` off folds every channel of a network into `messages.log`. `log/timestamps` off writes `[type] message` with no time prefix. `log/formatIndex` is stored by the preferences page and is not read by the logger.
 
-Each file rotates at 10 MB and keeps `.log.1` through `.log.5`. Lines strip C0 controls, ANSI escapes, and mIRC color codes so one message stays one line. Writes are flushed and `fsync`'d, and new log files and directories are owner-only. A name of `.` or `..` is kept inside the log directory (`_..`, not a parent path).
+Each file rotates at 10 MB and keeps `.log.1` through `.log.5`. Lines strip C0 controls, ANSI escapes, and mIRC color codes so one message stays one line. Writes are flushed and `fsync`'d, and new log files and directories are owner-only. A name of `.` or `..` stays inside the log directory. Trailing dots are removed so Windows stores the same path the logger opens.
 
 ## Downloads
 

@@ -108,8 +108,11 @@ Uses GNUInstallDirs — installs binary, desktop file, icon, and plugin/script d
 | Windows (`windows-2022`) | Qt 6.5.3 via aqtinstall | `ctest -C Release` |
 | macOS (`macos-15`) | Qt 6.8.3 via aqtinstall | `ctest` |
 | FreeBSD (VM on `ubuntu-latest`) | Ports Qt 6 | `ctest` |
+| Release (published release or `v*` tag) | The four platform jobs above | Same `ctest` runs, then uploads the four zip assets |
 
 Windows stays on Qt 6.5.3 and `windows-2022` because newer MSVC standard-library headers removed an API that Qt 6.5.3 still uses. macOS stays on Qt 6.8.3 because that release's OpenGL find-module still references the AGL framework, which the Xcode 26 SDK removed.
+
+Publishing a GitHub Release, or pushing a `v*` tag for a release that already exists, runs the Release workflow. It reuses the Linux, FreeBSD, macOS, and Windows jobs and uploads `nuchat-linux.zip`, `nuchat-freebsd.zip`, `nuchat-macos.zip`, and `nuchat-windows-installer.zip`. See [Releasing](docs/RELEASING.md).
 
 ---
 
@@ -238,6 +241,7 @@ HexChat Dark (default), Monokai, Solarized Dark/Light, Dracula, Nord, Gruvbox Da
 | [Menus & Dialogs](docs/MENUS.md) | Menu bar reference, right-click menus, and dialog descriptions |
 | [Scripting API](docs/SCRIPTING.md) | Python and Lua scripting reference (HexChat-compatible) |
 | [Plugin API](docs/PLUGINS.md) | C++ plugin interface and build instructions |
+| [Releasing](docs/RELEASING.md) | How the four release archives are built and uploaded |
 | [Third-party notices](THIRD-PARTY.md) | Licenses for Qt, Python, Lua, Hunspell, and related notes |
 
 ---

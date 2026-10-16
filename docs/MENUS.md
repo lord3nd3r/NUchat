@@ -186,7 +186,6 @@ Appears when right-clicking a URL in the chat area.
 | **Topic** | Edit channel topic |
 | **About** | Application info and version |
 | **Preferences** | Full settings editor (17 tabs — see below) |
-| **Emoji Picker** | Browse and insert emoji |
 | **Invite User** | Invite a user to the current channel |
 | **Server Password** | Set server password for connection |
 
@@ -204,7 +203,7 @@ Appears when right-clicking a URL in the chat area.
 | **Connection** | Auto-reconnect (delay, max attempts). Auto-join. Proxy (SOCKS4/5, HTTP). Accept self-signed SSL certificates (`conn/allowSelfSignedCerts`). |
 | **SASL / Auth** | Auth method (PLAIN, EXTERNAL, SCRAM, ECDSA, NickServ, CERTFP). Certificate paths. |
 | **DCC** | Download folder. Auto-accept. Max file size. IP detection. Port range. |
-| **Logging** | Enable/disable. Directory. Format (Plain/HTML/JSON). PM logging. Per-channel files. |
+| **Logging** | Enable/disable, directory, format (Plain/HTML/JSON), PM logging, per-channel files. The dialog saves these keys. The logger does not read them: every channel is still written under the application config directory, with a 10 MB rotation. |
 | **Notifications** | Desktop notifications. Flash taskbar. Tray unread. Highlight on nick mention. Timeout. |
 | **Sounds** | Enable/disable. Per-event toggles (highlight, PM, connect). Custom beep command. |
 | **Auto-Replace** | Pattern/replacement rules for outgoing text. |

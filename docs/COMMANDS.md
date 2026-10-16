@@ -20,12 +20,15 @@ All commands are case-insensitive and prefixed with `/`. Unknown commands are fo
 | `/CLOSE` | | Part channel and close tab |
 | `/CYCLE` | `/REJOIN` | Part and rejoin channel |
 | `/RAW` | `/QUOTE` | Send raw IRC command |
+| `/SAY` | | Send the rest of the line as a normal message, including text that starts with `/` |
+| `/ECHO` | | Print text in the current buffer. Nothing is sent to the server |
 
 ## Information
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
 | `/WHOIS` | `/W`, `/WI` | WHOIS lookup |
+| `/WHOWAS` | `/WW` | WHOWAS lookup |
 | `/WHO` | | WHO query |
 | `/NAMES` | | List channel names |
 | `/USERHOST` | | Userhost lookup |
@@ -107,8 +110,23 @@ All commands are case-insensitive and prefixed with `/`. Unknown commands are fo
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| `/IGNORE` | | Add to ignore list |
+| `/IGNORE` | | Add to ignore list. With no arguments, print the current list |
 | `/UNIGNORE` | | Remove from ignore list |
+
+## Client commands
+
+These are handled inside NUchat. They are not IRC protocol commands.
+
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `/SERVER` | `/NEWSERVER` | Connect to `<host> [port] [password]`. A port that starts with `+` turns TLS on (default port 6697). Otherwise the default port is 6667 and TLS is off. Nick, username, and real name come from saved settings. |
+| `/TIMER` | | `/TIMER <seconds> <command or text>` runs once after the delay, on the server and channel that were active when the timer was set. A leading `/` runs a command; other text is sent as a message. |
+| `/LASTLOG` | | `/LASTLOG <text>` prints lines from the current buffer whose text contains that string, case-insensitive. At most the latest 100 matches are shown. |
+| `/EXEC` | | `/EXEC [-o] <command>` runs the command in a shell (`/bin/sh -c` on Unix, `cmd /c` on Windows). Output is shown locally. `-o` sends up to 20 lines to the current channel instead. The process is killed after 15 seconds. |
+| `/ALIAS` | | `/ALIAS` lists aliases. `/ALIAS <name> <expansion>` saves one. `$*` in the expansion is replaced with the arguments; if `$*` is absent, the arguments are appended. Names are stored in uppercase. Alias expansion stops after 5 nested aliases. |
+| `/UNALIAS` | | `/UNALIAS <name>` removes a saved alias. |
+| `/NOTIFY` | | `/NOTIFY` prints the notify list. `/NOTIFY <nick>` adds a nick and sends `MONITOR +`. `/NOTIFY -<nick>` removes it and sends `MONITOR -`. |
+| `/DCC` | | `/DCC SEND <nick> <filepath>` offers a file to that nick. Other `/DCC` subcommands are not implemented. |
 
 ## Formatting Shortcuts (mIRC)
 

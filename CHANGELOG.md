@@ -15,8 +15,11 @@ All notable changes to NUchat are documented in this file.
 - DCC sends listen in the configured port range and can advertise a manual IPv4 while still binding to the IRC connection's local address.
 
 ### Security
+- **OS keychain for passwords.** Server `PASS`, SASL, NickServ, ZNC, and proxy passwords are stored via QtKeychain when it is available. Existing `NUchat.conf` values are migrated on read and removed from the file only after the keychain accepts them. Non-password settings are unchanged. If QtKeychain is not linked, or a keychain write fails, the plaintext values stay in the config so nothing is lost.
+- **Service commands are redacted** in the chat buffer and channel logs. `/msg NickServ IDENTIFY`, and the same shape of command (`AUTH`, `REGISTER`, `GHOST`, `SET PASSWORD`, …) to NickServ and the other service nicks, still go out on the wire, but the password is shown as `***`.
+- **Raw log and debug traces** redact `PASS`, SASL `AUTHENTICATE` payloads, `OPER` passwords, and those service commands. Inbound lines delivered to plugins and scripts are not modified.
+- **Log hardening.** Log lines strip C0 controls, ANSI escapes, and mIRC color/formatting codes so one message stays one line. Writes are flushed and `fsync`'d, log files and directories are owner-only, names cannot escape the log directory, and rotation keeps five numbered backups (`.log.1` through `.log.5`) instead of a single `.log.1`.
 - Outbound IRC lines have CR, LF, and NUL stripped before they are sent, so one call cannot inject a second command.
-- Debug logs redact `PASS`, `OPER`, SASL `AUTHENTICATE` payloads, and NickServ `IDENTIFY` / credential commands.
 - "Accept self-signed" ignores only self-signed certificates, hostname mismatches, and untrusted issuer chains. Expired certificates and other hard failures still abort the connection.
 - A configured proxy with an empty host, an invalid port, or SOCKS4 no longer falls back to a direct connection or to SOCKS5.
 - Inline image previews are off by default. The downloader blocks private and special-use addresses, checks each redirect before following it, validates image bytes before caching, and caps the on-disk cache.

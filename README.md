@@ -117,10 +117,28 @@ Windows stays on Qt 6.5.3 and `windows-2022` because newer MSVC standard-library
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/NUchat/NUchat.conf` | Settings (theme, window geometry, networks, identity) |
-| `~/.config/NUchat/NUchat/logs/` | Channel logs (per-network, per-channel). Always written; see below. |
+| `~/.config/NUchat/NUchat.conf` | Settings (theme, window geometry, networks, identity). Password fields are blank when the OS keychain is in use |
+| `~/.config/NUchat/NUchat/logs/` | Channel logs. Directory, enable, timestamps, private messages, and per-channel files follow Preferences. Rotated `.log.1`–`.log.5`. Control characters and mIRC codes stripped |
 | `~/.config/NUchat/scripts/` | Python and Lua scripts |
 | `~/.cache/NUchat/images/` | Cached inline image previews |
+
+### Passwords and the OS keychain
+
+Server `PASS`, SASL, NickServ, ZNC, and proxy passwords are stored in the OS keychain (libsecret on Linux, Keychain on macOS, Credential Manager on Windows) through [QtKeychain](https://github.com/frankosterfeld/qtkeychain). On the first launch after upgrading, existing passwords are copied out of `NUchat.conf` and the copies in the file are cleared. Every other setting in that file is left as it was.
+
+QtKeychain is optional at build time:
+
+| Platform | Package |
+|----------|---------|
+| Debian / Ubuntu | `qtkeychain-qt6-dev` |
+| Fedora | `qt6-qtkeychain-devel` |
+| FreeBSD | `qtkeychain-qt6` |
+| macOS | QtKeychain built for Qt 6 (`brew` / a source build) |
+| Windows | QtKeychain built for the same Qt 6 used to compile NUchat |
+
+If CMake does not find Qt6Keychain, the build still succeeds and passwords stay in `NUchat.conf` as plaintext — the same place they lived in older versions. The CMake warning names the missing package. A keychain write that fails at runtime (no secret service, locked keychain, denied prompt) also leaves the plaintext value in `NUchat.conf`, so a failed migration cannot drop a saved password.
+
+`/msg NickServ IDENTIFY` (and the same kind of command to ChanServ, OperServ, Q, X, and the other service bots: `AUTH`, `REGISTER`, `GHOST`, `SET PASSWORD`, …) is still sent to the server, but the password is replaced with `***` in the chat buffer, the channel log, and the raw log. `PASS`, SASL `AUTHENTICATE` payloads, and `OPER` passwords are redacted there too.
 
 ### Self-signed / untrusted SSL certificates
 
@@ -136,7 +154,9 @@ Outbound IRC lines have CR, LF, and NUL removed before they are sent. Debug logs
 
 ### Logging
 
-Logs are always appended under `~/.config/NUchat/NUchat/logs/<network>/<channel>.log` (Qt's application config location plus `/logs`). Each file rotates at 10 MB by renaming it to `.log.1`. The Logging page in Preferences stores `log/enable`, `log/directory`, `log/formatIndex`, `log/timestamps`, `log/privateMessages`, and `log/perChannel`, and the logger does not read those keys, so turning logging off or choosing another directory has no effect. The default directory shown in that page (`~/.config/NUchat/logs`) is also a different path from the one the logger uses.
+Logs are written under the directory from Preferences (`log/directory`). A leading `~` is expanded. When that setting is empty, the logger uses Qt's application config location plus `/logs` (`~/.config/NUchat/NUchat/logs/<network>/<channel>.log`). `log/enable` turns logging off. `log/privateMessages` skips queries when it is off; the server tab is still written. `log/perChannel` off folds every channel of a network into `messages.log`. `log/timestamps` off writes `[type] message` with no time prefix. `log/formatIndex` is stored by the preferences page and is not read by the logger.
+
+Each file rotates at 10 MB and keeps `.log.1` through `.log.5`. Lines strip C0 controls, ANSI escapes, and mIRC color codes so one message stays one line. Writes are flushed and `fsync`'d, and new log files and directories are owner-only. A name of `.` or `..` is kept inside the log directory (`_..`, not a parent path).
 
 ## Downloads
 
@@ -271,7 +291,7 @@ A separate JavaScript loader (`ScriptManager`) loads `*.js` from the in-tree `sc
 - **Detach/attach tabs** — Float channel tabs into separate windows
 - **AppImage / Flatpak / .deb packaging**
 
-Already in the client, and previously listed here: per-network auto-join (the Autojoin field in the Network List dialog), channel-list user counts, topics, search, and a minimum-user filter, and size-based log rotation (one `.log.1` backup). Turning logging on or off from Preferences is still not wired; see [Logging](#logging).
+Already in the client, and previously listed here: per-network auto-join (the Autojoin field in the Network List dialog), channel-list user counts, topics, search, and a minimum-user filter, size-based log rotation (`.log.1` through `.log.5`), and the Logging preferences for enable, directory, timestamps, private messages, and per-channel files.
 
 ---
 

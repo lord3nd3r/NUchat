@@ -26,6 +26,18 @@ target_link_libraries(test_hexchatimport PRIVATE Qt6::Test nuchatcore)
 target_include_directories(test_hexchatimport PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME hexchatimport COMMAND test_hexchatimport)
 
+# ── test_secrets (keychain migration; in-memory backend, no OS keychain) ─────
+add_executable(test_secrets test_secrets.cpp)
+target_link_libraries(test_secrets PRIVATE Qt6::Test nuchatcore)
+target_include_directories(test_secrets PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME secrets COMMAND test_secrets)
+
+# ── test_redact ───────────────────────────────────────────────────────────────
+add_executable(test_redact test_redact.cpp)
+target_link_libraries(test_redact PRIVATE Qt6::Test nuchatcore)
+target_include_directories(test_redact PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME redact COMMAND test_redact)
+
 # ── test_messagemodel ─────────────────────────────────────────────────────────
 add_executable(test_messagemodel test_messagemodel.cpp)
 target_link_libraries(test_messagemodel PRIVATE Qt6::Test nuchatcore)

@@ -65,7 +65,7 @@ A line that starts with `//` is sent as a normal message with one slash removed,
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| `/NS` | `/NICKSERV` | Message NickServ |
+| `/NS` | `/NICKSERV` | Message NickServ. `IDENTIFY` / `AUTH` / `REGISTER` / `GHOST` passwords are not written to the chat buffer or channel logs |
 | `/CS` | `/CHANSERV` | Message ChanServ |
 | `/OS` | `/OPERSERV` | Message OperServ |
 | `/HS` | `/HOSTSERV` | Message HostServ |

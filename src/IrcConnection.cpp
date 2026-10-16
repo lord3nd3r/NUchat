@@ -1,4 +1,5 @@
 #include "IrcConnection.h"
+#include "CredentialRedactor.h"
 #include "IrcIdentity.h"
 #include "NetSafety.h"
 #include "Version.h"
@@ -124,7 +125,7 @@ void IrcConnection::sendRawImmediate(const QString &line) {
   data.append("\r\n");
   m_socket->write(data);
   m_socket->flush();
-  qDebug() << "[IRC >]" << NetSafety::redactIrcLine(clean);
+  qDebug() << "[IRC >]" << CredentialRedactor::redactIrcLine(clean);
 }
 
 void IrcConnection::drainSendQueue() {
@@ -480,7 +481,7 @@ void IrcConnection::processLine(const QString &line) {
   Q_UNUSED(clearTime);
 
   emit rawLineReceived(line);
-  qDebug() << "[IRC <]" << NetSafety::redactIrcLine(line);
+  qDebug() << "[IRC <]" << CredentialRedactor::redactIrcLine(line);
   if (m_eatCurrentLine) {
     m_eatCurrentLine = false;
     return;

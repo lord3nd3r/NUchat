@@ -1,4 +1,5 @@
 #include "IRCConnectionManager.h"
+#include "CredentialRedactor.h"
 #include "NetSafety.h"
 #include "DccManager.h"
 #include "IrcConnection.h"
@@ -296,7 +297,8 @@ void IRCConnectionManager::sendMessage(const QString &target,
       }
     }
   }
-  QString text = "<" + displayNick + "> " + literal;
+  const QString shown = CredentialRedactor::redactOutgoingChat(target, literal);
+  QString text = "<" + displayNick + "> " + shown;
   if (m_msgModel && sameIdentity(m_activeServer, m_activeChannel, target))
     m_msgModel->addMessage("chat", text);
   appendToChannel(m_activeServer, target, "chat", text);
@@ -350,7 +352,7 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
 void IRCConnectionManager::sendRawCommand(const QString &raw) {
   if (auto *conn = activeConnection()) {
     conn->sendRaw(raw);
-    emit rawLineReceived(">>", raw);
+    emit rawLineReceived(">>", CredentialRedactor::redactIrcLine(raw));
   }
 }
 
@@ -502,7 +504,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           [this, conn](const QString &line) {
             // server-time is parsed before this signal. Stamp the visible
             // model for the duration of this line, then drop it so the next
-            // locally generated line uses the clock.
+            // locally generated line uses the clock. The raw log shows the
+            // redacted line; lag matching and plugins still see the original.
             if (m_msgModel && ircSame(m_activeServer, serverNameFor(conn))) {
               const QDateTime when = conn->serverTime();
               m_msgModel->setPendingTimestamp(
@@ -513,7 +516,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                   m_msgModel->setPendingTimestamp({});
               });
             }
-            emit rawLineReceived("<<", line);
+            const QString shown = CredentialRedactor::redactIrcLine(line);
+            emit rawLineReceived("<<", shown);
             if (m_settings) {
               bool showRaw = false;
               if (m_settings->contains(QStringLiteral("adv/showRawIRC")))
@@ -522,7 +526,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                 showRaw = m_settings->getBool(QStringLiteral("adv/showRaw"), false);
               if (showRaw) {
                 const QString srv = serverNameFor(conn);
-                const QString text = QStringLiteral("<< ") + line;
+                const QString text = QStringLiteral("<< ") + shown;
                 appendToChannel(srv, srv, QStringLiteral("system"), text);
                 if (m_msgModel && isViewing(srv, srv))
                   m_msgModel->addMessage(QStringLiteral("system"), text);

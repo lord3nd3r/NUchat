@@ -12,7 +12,7 @@ All notable changes to NUchat are documented in this file.
 - `//text` sends the literal message `/text`. A token such as `/etc/passwd` is sent as text rather than as a command. Multi-line pastes that start with `/` still ask for confirmation.
 - `/TIMER` rejects delays that overflow the timer.
 - Spell checking looks for Hunspell dictionaries on Windows, macOS, and Linux, not only `/usr/share/hunspell`.
-- DCC sends listen in the configured port range and can advertise a manual IPv4 while still binding to the IRC connection's local address.
+- DCC sends listen in the configured port range and can advertise a manual IPv4 while still binding to the IRC connection's local address. DCC filenames treat `\` the same on every platform: it is escaped, not used as a directory separator.
 
 ### Security
 - **OS keychain for passwords.** Server `PASS`, SASL, NickServ, ZNC, and proxy passwords are stored via QtKeychain when it is available. Existing `NUchat.conf` values are migrated on read and removed from the file only after the keychain accepts them. Non-password settings are unchanged. If QtKeychain is not linked, or a keychain write fails, the plaintext values stay in the config so nothing is lost.

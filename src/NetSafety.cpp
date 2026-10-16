@@ -365,7 +365,13 @@ bool NetSafety::isUsableDccBindAddress(const QHostAddress &addr) {
 }
 
 QString NetSafety::sanitizeDccFileName(const QString &name) {
-  QString base = QFileInfo(name).fileName();
+  // Split on '/' only. QFileInfo::fileName() treats '\\' as a separator on
+  // Windows and would turn "..\\..\\secret.txt" into "secret.txt", dropping
+  // the traversal markers the rest of this function is meant to neutralize.
+  QString base = name;
+  const int slash = base.lastIndexOf(QLatin1Char('/'));
+  if (slash >= 0)
+    base = base.mid(slash + 1);
   if (base.isEmpty() || base == QLatin1String(".") || base == QLatin1String(".."))
     base = name;
 

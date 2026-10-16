@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QDir>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileDevice>
@@ -117,9 +118,11 @@ private slots:
         bool sawDot = false;
         bool sawEtc = false;
         for (const QString &path : files) {
-            const QString canon = QFileInfo(path).canonicalFilePath();
-            QVERIFY2(canon.startsWith(canonRoot + QLatin1Char('/')),
-                     qPrintable(canon));
+            const QString canon =
+                QDir::fromNativeSeparators(QFileInfo(path).canonicalFilePath());
+            const QString rootSlash =
+                QDir::fromNativeSeparators(canonRoot) + QLatin1Char('/');
+            QVERIFY2(canon.startsWith(rootSlash), qPrintable(canon));
             const QString dirName = QFileInfo(path).dir().dirName();
             QVERIFY(dirName != QLatin1String(".."));
             QVERIFY(dirName != QLatin1String("."));
@@ -128,9 +131,14 @@ private slots:
             if (dirName == QLatin1String(".._.._etc"))
                 sawEtc = true;
             const QFileDevice::Permissions perms = QFile::permissions(path);
+            QVERIFY(perms & QFileDevice::ReadOwner);
+            // Qt on Windows only honors the read-only attribute, so group and
+            // other bits stay set from the inherited ACL. Unix is owner-only.
+#if !defined(Q_OS_WIN)
             QVERIFY(!(perms & (QFileDevice::ReadGroup | QFileDevice::WriteGroup |
                                QFileDevice::ExeGroup | QFileDevice::ReadOther |
                                QFileDevice::WriteOther | QFileDevice::ExeOther)));
+#endif
         }
         QVERIFY(sawDot);
         QVERIFY(sawEtc);
@@ -255,9 +263,12 @@ private slots:
             scratch.logger.logDir() + QStringLiteral("/net/chan.log");
         const auto perms = QFile::permissions(path);
         QVERIFY(perms & QFileDevice::ReadOwner);
+        QVERIFY(perms & QFileDevice::WriteOwner);
+#if !defined(Q_OS_WIN)
         QVERIFY(!(perms & QFileDevice::ReadGroup));
         QVERIFY(!(perms & QFileDevice::ReadOther));
         QVERIFY(!(perms & QFileDevice::WriteOther));
+#endif
     }
 
     void testRotationKeepsSeveralBackups()

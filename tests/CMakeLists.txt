@@ -88,3 +88,14 @@ endif()
 add_dependencies(test_plugins ExamplePlugin)
 add_test(NAME plugins COMMAND test_plugins)
 
+# managerrouting and protocol link Qt Widgets, so QTEST_MAIN builds a
+# QApplication. Headless Linux, FreeBSD, and ASan runners have no DISPLAY;
+# the offscreen plugin is installed there. macOS and Windows already have a
+# session, and forcing offscreen would fail if that plugin is not packaged.
+if(NOT WIN32 AND NOT APPLE)
+    set_tests_properties(
+        messageparser settings ircparsing hexchatimport secrets redact
+        messagemodel logger managerrouting netsecurity protocol plugins
+        PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+

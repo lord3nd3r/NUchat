@@ -1,11 +1,18 @@
 # NUchat C++ Plugin API
 
 NUchat supports C++ plugins loaded as shared libraries at runtime. Plugins are
-compiled against the `PluginInterface` header. On startup NUchat scans, in
-order, any directory set in Preferences (`plugin/directory`), `plugins/` next
-to the executable, `<build>/plugins` when running from a build tree,
-`${CMAKE_INSTALL_LIBDIR}/nuchat/plugins` after install, and
-`~/.config/NUchat/plugins`.
+compiled against the `PluginInterface` header. Qt loads a plugin only when the
+class embeds `Q_PLUGIN_METADATA` for `com.nuchat.PluginInterface`. `Q_OBJECT`
+and `Q_INTERFACES` are not a substitute: the loader reads the IID from the
+plugin metadata and skips anything else.
+
+On startup NUchat scans, in order, any directory set in Preferences
+(`plugin/directory`, with a leading `~` expanded), `plugins/` next to the
+executable, `<build>/plugins` when `<build>/CMakeCache.txt` shows this is a
+build tree, `${CMAKE_INSTALL_LIBDIR}/nuchat/plugins` after install, and
+`~/.config/NUchat/plugins`. Directories that do not exist are skipped. An
+installed `/usr/bin/nuchat` does not scan `/usr/plugins`. The sample CMake
+file writes the library to `${CMAKE_BINARY_DIR}/plugins`.
 
 ---
 
@@ -103,6 +110,8 @@ project(MyPlugin)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Network)
 
+set(CMAKE_AUTOMOC ON)
+
 add_library(MyPlugin SHARED MyPlugin.cpp)
 
 target_link_libraries(MyPlugin PRIVATE Qt6::Core Qt6::Network)
@@ -111,16 +120,25 @@ target_link_libraries(MyPlugin PRIVATE Qt6::Core Qt6::Network)
 target_include_directories(MyPlugin PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 # Output into <build>/plugins, which is where NUchat looks during development.
-# On Windows the DLL is a RUNTIME output, so set both.
+# On Windows the DLL is a RUNTIME output, so set both. Per-config generators
+# otherwise write under plugins/Release.
 set(_plugindir "${CMAKE_BINARY_DIR}/plugins")
 set_target_properties(MyPlugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${_plugindir}"
     RUNTIME_OUTPUT_DIRECTORY "${_plugindir}"
 )
+foreach(cfg DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    set_target_properties(MyPlugin PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY_${cfg} "${_plugindir}"
+        RUNTIME_OUTPUT_DIRECTORY_${cfg} "${_plugindir}"
+    )
+endforeach()
 
-# Install
+# LIBRARY is the .so/.dylib; RUNTIME is the Windows DLL.
+include(GNUInstallDirs)
 install(TARGETS MyPlugin
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/nuchat/plugins)
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/nuchat/plugins
+        RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/nuchat/plugins)
 ```
 
 ### Header (MyPlugin.h)
@@ -177,7 +195,7 @@ bool MyPlugin::handleCommand(const QString &command,
 
 ## Plugin Lifecycle
 
-1. **Discovery** — NUchat scans the directories listed at the top of this page for `.so` (Linux), `.dylib` (macOS), or `.dll` (Windows) files. A library is skipped unless its embedded Qt plugin IID is `com.nuchat.PluginInterface`.
+1. **Discovery** — NUchat scans the directories listed at the top of this page for `.so` (Linux/BSD), `.dylib` (macOS), or `.dll` (Windows) files. A library is skipped unless its embedded Qt plugin IID is `com.nuchat.PluginInterface`.
 2. **Loading** — Each shared library is loaded with `QPluginLoader`
 3. **Initialization** — `initialize()` is called with the `PluginManager`
 4. **Command dispatch** — `handleCommand()` runs when the user types `/command`, and when a `PRIVMSG` or `NOTICE` body starts with `!command` (IRCv3 `@tags` are ignored). The command name is lowercased. Plugins run before Python and Lua scripts. The first plugin to return `true` consumes the command.
@@ -210,11 +228,7 @@ The `IrcConnection` pointer passed to `handleCommand()` provides these methods:
 
 ## Example Plugin
 
-The bundled example plugin is in `plugins/exampleplugin/`. It demonstrates:
-
-- Implementing `PluginInterface`
-- Handling a custom `/hello` command
-- Sending a message to a channel via `IrcConnection`
+The bundled example plugin is in `plugins/exampleplugin/`. `ExamplePlugin.h` includes `Q_PLUGIN_METADATA(IID PluginInterface_iid)`, and its CMake file writes the library to `<build>/plugins`.
 
 ```cpp
 #include "ExamplePlugin.h"

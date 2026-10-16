@@ -1,6 +1,7 @@
 # NUchat Scripting API
 
-NUchat provides a **HexChat-compatible scripting API** for both Python and Lua.
+NUchat provides a **HexChat-style scripting API** for both Python and Lua.
+It covers the calls most scripts use. It is not a full HexChat runtime; see [Current limitations](#current-limitations).
 Scripts are loaded automatically from `~/.config/NUchat/scripts/` on startup and
 hot-reloaded when modified on disk.
 
@@ -50,7 +51,7 @@ __module_name__ = "myscript"
 __module_version__ = "1.0"
 __module_description__ = "My first NUchat script"
 
-def greet_cb(word, word_eol):
+def greet_cb(word, word_eol, userdata=None):
     hexchat.prnt(f"Hello, {hexchat.get_info('nick')}!")
     return hexchat.EAT_ALL
 
@@ -110,7 +111,7 @@ compatibility with both HexChat and NUchat naming conventions.
 |----------|-------------|
 | `hexchat.command(cmd)` | Execute an IRC command (without leading `/`). Example: `hexchat.command("JOIN #channel")` |
 | `hexchat.prnt(text)` | Print text to the current channel tab locally. Supports mIRC color codes (e.g. `\00303green\003`). |
-| `hexchat.emit_print(event, ...)` | Emit a print event with the given arguments. |
+| `hexchat.emit_print(event, ...)` | Print the arguments, joined by spaces, in the active tab. The event name is ignored. This does not dispatch HexChat text events. |
 | `hexchat.get_info(id)` | Retrieve information about the current context. See [get_info Keys](#get_info-keys). |
 | `hexchat.hook_command(name, cb, ...)` | Register a hook for a `/COMMAND`. See [hook_command](#hook_command). |
 | `hexchat.hook_server(name, cb, ...)` | Register a hook for raw server numerics/commands. See [hook_server](#hook_server). |
@@ -256,7 +257,17 @@ These values are honored:
 | `"server"` | Hostname of the active server |
 | `"topic"` | Topic of the active channel |
 | `"version"` | NUchat version string |
-| `"channel"` | Name of the active channel |
+| `"channel"` | Name of the active channel. Currently returns an empty string (see below). |
+| `"away"` | Empty string. Away state is not exposed here. |
+
+### Current limitations
+
+- `get_info("channel")` returns an empty string. The Python engine returns that directly. The Lua engine reads a Qt property named `activeChannel`, and `IRCConnectionManager` does not publish that property.
+- `get_info("away")` returns an empty string in both engines.
+- `emit_print` prints its arguments locally. It does not run print hooks or format a HexChat text event.
+- Python `get_list` returns an empty list. Python `get_prefs` returns `None`. `get_context`, `find_context`, and `set_context` are stubs (a constant context id, and `set_context` always succeeds). Lua does not define those functions.
+- Python command, server, and print callbacks are always called with three arguments: `word`, `word_eol`, and `userdata`. A function that only accepts the first two raises `TypeError`. Lua command and server callbacks are also called with those three values; Lua ignores extra arguments, so a shorter function still runs. Lua timer callbacks receive only userdata.
+- Lua `hook_print` stores the callback and never calls it. Python print hooks are invoked.
 
 ---
 

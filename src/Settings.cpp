@@ -1,9 +1,16 @@
 #include "Settings.h"
+#include "SecretStore.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QSet>
 #include <QStandardPaths>
 #include <QTextStream>
+#include <QUuid>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -14,6 +21,21 @@ Settings::Settings(QObject *parent)
 
 QVariant Settings::value(const QString &key, const QVariant &defaultValue) const
 {
+    if (key == QLatin1String("networks/list")) {
+        if (!settings.contains(key))
+            return defaultValue;
+        return const_cast<Settings *>(this)->hydrateNetworks(settings.value(key).toString());
+    }
+    if (key == QLatin1String("conn/proxyPass")) {
+        if (!settings.contains(key)) {
+            const QString migrated =
+                const_cast<Settings *>(this)->hydrateProxyPass(QString());
+            if (!migrated.isEmpty())
+                return migrated;
+            return defaultValue;
+        }
+        return const_cast<Settings *>(this)->hydrateProxyPass(settings.value(key).toString());
+    }
     return settings.value(key, defaultValue);
 }
 
@@ -24,6 +46,14 @@ bool Settings::contains(const QString &key) const
 
 void Settings::setValue(const QString &key, const QVariant &value)
 {
+    if (key == QLatin1String("networks/list")) {
+        storeNetworks(value.toString());
+        return;
+    }
+    if (key == QLatin1String("conn/proxyPass")) {
+        storeProxyPass(value.toString());
+        return;
+    }
     settings.setValue(key, value);
 }
 
@@ -66,6 +96,8 @@ bool Settings::getBool(const QString &key, bool defaultValue) const
 
 QString Settings::getString(const QString &key, const QString &defaultValue) const
 {
+    if (key == QLatin1String("conn/proxyPass") || key == QLatin1String("networks/list"))
+        return value(key, defaultValue).toString();
     return settings.value(key, defaultValue).toString();
 }
 
@@ -86,7 +118,259 @@ void Settings::setBool(const QString &key, bool v)
 
 void Settings::setString(const QString &key, const QString &v)
 {
+    if (key == QLatin1String("networks/list") || key == QLatin1String("conn/proxyPass")) {
+        setValue(key, v);
+        return;
+    }
     settings.setValue(key, v);
+}
+
+// ── Password fields ──
+// server / SASL / NickServ / ZNC secrets live in the OS keychain when it is
+// available. The JSON (and conn/proxyPass) keep every other field. A failed
+// keychain write leaves the plaintext in place so nothing is dropped.
+
+namespace {
+
+const char *kSecretFields[] = {
+    "saslPass", "nickServPass", "serverPass", "zncPass"
+};
+const QString kProxySecretKey = QStringLiteral("proxy.password");
+
+QString secretKey(const QString &id, const char *field)
+{
+    return QStringLiteral("net.") + id + QLatin1Char('.') + QLatin1String(field);
+}
+
+bool acceptableId(const QString &id)
+{
+    if (id.isEmpty() || id.size() > 80)
+        return false;
+    for (const QChar &c : id) {
+        if (c.isLetterOrNumber() || c == QLatin1Char('-') || c == QLatin1Char('_'))
+            continue;
+        return false;
+    }
+    return true;
+}
+
+QString makeSecretId()
+{
+    return QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
+bool parseNetworkArray(const QString &json, QJsonArray *out)
+{
+    if (json.trimmed().isEmpty()) {
+        *out = QJsonArray();
+        return true;
+    }
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isArray())
+        return false;
+    *out = doc.array();
+    return true;
+}
+
+QString arrayToJson(const QJsonArray &arr)
+{
+    return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+}
+
+QSet<QString> idsIn(const QJsonArray &arr)
+{
+    QSet<QString> ids;
+    for (const QJsonValue &v : arr) {
+        if (!v.isObject())
+            continue;
+        const QString id = v.toObject().value(QStringLiteral("secretId")).toString();
+        if (acceptableId(id))
+            ids.insert(id);
+    }
+    return ids;
+}
+
+bool objectHasPlainSecret(const QJsonObject &obj)
+{
+    for (const char *field : kSecretFields) {
+        if (!obj.value(QLatin1String(field)).toString().isEmpty())
+            return true;
+    }
+    return false;
+}
+
+void removeNetworkSecrets(const QString &id)
+{
+    SecretStore &store = SecretStore::instance();
+    for (const char *field : kSecretFields)
+        store.remove(secretKey(id, field));
+}
+
+bool secretsUnreadable(const QString &id)
+{
+    SecretStore &store = SecretStore::instance();
+    for (const char *field : kSecretFields) {
+        if (store.readFailed(secretKey(id, field)))
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
+QString Settings::hydrateNetworks(const QString &json)
+{
+    QJsonArray arr;
+    if (!parseNetworkArray(json, &arr))
+        return json;
+
+    QJsonArray storedArr;
+    QJsonArray returnedArr;
+    bool dirty = false;
+    SecretStore &store = SecretStore::instance();
+
+    for (const QJsonValue &v : arr) {
+        if (!v.isObject()) {
+            storedArr.append(v);
+            returnedArr.append(v);
+            continue;
+        }
+        QJsonObject stored = v.toObject();
+        QJsonObject returned = stored;
+        QString id = stored.value(QStringLiteral("secretId")).toString();
+        if (!acceptableId(id)) {
+            if (objectHasPlainSecret(stored)) {
+                id = makeSecretId();
+                stored.insert(QStringLiteral("secretId"), id);
+                returned.insert(QStringLiteral("secretId"), id);
+                dirty = true;
+            } else {
+                id.clear();
+            }
+        }
+
+        for (const char *field : kSecretFields) {
+            const QString plain = stored.value(QLatin1String(field)).toString();
+            const QString key = id.isEmpty() ? QString() : secretKey(id, field);
+            if (!plain.isEmpty()) {
+                // Keychain first, then drop the conf copy. A failed write
+                // leaves `plain` in the stored object.
+                if (!key.isEmpty() && store.write(key, plain)) {
+                    stored.insert(QLatin1String(field), QString());
+                    dirty = true;
+                }
+                returned.insert(QLatin1String(field), plain);
+            } else if (!key.isEmpty()) {
+                QString secret;
+                if (store.read(key, &secret) == SecretStore::ReadStatus::Found)
+                    returned.insert(QLatin1String(field), secret);
+            }
+        }
+        storedArr.append(stored);
+        returnedArr.append(returned);
+    }
+
+    if (dirty) {
+        settings.setValue(QStringLiteral("networks/list"), arrayToJson(storedArr));
+        settings.sync();
+    }
+    return arrayToJson(returnedArr);
+}
+
+void Settings::storeNetworks(const QString &json)
+{
+    QJsonArray incoming;
+    if (!parseNetworkArray(json, &incoming)) {
+        settings.setValue(QStringLiteral("networks/list"), json);
+        settings.sync();
+        return;
+    }
+
+    QJsonArray previous;
+    parseNetworkArray(settings.value(QStringLiteral("networks/list")).toString(), &previous);
+    const QSet<QString> oldIds = idsIn(previous);
+
+    QJsonArray storedArr;
+    QSet<QString> newIds;
+    SecretStore &store = SecretStore::instance();
+
+    for (const QJsonValue &v : incoming) {
+        if (!v.isObject()) {
+            storedArr.append(v);
+            continue;
+        }
+        QJsonObject stored = v.toObject();
+        QString id = stored.value(QStringLiteral("secretId")).toString();
+        const bool needId = objectHasPlainSecret(stored) || acceptableId(id);
+        if (needId && !acceptableId(id)) {
+            id = makeSecretId();
+            stored.insert(QStringLiteral("secretId"), id);
+        }
+        if (acceptableId(id))
+            newIds.insert(id);
+
+        for (const char *field : kSecretFields) {
+            const QString plain = stored.value(QLatin1String(field)).toString();
+            const QString key = acceptableId(id) ? secretKey(id, field) : QString();
+            if (!plain.isEmpty()) {
+                if (!key.isEmpty() && store.write(key, plain))
+                    stored.insert(QLatin1String(field), QString());
+                else
+                    stored.insert(QLatin1String(field), plain);
+            } else {
+                // Empty means the user cleared it, unless we never managed
+                // to load the previous secret (keychain read failed).
+                if (!key.isEmpty() && !store.readFailed(key))
+                    store.remove(key);
+                if (stored.contains(QLatin1String(field)))
+                    stored.insert(QLatin1String(field), QString());
+            }
+        }
+        storedArr.append(stored);
+    }
+
+    for (const QString &oldId : oldIds) {
+        if (newIds.contains(oldId))
+            continue;
+        if (secretsUnreadable(oldId))
+            continue;
+        removeNetworkSecrets(oldId);
+    }
+
+    settings.setValue(QStringLiteral("networks/list"), arrayToJson(storedArr));
+    settings.sync();
+}
+
+QString Settings::hydrateProxyPass(const QString &stored)
+{
+    SecretStore &store = SecretStore::instance();
+    if (!stored.isEmpty()) {
+        if (store.write(kProxySecretKey, stored)) {
+            settings.setValue(QStringLiteral("conn/proxyPass"), QString());
+            settings.sync();
+        }
+        return stored;
+    }
+    QString secret;
+    if (store.read(kProxySecretKey, &secret) == SecretStore::ReadStatus::Found)
+        return secret;
+    return stored;
+}
+
+void Settings::storeProxyPass(const QString &pass)
+{
+    SecretStore &store = SecretStore::instance();
+    if (pass.isEmpty()) {
+        if (!store.readFailed(kProxySecretKey))
+            store.remove(kProxySecretKey);
+        settings.setValue(QStringLiteral("conn/proxyPass"), QString());
+    } else if (store.write(kProxySecretKey, pass)) {
+        settings.setValue(QStringLiteral("conn/proxyPass"), QString());
+    } else {
+        settings.setValue(QStringLiteral("conn/proxyPass"), pass);
+    }
+    settings.sync();
 }
 
 void Settings::setDouble(const QString &key, double v)

@@ -9,6 +9,8 @@ set(CORE_SRC
     MessageParser.cpp
     PluginManager.cpp
     Settings.cpp
+    SecretStore.cpp
+    CredentialRedactor.cpp
     Logger.cpp
     UserPaths.cpp
     NotificationManager.cpp
@@ -29,6 +31,8 @@ set(CORE_HEADERS
     PluginInterface.h
     PluginManager.h
     Settings.h
+    SecretStore.h
+    CredentialRedactor.h
     Logger.h
     UserPaths.h
     IrcIdentity.h
@@ -96,6 +100,20 @@ if(LUA_FOUND)
     target_include_directories(nuchatcore PRIVATE ${LUA_INCLUDE_DIRS})
     target_link_libraries(nuchatcore PRIVATE ${LUA_LIBRARIES})
     target_compile_definitions(nuchatcore PUBLIC HAVE_LUA=1)
+endif()
+
+# Optional OS keychain (libsecret / Keychain / Credential Manager). Without it,
+# passwords remain in NUchat.conf. See the README.
+find_package(Qt6Keychain QUIET)
+if(Qt6Keychain_FOUND)
+    message(STATUS "Qt6Keychain found — passwords will be stored in the OS keychain")
+    target_link_libraries(nuchatcore PRIVATE Qt6Keychain::Qt6Keychain)
+    target_compile_definitions(nuchatcore PRIVATE HAVE_QTKEYCHAIN=1)
+else()
+    message(WARNING
+        "Qt6Keychain not found. Server, SASL, NickServ, ZNC, and proxy passwords "
+        "will be stored as plaintext in NUchat.conf. Install QtKeychain "
+        "(Debian/Ubuntu: qtkeychain-qt6-dev) and reconfigure to enable the OS keychain.")
 endif()
 
 target_compile_definitions(nuchatcore PRIVATE QT_DEPRECATED_WARNINGS)

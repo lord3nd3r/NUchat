@@ -45,4 +45,11 @@ public:
 
 private:
     QSettings settings;
+
+    // Move sasl/nickserv/server/znc passwords out of networks/list JSON.
+    // Returns JSON with those secrets filled back in for the caller.
+    QString hydrateNetworks(const QString &json);
+    void storeNetworks(const QString &json);
+    QString hydrateProxyPass(const QString &stored);
+    void storeProxyPass(const QString &pass);
 };

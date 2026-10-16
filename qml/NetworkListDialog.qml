@@ -31,11 +31,33 @@ Dialog {
                 customUser: item.customUser, customReal: item.customReal,
                 serverPass: item.serverPass, isZnc: item.isZnc,
                 zncUser: item.zncUser, zncPass: item.zncPass, zncNetwork: item.zncNetwork,
-                autojoin: item.autojoin, perform: item.perform
+                autojoin: item.autojoin, perform: item.perform,
+                secretId: item.secretId || ""
             })
         }
         appSettings.setValue("networks/list", JSON.stringify(arr))
         appSettings.sync()
+        // C++ assigns a stable secretId the first time a password is stored.
+        // Copy it back so the next save updates the same keychain entry.
+        rememberSecretIds()
+    }
+
+    function rememberSecretIds() {
+        var json = appSettings.value("networks/list", "")
+        if (!json)
+            return
+        try {
+            var arr = JSON.parse(json)
+            if (!Array.isArray(arr))
+                return
+            var n = Math.min(arr.length, networkModel.count)
+            for (var i = 0; i < n; i++) {
+                if (arr[i] && arr[i].secretId)
+                    networkModel.setProperty(i, "secretId", arr[i].secretId)
+            }
+        } catch (e) {
+            console.warn("Failed to keep network secret ids:", e)
+        }
     }
 
     function loadNetworks() {
@@ -55,7 +77,8 @@ Dialog {
                     customUser: n.customUser || "", customReal: n.customReal || "",
                     serverPass: n.serverPass || "", isZnc: !!n.isZnc,
                     zncUser: n.zncUser || "", zncPass: n.zncPass || "", zncNetwork: n.zncNetwork || "",
-                    autojoin: n.autojoin || "", perform: n.perform || ""
+                    autojoin: n.autojoin || "", perform: n.perform || "",
+                    secretId: n.secretId || ""
                 })
             }
             // Force bindings to update by resetting currentIndex
@@ -107,16 +130,16 @@ Dialog {
                     clip: true
                     model: ListModel {
                         id: networkModel
-                        ListElement { network: "Libera.Chat"; server: "irc.libera.chat"; port: 6697; ssl: true; saslMethod: "PLAIN"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: "" }
-                        ListElement { network: "OFTC"; server: "irc.oftc.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: "" }
-                        ListElement { network: "EFnet"; server: "irc.efnet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: "" }
-                        ListElement { network: "DALnet"; server: "irc.dal.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: "" }
-                        ListElement { network: "Undernet"; server: "irc.undernet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: "" }
-                        ListElement { network: "Rizon"; server: "irc.rizon.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: "" }
-                        ListElement { network: "IRCnet"; server: "open.ircnet.net"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: "" }
-                        ListElement { network: "QuakeNet"; server: "irc.quakenet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: "" }
-                        ListElement { network: "Snoonet"; server: "irc.snoonet.org"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: "" }
-                        ListElement { network: "freenode (legacy)"; server: "chat.freenode.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: "" }
+                        ListElement { network: "Libera.Chat"; server: "irc.libera.chat"; port: 6697; ssl: true; saslMethod: "PLAIN"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: ""; secretId: "" }
+                        ListElement { network: "OFTC"; server: "irc.oftc.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: ""; secretId: "" }
+                        ListElement { network: "EFnet"; server: "irc.efnet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: ""; secretId: "" }
+                        ListElement { network: "DALnet"; server: "irc.dal.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: ""; secretId: "" }
+                        ListElement { network: "Undernet"; server: "irc.undernet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: ""; secretId: "" }
+                        ListElement { network: "Rizon"; server: "irc.rizon.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: ""; secretId: "" }
+                        ListElement { network: "IRCnet"; server: "open.ircnet.net"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: ""; secretId: "" }
+                        ListElement { network: "QuakeNet"; server: "irc.quakenet.org"; port: 6667; ssl: false; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: ""; secretId: "" }
+                        ListElement { network: "Snoonet"; server: "irc.snoonet.org"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: ""; secretId: "" }
+                        ListElement { network: "freenode (legacy)"; server: "chat.freenode.net"; port: 6697; ssl: true; saslMethod: "None"; saslUser: ""; saslPass: ""; nickServCmd: ""; nickServPass: ""; useGlobalNick: true; customNick: ""; customUser: ""; customReal: ""; serverPass: ""; isZnc: false; zncUser: ""; zncPass: ""; zncNetwork: ""; autojoin: ""; perform: ""; secretId: "" }
                     }
                     currentIndex: 0
 
@@ -447,7 +470,7 @@ Dialog {
             Button {
                 text: "Add Network"
                 onClicked: {
-                    networkModel.append({network: "New Network", server: "irc.example.com", port: 6697, ssl: true, saslMethod: "None", saslUser: "", saslPass: "", nickServCmd: "", nickServPass: "", useGlobalNick: true, customNick: "", customUser: "", customReal: "", serverPass: "", isZnc: false, zncUser: "", zncPass: "", zncNetwork: "", autojoin: "", perform: ""})
+                    networkModel.append({network: "New Network", server: "irc.example.com", port: 6697, ssl: true, saslMethod: "None", saslUser: "", saslPass: "", nickServCmd: "", nickServPass: "", useGlobalNick: true, customNick: "", customUser: "", customReal: "", serverPass: "", isZnc: false, zncUser: "", zncPass: "", zncNetwork: "", autojoin: "", perform: "", secretId: ""})
                     networkList.currentIndex = networkModel.count - 1
                     dlg.saveNetworks()
                 }

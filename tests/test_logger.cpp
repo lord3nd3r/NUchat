@@ -1,6 +1,7 @@
 #include <QtTest>
 #include <QDirIterator>
 #include <QFile>
+#include <QFileDevice>
 #include <QFileInfo>
 #include <QTemporaryDir>
 #include "Logger.h"
@@ -10,6 +11,23 @@
 class TestLogger : public QObject
 {
     Q_OBJECT
+
+private:
+    QString readFile(const QString &path) const
+    {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly))
+            return {};
+        return QString::fromUtf8(f.readAll());
+    }
+
+    struct Scratch {
+        QTemporaryDir dir;
+        Logger logger;
+        Scratch() {
+            logger.setLogDirectory(dir.path() + QStringLiteral("/logs"));
+        }
+    };
 
 private slots:
     void initTestCase()
@@ -185,6 +203,98 @@ private slots:
             logger.loadScrollback(QStringLiteral("ircnet"), QStringLiteral("ircnet"));
         QCOMPARE(server.size(), 1);
         QCOMPARE(server[0].text, QStringLiteral("server-text"));
+    }
+
+    void testStripsControlsAndIsReadableAfterReturn()
+    {
+        Scratch scratch;
+        QVERIFY(scratch.dir.isValid());
+        const QString raw = QStringLiteral("\x03") + QStringLiteral("04,02red")
+            + QChar(0x0F) + QChar(0x02) + QStringLiteral("bold") + QChar(0x07)
+            + QStringLiteral("bell\nsecond") + QStringLiteral("\x1B[31mansi");
+        scratch.logger.log(QStringLiteral("net"), QStringLiteral("#chan"),
+                           QStringLiteral("chat"), raw);
+
+        const QString path =
+            scratch.logger.logDir() + QStringLiteral("/net/#chan.log");
+        const QString body = readFile(path);
+        QVERIFY2(!body.isEmpty(), qPrintable(path));
+        QCOMPARE(body.count(QLatin1Char('\n')), 1);
+        QVERIFY(body.contains(QStringLiteral("redboldbell secondansi")));
+        QVERIFY(!body.contains(QChar(0x03)));
+        QVERIFY(!body.contains(QChar(0x1B)));
+        QVERIFY(!body.contains(QChar(0x07)));
+        QVERIFY(body.contains(QStringLiteral("[chat]")));
+
+        const auto entries = scratch.logger.loadScrollback(
+            QStringLiteral("net"), QStringLiteral("#chan"), 10);
+        QCOMPARE(entries.size(), 1);
+        QCOMPARE(entries.at(0).type, QStringLiteral("chat"));
+        QVERIFY(entries.at(0).text.contains(QStringLiteral("redboldbell secondansi")));
+        QCOMPARE(entries.at(0).timestamp.size(), 19);
+    }
+
+    void testPlainUnicodeIsPreserved()
+    {
+        Scratch scratch;
+        QVERIFY(scratch.dir.isValid());
+        scratch.logger.log(QStringLiteral("Net"), QStringLiteral("#Chan"),
+                           QStringLiteral("chat"), QStringLiteral("héllo"));
+        const QString body =
+            readFile(scratch.logger.logDir() + QStringLiteral("/net/#chan.log"));
+        QVERIFY(body.contains(QStringLiteral("héllo")));
+    }
+
+    void testOwnerOnlyPermissions()
+    {
+        Scratch scratch;
+        QVERIFY(scratch.dir.isValid());
+        scratch.logger.log(QStringLiteral("net"), QStringLiteral("chan"),
+                           QStringLiteral("chat"), QStringLiteral("private"));
+        const QString path =
+            scratch.logger.logDir() + QStringLiteral("/net/chan.log");
+        const auto perms = QFile::permissions(path);
+        QVERIFY(perms & QFileDevice::ReadOwner);
+        QVERIFY(!(perms & QFileDevice::ReadGroup));
+        QVERIFY(!(perms & QFileDevice::ReadOther));
+        QVERIFY(!(perms & QFileDevice::WriteOther));
+    }
+
+    void testRotationKeepsSeveralBackups()
+    {
+        Scratch scratch;
+        QVERIFY(scratch.dir.isValid());
+        scratch.logger.setRotationLimits(100, 2);
+        const QString net = QStringLiteral("rot");
+        const QString chan = QStringLiteral("c");
+        auto line = [](QChar c) { return QString(80, c); };
+        scratch.logger.log(net, chan, QStringLiteral("chat"), line('A'));
+        scratch.logger.log(net, chan, QStringLiteral("chat"), line('B'));
+        scratch.logger.log(net, chan, QStringLiteral("chat"), line('C'));
+        scratch.logger.log(net, chan, QStringLiteral("chat"), line('D'));
+
+        const QString base = scratch.logger.logDir() + QStringLiteral("/rot/c.log");
+        QVERIFY(readFile(base).contains(QString(80, 'D')));
+        QVERIFY(readFile(base + QStringLiteral(".1")).contains(QString(80, 'C')));
+        QVERIFY(readFile(base + QStringLiteral(".2")).contains(QString(80, 'B')));
+        QVERIFY(!QFile::exists(base + QStringLiteral(".3")));
+        QVERIFY(!readFile(base + QStringLiteral(".2")).contains(QString(80, 'A')));
+        QVERIFY(!readFile(base).contains(QString(80, 'A')));
+    }
+
+    void testDotDotNetworkDoesNotEscape()
+    {
+        Scratch scratch;
+        QVERIFY(scratch.dir.isValid());
+        const QString token = QStringLiteral("PATH-TOKEN-UNIQUE");
+        scratch.logger.log(QStringLiteral(".."), QStringLiteral(".."),
+                           QStringLiteral("chat"), token);
+        const QString path =
+            scratch.logger.logDir() + QStringLiteral("/_../_...log");
+        QVERIFY2(QFile::exists(path), qPrintable(path));
+        QVERIFY(readFile(path).contains(token));
+        QVERIFY(!QFile::exists(scratch.dir.path() + QStringLiteral("/_.log")));
+        QVERIFY(!QFile::exists(scratch.dir.path() + QStringLiteral("/_...log")));
     }
 
 private:

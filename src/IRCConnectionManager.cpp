@@ -1,4 +1,5 @@
 #include "IRCConnectionManager.h"
+#include "CredentialRedactor.h"
 #include "NetSafety.h"
 #include "DccManager.h"
 #include "IrcConnection.h"
@@ -295,7 +296,8 @@ void IRCConnectionManager::sendMessage(const QString &target,
       }
     }
   }
-  QString text = "<" + displayNick + "> " + message;
+  const QString shown = CredentialRedactor::redactOutgoingChat(target, message);
+  QString text = "<" + displayNick + "> " + shown;
   if (m_msgModel && ircSame(m_activeChannel, target))
     m_msgModel->addMessage("chat", text);
   appendToChannel(m_activeServer, target, "chat", text);
@@ -349,7 +351,7 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
 void IRCConnectionManager::sendRawCommand(const QString &raw) {
   if (auto *conn = activeConnection()) {
     conn->sendRaw(raw);
-    emit rawLineReceived(">>", raw);
+    emit rawLineReceived(">>", CredentialRedactor::redactIrcLine(raw));
   }
 }
 
@@ -515,7 +517,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
   // Forward raw lines for Raw Log + lag meter PONG detection
   connect(conn, &IrcConnection::rawLineReceived, this,
           [this, conn](const QString &line) {
-            emit rawLineReceived("<<", line);
+            const QString shown = CredentialRedactor::redactIrcLine(line);
+            emit rawLineReceived("<<", shown);
             if (m_settings) {
               bool showRaw = false;
               if (m_settings->contains(QStringLiteral("adv/showRawIRC")))
@@ -524,7 +527,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
                 showRaw = m_settings->getBool(QStringLiteral("adv/showRaw"), false);
               if (showRaw) {
                 const QString srv = serverNameFor(conn);
-                const QString text = QStringLiteral("<< ") + line;
+                const QString text = QStringLiteral("<< ") + shown;
                 appendToChannel(srv, srv, QStringLiteral("system"), text);
                 if (m_msgModel && isViewing(srv, srv))
                   m_msgModel->addMessage(QStringLiteral("system"), text);

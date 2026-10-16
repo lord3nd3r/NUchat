@@ -1,4 +1,5 @@
 #include "IrcConnection.h"
+#include "IrcIdentity.h"
 #include "NetSafety.h"
 #include "Version.h"
 #include <QDebug>
@@ -606,20 +607,22 @@ void IrcConnection::processLine(const QString &line) {
       if (!channel.isEmpty()) {
         QStringList names = namesList.split(' ', Qt::SkipEmptyParts);
         // If this is the first 353 for a new names sequence, start fresh.
-        if (!m_namesStarted.contains(channel)) {
-          m_channelNames[channel] = QStringList();
-          m_namesStarted.insert(channel);
+        const QString key = ircFold(channel);
+        if (!m_namesStarted.contains(key)) {
+          m_channelNames[key] = QStringList();
+          m_namesStarted.insert(key);
         }
-        m_channelNames[channel] += names;
+        m_channelNames[key] += names;
       }
     }
     // RPL_ENDOFNAMES (366)
     else if (numeric == 366) {
       QString channel = numParams.isEmpty() ? "" : numParams[0];
-      if (m_channelNames.contains(channel)) {
-        emit namesReceived(channel, m_channelNames[channel]);
-        m_channelNames.remove(channel);
-        m_namesStarted.remove(channel);
+      const QString key = ircFold(channel);
+      if (m_channelNames.contains(key)) {
+        emit namesReceived(channel, m_channelNames[key]);
+        m_channelNames.remove(key);
+        m_namesStarted.remove(key);
       }
     }
     // ERR_NICKNAMEINUSE (433)
@@ -679,9 +682,10 @@ void IrcConnection::processLine(const QString &line) {
     QString channel = params.isEmpty() ? "" : params[0];
     emit joinReceived(prefix, channel);
     // If it's us joining, init names list
-    if (nickFromPrefix(prefix) == m_nickname) {
-      m_channelNames[channel] = QStringList();
-      m_namesStarted.remove(channel);  // allow fresh tracking on next 353
+    if (ircSame(nickFromPrefix(prefix), m_nickname)) {
+      const QString key = ircFold(channel);
+      m_channelNames[key] = QStringList();
+      m_namesStarted.remove(key);  // allow fresh tracking on next 353
     }
   } else if (command == "PART") {
     QString channel = params.isEmpty() ? "" : params[0];
@@ -700,7 +704,7 @@ void IrcConnection::processLine(const QString &line) {
   } else if (command == "NICK") {
     QString newNick = params.isEmpty() ? "" : params[0];
     QString oldNick = nickFromPrefix(prefix);
-    if (oldNick == m_nickname) {
+    if (ircSame(oldNick, m_nickname)) {
       m_nickname = newNick;
       emit nicknameChanged(m_nickname);
     }

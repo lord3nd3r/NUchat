@@ -26,6 +26,7 @@
 #include "ServerChannelModel.h"
 #include "Settings.h"
 #include "ThemeManager.h"
+#include "UserPaths.h"
 #include "Version.h"
 #ifdef HAVE_PYTHON
 #include "PythonScriptEngine.h"
@@ -106,6 +107,7 @@ int main(int argc, char *argv[]) {
   // Wire the manager to our models
   manager.setMessageModel(&msgModel);
   manager.setServerChannelModel(&treeModel);
+  logger.setSettings(&appSettings);
   manager.setLogger(&logger);
   manager.setSettings(&appSettings);
 
@@ -125,7 +127,11 @@ int main(int argc, char *argv[]) {
   // Update tray icon unread state when unread changes — reflect the real
   // aggregate state so the dot clears when the last unread channel is read
   QObject::connect(&manager, &IRCConnectionManager::unreadStateChanged,
-                   [&manager, &notifyMgr]() {
+                   [&manager, &notifyMgr, &appSettings]() {
+    if (!appSettings.getBool(QStringLiteral("notify/trayUnread"), true)) {
+      notifyMgr.clearUnreadState();
+      return;
+    }
     notifyMgr.setUnreadState(manager.anyUnread(), manager.anyHighlight());
   });
 
@@ -178,11 +184,9 @@ int main(int argc, char *argv[]) {
                                            ImageDownloader::instance());
   // DCC file transfer manager
   DccManager dccManager;
-  QString dccDownDir = appSettings.value("dcc/downloadDir", QDir::homePath() + "/Downloads").toString();
-  dccManager.setDownloadDir(dccDownDir);
-  dccManager.setAutoAccept(appSettings.value("dcc/autoAccept", false).toBool());
-  qint64 maxDcc = appSettings.value("dcc/maxFileSize", 100 * 1024 * 1024).toLongLong();
-  dccManager.setMaxFileSize(maxDcc);
+  dccManager.setDownloadDir(dccDownloadDirectory(&appSettings));
+  dccManager.setAutoAccept(appSettings.getBool(QStringLiteral("dcc/autoAccept"), false));
+  dccManager.setMaxFileSize(dccMaxFileBytes(&appSettings));
   manager.setDccManager(&dccManager);
   engine.rootContext()->setContextProperty("dccManager", &dccManager);
   engine.rootContext()->setContextProperty("appVersion",

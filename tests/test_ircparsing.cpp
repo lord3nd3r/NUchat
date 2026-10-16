@@ -10,6 +10,10 @@ class IrcConnectionTestable : public IrcConnection
 public:
     using IrcConnection::IrcConnection;
     void feedLine(const QString &line) { processLine(line); }
+    int foldedNameCount(const QString &channel) const
+    {
+        return m_channelNames.value(channel.toLower()).size();
+    }
 };
 
 class TestIrcParsing : public QObject
@@ -217,6 +221,33 @@ private slots:
         auto tags = spy.takeFirst()[0].value<QMap<QString, QString>>();
         QVERIFY(tags.contains("solanum.chat/oper"));
         QCOMPARE(tags.value("account"), QString("alice"));
+    }
+
+    // A NICK for our own nick matches case-insensitively.
+    void testOwnNickChangeIsCaseInsensitive()
+    {
+        IrcConnectionTestable conn;
+        conn.setNickname("Alice");
+        QSignalSpy spy(&conn, &IrcConnection::nicknameChanged);
+        conn.feedLine(":ALICE!u@h NICK :bob");
+        QCOMPARE(conn.nickname(), QString("bob"));
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.first()[0].toString(), QString("bob"));
+    }
+
+    // 353 and 366 for the same channel must pair even when the case differs.
+    void testNamesListCaseFold()
+    {
+        IrcConnectionTestable conn;
+        QSignalSpy spy(&conn, &IrcConnection::namesReceived);
+        conn.feedLine(":server 353 me = #Foo :@alice +bob");
+        QCOMPARE(conn.foldedNameCount("#foo"), 2);
+        conn.feedLine(":server 366 me #foo :End of /NAMES list");
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.first()[0].toString(), QString("#foo"));
+        QStringList names = spy.first()[1].toStringList();
+        QCOMPARE(names.size(), 2);
+        QCOMPARE(conn.foldedNameCount("#Foo"), 0);
     }
 };
 

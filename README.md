@@ -250,13 +250,13 @@ NUchat/
 
 ### C++ Plugins
 
-Implement `PluginInterface` (see `src/PluginInterface.h`) as a `QObject` with `Q_PLUGIN_METADATA(IID "com.nuchat.PluginInterface")`, and compile it as a shared library. `Q_OBJECT` and `Q_INTERFACES` alone are not enough: the loader skips any library whose embedded IID is not `com.nuchat.PluginInterface`. On startup NUchat scans `<directory of the nuchat executable>/../plugins` (for `build/src/nuchat`, that is `build/plugins`). The sample `plugins/exampleplugin/` CMake file currently writes the library to `${CMAKE_BINARY_DIR}/../plugins`, which is outside that directory. See [docs/PLUGINS.md](docs/PLUGINS.md).
+Implement `PluginInterface` (see `src/PluginInterface.h`) as a `QObject` with `Q_PLUGIN_METADATA(IID "com.nuchat.PluginInterface")`, and compile it as a shared library. The loader skips any library whose embedded IID is not `com.nuchat.PluginInterface`. On startup NUchat scans the Preferences plugin directory, `plugins/` next to the executable, `<build>/plugins` for an in-tree build, `${CMAKE_INSTALL_LIBDIR}/nuchat/plugins` after install, and `~/.config/NUchat/plugins`. The sample `plugins/exampleplugin/` CMake file writes the library to `${CMAKE_BINARY_DIR}/plugins`. See [docs/PLUGINS.md](docs/PLUGINS.md).
 
 ### Python and Lua scripts
 
 Place `.py` and `.lua` files in `~/.config/NUchat/scripts/`. Both engines load that directory on startup. See `scripts/example.py` and [docs/SCRIPTING.md](docs/SCRIPTING.md).
 
-A separate JavaScript loader (`ScriptManager`) looks for `*.js` next to the build, in `<application dir>/../scripts` (for `build/src/nuchat`, that is `build/scripts`, which the build does not create). It does not read `~/.config/NUchat/scripts/`, and `scripts/hello.js` is not wired to the Python/Lua API. JavaScript is not part of the scripting guide.
+A separate JavaScript loader (`ScriptManager`) loads `*.js` from the in-tree `scripts/` directory on a dev build, `<prefix>/share/nuchat/scripts` after install, `scripts/` next to the executable, and `~/.config/NUchat/scripts/`. It is not the HexChat API. `scripts/hello.js` defines `onMessage` and is called for `PRIVMSG` and `NOTICE` text. See [docs/SCRIPTING.md](docs/SCRIPTING.md).
 
 ---
 

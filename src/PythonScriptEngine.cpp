@@ -19,9 +19,12 @@
 #include <string>  // std::wstring (needed for Py_SetPythonHome on Windows)
 
 #include "PythonScriptEngine.h"
+#include "HookOrder.h"
 #include "IRCConnectionManager.h"
 #include "IrcConnection.h"
+#include "IrcLineParse.h"
 #include "MessageModel.h"
+#include "ScriptEat.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -36,10 +39,21 @@ PythonScriptEngine *PythonScriptEngine::s_instance = nullptr;
 // ──────────────────────────────────────────────────────────────
 //  HexChat eat constants
 // ──────────────────────────────────────────────────────────────
-static constexpr int EAT_NONE   = 0;
-static constexpr int EAT_HEXCHAT = 1;
-static constexpr int EAT_PLUGIN = 2;
-static constexpr int EAT_ALL    = 3;
+static constexpr int EAT_NONE = NUCHAT_EAT_NONE;
+static constexpr int EAT_HEXCHAT = NUCHAT_EAT_HEXCHAT;
+static constexpr int EAT_PLUGIN = NUCHAT_EAT_PLUGIN;
+static constexpr int EAT_ALL = NUCHAT_EAT_ALL;
+
+static void releaseTimer(QTimer *&timer) {
+    if (!timer)
+        return;
+    QTimer *t = timer;
+    timer = nullptr;
+    t->stop();
+    t->disconnect();
+    // Never delete a QTimer from inside its own timeout handler.
+    t->deleteLater();
+}
 
 // Priority constants
 static constexpr int PRI_HIGHEST = 127;
@@ -458,6 +472,14 @@ void PythonScriptEngine::initPython()
 {
     if (m_pyInited || m_pyInitFailed) return;
 
+    // A second engine (tests, or a reload of the process) must not call
+    // PyImport_AppendInittab after the interpreter is up — that aborts.
+    if (Py_IsInitialized()) {
+        m_pyInited = true;
+        qDebug() << "[PythonScriptEngine] Reusing existing Python interpreter";
+        return;
+    }
+
     // Register our built-in modules before Py_Initialize
     PyImport_AppendInittab("hexchat", &PyInit_hexchat);
     PyImport_AppendInittab("xchat",   &PyInit_xchat);
@@ -522,10 +544,7 @@ void PythonScriptEngine::shutdownPython()
 
     // Clean up hooks
     for (auto &hook : m_hooks) {
-        if (hook.timer) {
-            hook.timer->stop();
-            delete hook.timer;
-        }
+        releaseTimer(hook.timer);
         Py_XDECREF((PyObject*)hook.pyCallback);
         Py_XDECREF((PyObject*)hook.pyUserdata);
     }
@@ -651,78 +670,70 @@ void PythonScriptEngine::onFileChanged(const QString &path)
 //  Hook dispatch
 // ──────────────────────────────────────────────────────────────
 
-bool PythonScriptEngine::handleServerLine(IrcConnection * /*conn*/, const QString &rawLine)
+int PythonScriptEngine::dispatchPyHooks(PyHook::Type type, const QString &name,
+                                       const QStringList &parts, bool rawLineWildcard)
 {
-    if (!m_pyInited) return false;
+    if (!m_pyInited) return EAT_NONE;
 
-    // Parse the raw line into parts for hooks
-    // Format: :prefix COMMAND param1 param2 ... :trailing
-    QStringList parts = rawLine.split(' ');
-    if (parts.isEmpty()) return false;
+    const QVector<int> ids = orderedMatchingHookIds<PyHook>(m_hooks, [&](const PyHook &hook) {
+        if (hook.type != type)
+            return false;
+        if (hook.name == name)
+            return true;
+        return rawLineWildcard && hook.name == QLatin1String("RAW LINE");
+    });
 
-    // Determine the command/numeric (element 1 if prefix starts with ':', else element 0)
-    QString cmd;
-    if (parts[0].startsWith(':') && parts.size() > 1)
-        cmd = parts[1].toUpper();
-    else
-        cmd = parts[0].toUpper();
+    int eat = EAT_NONE;
+    for (int id : ids) {
+        const PyHook *hook = findHookById(m_hooks, id);
+        if (!hook || !hook->pyCallback)
+            continue;
+        // Extra refs so an unhook() inside the callback cannot free the
+        // callable or userdata while callPyHook is still using them.
+        PyObject *cb = static_cast<PyObject *>(hook->pyCallback);
+        PyObject *ud = static_cast<PyObject *>(hook->pyUserdata);
+        Py_XINCREF(cb);
+        Py_XINCREF(ud);
 
-    // Find matching server hooks
-    bool eaten = false;
-    for (const auto &hook : m_hooks) {
-        if (hook.type != PyHook::Server) continue;
-        if (hook.name != cmd && hook.name != "RAW LINE") continue;
-
-        PyObject *word, *word_eol;
-        buildWordLists(parts, &word, &word_eol);
-        int ret = callPyHook((PyObject*)hook.pyCallback, word, word_eol, (PyObject*)hook.pyUserdata);
+        PyObject *word = nullptr;
+        PyObject *wordEol = nullptr;
+        buildWordLists(parts, &word, &wordEol);
+        const int ret = callPyHook(cb, word, wordEol, ud);
         Py_DECREF(word);
-        Py_DECREF(word_eol);
+        Py_DECREF(wordEol);
+        Py_XDECREF(cb);
+        Py_XDECREF(ud);
 
-        if (ret >= EAT_HEXCHAT) { eaten = true; break; }
+        eat = foldEat(eat, ret);
+        if (eatStopsHooks(eat))
+            break;
     }
-    return eaten;
+    return eat;
 }
 
-bool PythonScriptEngine::handleCommand(const QString &command, const QStringList &args)
+int PythonScriptEngine::handleServerLine(IrcConnection * /*conn*/, const QString &rawLine)
 {
-    if (!m_pyInited) return false;
+    if (!m_pyInited) return EAT_NONE;
 
-    QString upper = command.toUpper();
-
-    for (const auto &hook : m_hooks) {
-        if (hook.type != PyHook::Command) continue;
-        if (hook.name != upper) continue;
-
-        // Build word list: [0]="" [1..]=args (command name NOT included for command hooks)
-        PyObject *word, *word_eol;
-        buildWordLists(args, &word, &word_eol);
-        int ret = callPyHook((PyObject*)hook.pyCallback, word, word_eol, (PyObject*)hook.pyUserdata);
-        Py_DECREF(word);
-        Py_DECREF(word_eol);
-
-        if (ret >= EAT_HEXCHAT) return true;
-    }
-    return false;
+    // Tags are stripped and an optional ":prefix" is skipped, so the key is
+    // the IRC command ("PRIVMSG", "001", "PING") rather than the tag blob.
+    const IrcLineView view = parseIrcLine(rawLine);
+    if (view.command.isEmpty() && view.parts.isEmpty())
+        return EAT_NONE;
+    return dispatchPyHooks(PyHook::Server, view.command, view.parts, true);
 }
 
-bool PythonScriptEngine::handlePrintEvent(const QString &event, const QStringList &args)
+int PythonScriptEngine::handleCommand(const QString &command, const QStringList &args)
 {
-    if (!m_pyInited) return false;
+    if (!m_pyInited) return EAT_NONE;
+    // Command hooks receive the argument list; the command name is not included.
+    return dispatchPyHooks(PyHook::Command, command.toUpper(), args, false);
+}
 
-    for (const auto &hook : m_hooks) {
-        if (hook.type != PyHook::Print) continue;
-        if (hook.name != event) continue;
-
-        PyObject *word, *word_eol;
-        buildWordLists(args, &word, &word_eol);
-        int ret = callPyHook((PyObject*)hook.pyCallback, word, word_eol, (PyObject*)hook.pyUserdata);
-        Py_DECREF(word);
-        Py_DECREF(word_eol);
-
-        if (ret >= EAT_HEXCHAT) return true;
-    }
-    return false;
+int PythonScriptEngine::handlePrintEvent(const QString &event, const QStringList &args)
+{
+    if (!m_pyInited) return EAT_NONE;
+    return dispatchPyHooks(PyHook::Print, event, args, false);
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -849,36 +860,35 @@ int PythonScriptEngine::hookTimer(int timeout, void *callback, void *userdata)
     timer->setInterval(timeout);
     int hookId = hook.id;
     connect(timer, &QTimer::timeout, this, [this, hookId]() {
-        // Find the hook
-        for (int i = 0; i < m_hooks.size(); ++i) {
-            if (m_hooks[i].id == hookId) {
-                PyObject *args = PyTuple_Pack(1, m_hooks[i].pyUserdata ? (PyObject*)m_hooks[i].pyUserdata : Py_None);
-                PyObject *result = PyObject_CallObject((PyObject*)m_hooks[i].pyCallback, args);
-                Py_XDECREF(args);
+        const PyHook *hook = findHookById(m_hooks, hookId);
+        if (!hook || !hook->pyCallback)
+            return;
+        PyObject *cb = static_cast<PyObject *>(hook->pyCallback);
+        PyObject *ud = hook->pyUserdata ? static_cast<PyObject *>(hook->pyUserdata) : Py_None;
+        Py_INCREF(cb);
+        Py_INCREF(ud);
 
-                bool keepGoing = true;
-                if (result) {
-                    if (PyLong_Check(result) && PyLong_AsLong(result) == 0)
-                        keepGoing = false;
-                    else if (result == Py_False)
-                        keepGoing = false;
-                    Py_DECREF(result);
-                } else {
-                    PyErr_Print();
-                    keepGoing = false;
-                }
+        PyObject *args = PyTuple_Pack(1, ud);
+        PyObject *result = PyObject_CallObject(cb, args);
+        Py_XDECREF(args);
 
-                if (!keepGoing) {
-                    // Remove the hook
-                    m_hooks[i].timer->stop();
-                    delete m_hooks[i].timer;
-                    Py_XDECREF((PyObject*)m_hooks[i].pyCallback);
-                    Py_XDECREF((PyObject*)m_hooks[i].pyUserdata);
-                    m_hooks.removeAt(i);
-                }
-                break;
-            }
+        bool keepGoing = true;
+        if (result) {
+            if (PyLong_Check(result) && PyLong_AsLong(result) == 0)
+                keepGoing = false;
+            else if (result == Py_False)
+                keepGoing = false;
+            Py_DECREF(result);
+        } else {
+            PyErr_Print();
+            keepGoing = false;
         }
+        Py_DECREF(cb);
+        Py_DECREF(ud);
+
+        // Re-resolve by id: the callback may have added or removed hooks.
+        if (!keepGoing)
+            unhook(hookId);
     });
     timer->start();
     hook.timer = timer;
@@ -892,10 +902,7 @@ void PythonScriptEngine::unhook(int hookId)
 {
     for (int i = 0; i < m_hooks.size(); ++i) {
         if (m_hooks[i].id == hookId) {
-            if (m_hooks[i].timer) {
-                m_hooks[i].timer->stop();
-                delete m_hooks[i].timer;
-            }
+            releaseTimer(m_hooks[i].timer);
             Py_XDECREF((PyObject*)m_hooks[i].pyCallback);
             Py_XDECREF((PyObject*)m_hooks[i].pyUserdata);
             m_hooks.removeAt(i);
@@ -983,10 +990,7 @@ void PythonScriptEngine::unloadScript(const QString &filename)
             }
         }
 
-        if (m_hooks[i].timer) {
-            m_hooks[i].timer->stop();
-            delete m_hooks[i].timer;
-        }
+        releaseTimer(m_hooks[i].timer);
         Py_XDECREF((PyObject*)m_hooks[i].pyCallback);
         Py_XDECREF((PyObject*)m_hooks[i].pyUserdata);
         m_hooks.removeAt(i);

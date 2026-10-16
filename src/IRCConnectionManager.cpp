@@ -4,6 +4,9 @@
 #include "Logger.h"
 #include "MessageModel.h"
 #include "ServerChannelModel.h"
+#include "PluginManager.h"
+#include "ScriptDispatch.h"
+#include "ScriptEat.h"
 #include "Settings.h"
 #include "Version.h"
 #include <QDateTime>
@@ -16,12 +19,6 @@
 #include <QTextStream>
 #include <QTimer>
 #include <algorithm>
-#ifdef HAVE_PYTHON
-#include "PythonScriptEngine.h"
-#endif
-#ifdef HAVE_LUA
-#include "LuaScriptEngine.h"
-#endif
 
 IRCConnectionManager::IRCConnectionManager(QObject *parent) : QObject(parent) {
   // ── Lag meter ── ping every connected server every 30s
@@ -293,18 +290,16 @@ bool IRCConnectionManager::handleSlashCommand(IrcConnection *conn,
                                                const QString &cmd,
                                                const QString &args) {
   if (cmd == "ECHO") { if (m_msgModel) m_msgModel->addMessage("system", args); return true; }
-#ifdef HAVE_PYTHON
-  if (PythonScriptEngine::instance()) {
-    QStringList ap = args.isEmpty() ? QStringList() : args.split(' ');
-    if (PythonScriptEngine::instance()->handleCommand(cmd, ap)) return true;
+  const QStringList ap = args.isEmpty() ? QStringList() : args.split(' ');
+  // C++ plugins take priority over Python/Lua hooks (see docs/PLUGINS.md).
+  if (auto *plugins = PluginManager::instance()) {
+    if (plugins->handleUserCommand(cmd.toLower(), ap, conn))
+      return true;
   }
-#endif
-#ifdef HAVE_LUA
-  if (LuaScriptEngine::instance()) {
-    QStringList ap = args.isEmpty() ? QStringList() : args.split(' ');
-    if (LuaScriptEngine::instance()->handleCommand(cmd, ap)) return true;
-  }
-#endif
+  // EAT_HEXCHAT / EAT_ALL skip the built-in command table. EAT_PLUGIN stops
+  // later script engines but still falls through to the table.
+  if (eatSuppressesCore(dispatchScriptCommand(cmd, ap)))
+    return true;
   if (m_commandTable.isEmpty()) initCommandTable();
   auto it = m_commandTable.find(cmd);
   if (it != m_commandTable.end()) return it.value()(conn, target, args);

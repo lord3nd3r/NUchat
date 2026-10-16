@@ -1,6 +1,5 @@
 #include "NetSafety.h"
 
-#include <QFileInfo>
 #include <QSettings>
 
 namespace {
@@ -365,7 +364,13 @@ bool NetSafety::isUsableDccBindAddress(const QHostAddress &addr) {
 }
 
 QString NetSafety::sanitizeDccFileName(const QString &name) {
-  QString base = QFileInfo(name).fileName();
+  // Take the last '/' component only. QFileInfo::fileName() treats '\\' as a
+  // separator on Windows and would drop the prefix that other platforms keep
+  // (and that the tests require) before it is escaped to '_'.
+  QString base = name;
+  const int slash = base.lastIndexOf(QLatin1Char('/'));
+  if (slash >= 0)
+    base = base.mid(slash + 1);
   if (base.isEmpty() || base == QLatin1String(".") || base == QLatin1String(".."))
     base = name;
 

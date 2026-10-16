@@ -2,7 +2,7 @@
 
 A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexChat.
 
-![Version](https://img.shields.io/badge/version-1.6.1-blue)
+![Version](https://img.shields.io/badge/version-1.7.0-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS%20%7C%20FreeBSD-lightgrey)
 
@@ -21,7 +21,7 @@ See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
 - **Multi-server** — connect to multiple networks simultaneously
 - **SSL/TLS** on all connections with **per-network SASL** (PLAIN/EXTERNAL) and **NickServ auto-identify**
 - **25 built-in themes** — HexChat Dark, Monokai, Dracula, Nord, Gruvbox, Catppuccin, and more
-- **mIRC color codes** — foreground (palette and hex), bold, italic, underline, and strikethrough, plus input shortcuts. Background color codes are parsed and then dropped when the message is turned into HTML.
+- **mIRC color codes** — foreground and background (palette and hex), bold, italic, underline, and strikethrough, plus input shortcuts. Reverse video swaps the two colors.
 - **Clickable URLs** with inline image previews (off by default; enable under Preferences → URL Handlers)
 - **DCC file transfer** — send and receive with progress, ETA, and speed. Offers to loopback, unspecified, link-local, and other non-unicast addresses are rejected. Receives use the configured proxy, or they are refused when that proxy cannot be applied. An active send is refused while a proxy is configured, because it listens for a direct connection.
 - **Nick list** with multi-select (Ctrl+click, Shift+click) and mode buttons (Op, DeOp, Ban, Kick, Voice, DeVoice)
@@ -34,7 +34,7 @@ See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
 - **Collapsible event groups** — groups multiple joins/parts/quits into a single clickable summary line
 - **Lag meter** — visual PING/PONG RTT indicator in the status bar
 - **Scrollback** — loads last 200 lines from logs when rejoining a channel
-- **Channel logging** to `~/.config/NUchat/NUchat/logs/` on Linux, with a 10 MB rotation that keeps one `.log.1` backup
+- **Channel logging** under the Preferences log directory (by default `~/.config/NUchat/NUchat/logs/` on Linux), with a 10 MB rotation that keeps `.log.1` through `.log.5`
 - **Built-in commands and aliases** — see [docs/COMMANDS.md](docs/COMMANDS.md)
 - **Services menus** — NickServ, ChanServ, OperServ, HostServ, MemoServ, BotServ
 - **Right-click context menus** on nicks and links
@@ -160,21 +160,21 @@ Each file rotates at 10 MB and keeps `.log.1` through `.log.5`. Lines strip C0 c
 
 ## Downloads
 
-Pre-built binaries and installers for **NUchat 1.6.1** are available on the [GitHub Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.6.1).
+Pre-built binaries and installers for **NUchat 1.7.0** are available on the [GitHub Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.7.0).
 
 | Platform   | Archive                        | Approx. Size | Contents |
 |------------|--------------------------------|--------------|----------|
 | Linux      | `nuchat-linux.zip`             | 480 KiB      | Single `nuchat` executable (extract + `chmod +x ./nuchat`) |
 | FreeBSD    | `nuchat-freebsd.zip`           | 420 KiB      | Single `nuchat` executable |
 | macOS      | `nuchat-macos.zip`             | 54 MiB       | `nuchat-macos.dmg` — open the DMG and drag NUchat to Applications |
-| Windows    | `nuchat-windows-installer.zip` | 21 MiB       | `NUchat_1.6.1_Windows_x64.exe` (NSIS installer) |
+| Windows    | `nuchat-windows-installer.zip` | 21 MiB       | `NUchat_1.7.0_Windows_x64.exe` (NSIS installer) |
 
-**Direct download links** (or visit the [Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.6.1) for all assets and release notes):
+**Direct download links** (or visit the [Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.7.0) for all assets and release notes):
 
-- Linux: https://github.com/lord3nd3r/NUchat/releases/download/v1.6.1/nuchat-linux.zip
-- FreeBSD: https://github.com/lord3nd3r/NUchat/releases/download/v1.6.1/nuchat-freebsd.zip
-- macOS: https://github.com/lord3nd3r/NUchat/releases/download/v1.6.1/nuchat-macos.zip
-- Windows: https://github.com/lord3nd3r/NUchat/releases/download/v1.6.1/nuchat-windows-installer.zip
+- Linux: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.0/nuchat-linux.zip
+- FreeBSD: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.0/nuchat-freebsd.zip
+- macOS: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.0/nuchat-macos.zip
+- Windows: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.0/nuchat-windows-installer.zip
 
 Older / CI builds are still available from the GitHub Actions artifacts if needed.
 

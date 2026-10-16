@@ -32,7 +32,8 @@ void ServerChannelModel::addChannel(const QString &serverName,
   if (!items.isEmpty()) {
     QStandardItem *serverItem = items.first();
     for (int i = 0; i < serverItem->rowCount(); i++) {
-      if (ircSame(serverItem->child(i)->text(), channelName))
+      if (ircEquals(serverItem->child(i)->text(), channelName,
+                    IrcNetworkRegistry::factsFor(serverName).mapping))
         return;
     }
     serverItem->appendRow(new QStandardItem(channelName));
@@ -46,7 +47,8 @@ bool ServerChannelModel::hasChannel(const QString &serverName,
   if (!items.isEmpty()) {
     QStandardItem *serverItem = items.first();
     for (int i = 0; i < serverItem->rowCount(); i++) {
-      if (ircSame(serverItem->child(i)->text(), channelName))
+      if (ircEquals(serverItem->child(i)->text(), channelName,
+                    IrcNetworkRegistry::factsFor(serverName).mapping))
         return true;
     }
   }
@@ -59,7 +61,8 @@ void ServerChannelModel::removeChannel(const QString &serverName,
   if (!items.isEmpty()) {
     QStandardItem *serverItem = items.first();
     for (int i = 0; i < serverItem->rowCount(); i++) {
-      if (ircSame(serverItem->child(i)->text(), channelName)) {
+      if (ircEquals(serverItem->child(i)->text(), channelName,
+                    IrcNetworkRegistry::factsFor(serverName).mapping)) {
         serverItem->removeRow(i);
         return;
       }

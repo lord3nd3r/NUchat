@@ -4,6 +4,7 @@
 #include "IRCConnectionManager.h"
 #include "DccManager.h"
 #include "IrcConnection.h"
+#include "IrcIdentity.h"
 #include "MessageModel.h"
 #include "Settings.h"
 #include <QPointer>
@@ -54,8 +55,8 @@ void IRCConnectionManager::initCommandTable() {
       ChannelKey key{m_activeServer, ch};
       if (m_users.contains(key)) {
         for (const QString &u : m_users[key]) {
-          auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
-          if (bare.compare(nick, Qt::CaseInsensitive) == 0) {
+          auto [pfx, bare] = conn->support().splitNick(u);
+          if (conn->support().same(bare, nick)) {
             if (!pfx.isEmpty()) displayNick = pfx[0] + nick;
             break;
           }
@@ -70,7 +71,7 @@ void IRCConnectionManager::initCommandTable() {
 
   auto msgHandler = [this](IrcConnection *conn, const QString &, const QString &args) -> bool {
     QString tgt = args.section(' ', 0, 0), msg = args.section(' ', 1);
-    if (!tgt.startsWith('#') && !tgt.startsWith('&')) openQuery(m_activeServer, tgt);
+    if (!conn->support().isChannel(tgt)) openQuery(m_activeServer, tgt);
     if (!msg.isEmpty()) {
       conn->sendMessage(tgt, msg);
       QString text = "<" + conn->nickname() + "> " + msg;
@@ -363,14 +364,20 @@ void IRCConnectionManager::initCommandTable() {
 
   // /TIMER <seconds> <command or text> — runs once after the delay
   T["TIMER"] = [this](IrcConnection *, const QString &target, const QString &args) -> bool {
-    double secs = args.section(' ', 0, 0).toDouble();
+    bool ok = false;
+    const double secs = args.section(' ', 0, 0).toDouble(&ok);
     QString cmd = args.section(' ', 1).trimmed();
-    if (secs <= 0 || cmd.isEmpty()) {
-      if (m_msgModel) m_msgModel->addMessage("system", "Usage: /TIMER <seconds> <command>");
+    const int delayMs = (ok && secs > 0.0) ? timerIntervalMs(secs) : -1;
+    if (!ok || secs <= 0.0 || cmd.isEmpty() || delayMs < 0) {
+      if (m_msgModel)
+        m_msgModel->addMessage("system",
+            ok && secs > 0.0 && delayMs < 0
+                ? "Timer delay is too large"
+                : "Usage: /TIMER <seconds> <command>");
       return true;
     }
     QString srv = m_activeServer, tgt = target;
-    QTimer::singleShot(static_cast<int>(secs * 1000), this, [this, srv, tgt, cmd]() {
+    QTimer::singleShot(delayMs, this, [this, srv, tgt, cmd]() {
       QString prevServer = m_activeServer, prevChannel = m_activeChannel;
       m_activeServer = srv;
       m_activeChannel = tgt;

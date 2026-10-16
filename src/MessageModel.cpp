@@ -61,6 +61,10 @@ QHash<int, QByteArray> MessageModel::roleNames() const {
   return roles;
 }
 
+void MessageModel::setPendingTimestamp(const QString &isoTimestamp) {
+  m_pendingTimestamp = isoTimestamp;
+}
+
 void MessageModel::addMessage(const QString &type, const QString &text,
                               const QString &timestamp) {
   beginInsertRows(QModelIndex(), m_messages.count(), m_messages.count());
@@ -69,11 +73,13 @@ void MessageModel::addMessage(const QString &type, const QString &text,
   msg.type = type;
   msg.text = text;
 
-  if (!timestamp.isEmpty()) {
-    msg.timestamp = QDateTime::fromString(timestamp, Qt::ISODate);
-    if (!msg.timestamp.isValid()) {
+  const QString chosen = !timestamp.isEmpty() ? timestamp : m_pendingTimestamp;
+  if (!chosen.isEmpty()) {
+    msg.timestamp = QDateTime::fromString(chosen, Qt::ISODateWithMs);
+    if (!msg.timestamp.isValid())
+      msg.timestamp = QDateTime::fromString(chosen, Qt::ISODate);
+    if (!msg.timestamp.isValid())
       msg.timestamp = QDateTime::currentDateTime();
-    }
   } else {
     msg.timestamp = QDateTime::currentDateTime();
   }
@@ -636,7 +642,9 @@ void MessageModel::onImageReady(const QString &url, const QString &localPath,
   const QString channel = ctx.channel.isEmpty() ? m_contextChannel : ctx.channel;
   const bool showHere =
       m_contextServer.isEmpty() ||
-      (ircSame(server, m_contextServer) && ircSame(channel, m_contextChannel));
+      (ircSame(server, m_contextServer) &&
+       ircEquals(channel, m_contextChannel,
+                 IrcNetworkRegistry::factsFor(server).mapping));
   if (showHere) {
     beginInsertRows(QModelIndex(), m_messages.count(), m_messages.count());
     Message msg;
@@ -843,17 +851,16 @@ QString MessageModel::formatLine(const Message &msg) const {
     QString senderRaw;
     if (lt >= 0 && gt > lt) {
       senderRaw = msg.text.mid(lt + 1, gt - lt - 1);
-      // Strip mode prefixes (+, @, ~, &, %)
-      while (!senderRaw.isEmpty() &&
-             (senderRaw[0] == '+' || senderRaw[0] == '@' ||
-              senderRaw[0] == '~' || senderRaw[0] == '&' ||
-              senderRaw[0] == '%'))
+      const QString symbols =
+          IrcNetworkRegistry::factsFor(m_contextServer).prefixSymbols;
+      while (!senderRaw.isEmpty() && symbols.contains(senderRaw[0]))
         senderRaw = senderRaw.mid(1);
       msgBody = msg.text.mid(gt + 1);
     }
 
     if (prefBool("notify/highlightNick", true) && !m_nickname.isEmpty() &&
-        senderRaw.compare(m_nickname, Qt::CaseInsensitive) != 0)
+        !ircEquals(senderRaw, m_nickname,
+                   IrcNetworkRegistry::factsFor(m_contextServer).mapping))
       isHighlight = containsNickWord(msgBody, m_nickname);
 
     if (!isHighlight) {

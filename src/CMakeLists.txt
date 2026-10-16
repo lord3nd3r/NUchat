@@ -11,6 +11,8 @@ set(CORE_SRC
     Settings.cpp
     Logger.cpp
     UserPaths.cpp
+    IrcIdentity.cpp
+    SpellDict.cpp
     NotificationManager.cpp
     ThemeManager.cpp
     ServerChannelModel.cpp
@@ -32,6 +34,7 @@ set(CORE_HEADERS
     Logger.h
     UserPaths.h
     IrcIdentity.h
+    SpellDict.h
     NotificationManager.h
     ThemeManager.h
     ServerChannelModel.h

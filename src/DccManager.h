@@ -11,6 +11,21 @@
 
 class IrcConnection;
 
+struct DccAdvertisement {
+  quint32 ipv4 = 0;
+  bool ok = false;
+  QString error;
+};
+
+// 0 = auto-detect and 1 = the IRC socket's local address (what the server
+// is connected to). 2 = manual dotted IPv4, still bound locally.
+DccAdvertisement dccAdvertisedAddress(int methodIndex, quint32 localIpv4,
+                                      const QString &manualIp);
+
+// {0} asks the OS for a port. Otherwise up to maxTries ports from low
+// through high, wrapping once.
+QList<quint16> dccPortCandidates(int low, int high, int maxTries = 64);
+
 // ── Single DCC file transfer ──
 class DccTransfer : public QObject {
   Q_OBJECT
@@ -43,7 +58,10 @@ public:
   // ── Methods ──
   void startReceive(const QString &downloadDir);
   // bindAddr must be a concrete IPv4 address. QHostAddress::Any is refused.
-  void startSend(const QString &localPath, quint16 listenPort, const QHostAddress &bindAddr);
+  // portLow/portHigh > 0: try that inclusive range (capped attempts) instead
+  // of listenPort. Otherwise listenPort 0 lets the OS pick.
+  void startSend(const QString &localPath, quint16 listenPort, const QHostAddress &bindAddr,
+                 int portLow = 0, int portHigh = 0);
   void cancel();
   double progress() const;
   QString speedString() const;

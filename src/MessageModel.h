@@ -36,6 +36,9 @@ public:
 
   Q_INVOKABLE void addMessage(const QString &type, const QString &text,
                               const QString &timestamp = QString());
+  // Used for the IRC line currently being dispatched. Empty clears it.
+  // An explicit timestamp passed to addMessage still wins.
+  void setPendingTimestamp(const QString &isoTimestamp);
   Q_INVOKABLE void clear();
   Q_INVOKABLE QString allFormattedText() const;
   Q_INVOKABLE void setDarkMode(bool dark);
@@ -92,5 +95,6 @@ private:
   bool m_highlightEnabled = false;
   bool m_batchMode = false;
   QString m_timestampFormat = QStringLiteral("hh:mm:ss");
+  QString m_pendingTimestamp;
   QSet<int> m_expandedGroups;
 };

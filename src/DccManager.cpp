@@ -1,6 +1,7 @@
 #include "DccManager.h"
 #include "IrcConnection.h"
 #include "NetSafety.h"
+#include <algorithm>
 #include <QDir>
 #include <QFileInfo>
 #include <QHostAddress>
@@ -217,8 +218,50 @@ void DccTransfer::sendAck() {
 }
 
 // ── Send ──
+QList<quint16> dccPortCandidates(int low, int high, int maxTries) {
+  if (low <= 0 || high <= 0)
+    return {0};
+  if (low > high)
+    std::swap(low, high);
+  if (maxTries < 1)
+    maxTries = 1;
+  const int span = high - low + 1;
+  const int tries = qMin(span, maxTries);
+  QList<quint16> ports;
+  ports.reserve(tries);
+  for (int i = 0; i < tries; ++i)
+    ports.append(static_cast<quint16>(low + (i % span)));
+  return ports;
+}
+
+DccAdvertisement dccAdvertisedAddress(int methodIndex, quint32 localIpv4,
+                                      const QString &manualIp) {
+  DccAdvertisement out;
+  if (methodIndex == 2) {
+    const QHostAddress manual(manualIp.trimmed());
+    if (manual.protocol() != QAbstractSocket::IPv4Protocol ||
+        manual.toIPv4Address() == 0) {
+      out.error = QStringLiteral(
+          "DCC manual IP must be a dotted IPv4 address");
+      return out;
+    }
+    out.ipv4 = manual.toIPv4Address();
+    out.ok = true;
+    return out;
+  }
+  if (localIpv4 == 0) {
+    out.error = QStringLiteral(
+        "No IPv4 address is available to advertise for DCC");
+    return out;
+  }
+  out.ipv4 = localIpv4;
+  out.ok = true;
+  return out;
+}
+
 void DccTransfer::startSend(const QString &localPath, quint16 listenPort,
-                           const QHostAddress &bindAddr) {
+                           const QHostAddress &bindAddr, int portLow,
+                           int portHigh) {
   direction = Send;
   // Active DCC listens for a direct inbound connection and advertises our
   // address. That bypasses a configured proxy, so refuse rather than leak.
@@ -254,10 +297,26 @@ void DccTransfer::startSend(const QString &localPath, quint16 listenPort,
   m_server = new QTcpServer(this);
   connect(m_server, &QTcpServer::newConnection, this, &DccTransfer::onNewConnection);
 
-  if (!m_server->listen(bindAddr, listenPort)) {
+  const QList<quint16> ports = (portLow > 0 && portHigh > 0)
+                                   ? dccPortCandidates(portLow, portHigh)
+                                   : QList<quint16>{listenPort};
+  QString lastError;
+  bool listening = false;
+  for (quint16 port : ports) {
+    if (m_server->listen(bindAddr, port)) {
+      listening = true;
+      break;
+    }
+    lastError = m_server->errorString();
+    m_server->close();
+  }
+  if (!listening) {
     state = Failed;
-    errorString = "Cannot listen on " + bindAddr.toString() + ":" +
-                  QString::number(listenPort) + ": " + m_server->errorString();
+    const QString where = (portLow > 0 && portHigh > 0)
+                              ? QString::number(portLow) + "-" + QString::number(portHigh)
+                              : QString::number(listenPort);
+    errorString = "Cannot listen on " + bindAddr.toString() + ":" + where +
+                  ": " + lastError;
     m_file.close();
     emit stateChanged();
     return;
@@ -557,7 +616,8 @@ void DccManager::sendFile(const QString &nick, const QString &filePath) {
 
   // Bind to the IRC socket's own IPv4 address. Listening on Any, or
   // advertising 0 for an IPv6 local address, would expose every interface
-  // or tell the peer to connect to 0.0.0.0.
+  // or tell the peer to connect to 0.0.0.0. A manual IP changes only the
+  // address written into the CTCP offer.
   QHostAddress bindAddr;
   quint32 myIp = 0;
   if (m_connection) {
@@ -574,15 +634,26 @@ void DccManager::sendFile(const QString &nick, const QString &filePath) {
       }
     }
   }
-  t->startSend(filePath, 0, bindAddr); // 0 = OS picks port
+  QSettings dccPrefs;
+  const int method = dccPrefs.value(QStringLiteral("dcc/ipMethodIndex"), 0).toInt();
+  const QString manual = dccPrefs.value(QStringLiteral("dcc/manualIp")).toString();
+  const int portLow = dccPrefs.value(QStringLiteral("dcc/portLow"), 1024).toInt();
+  const int portHigh = dccPrefs.value(QStringLiteral("dcc/portHigh"), 5000).toInt();
+  const DccAdvertisement advertised = dccAdvertisedAddress(method, myIp, manual);
+  if (!advertised.ok) {
+    t->state = DccTransfer::Failed;
+    t->errorString = advertised.error;
+    emit transferFailed(nick, t->fileName, advertised.error);
+    return;
+  }
+  t->startSend(filePath, 0, bindAddr, portLow, portHigh);
 
-  // Send DCC SEND CTCP to the remote user. Skip when listen failed or we
-  // have nothing but 0.0.0.0 to advertise.
-  if (m_connection && t->state != DccTransfer::Failed && t->peerPort > 0 && myIp != 0) {
+  // Send DCC SEND CTCP to the remote user. Skip when listen failed.
+  if (m_connection && t->state != DccTransfer::Failed && t->peerPort > 0) {
     QString offerName = t->fileName.contains(' ')
         ? "\"" + t->fileName + "\"" : t->fileName;
     QString ctcp = "DCC SEND " + offerName + " " +
-                   QString::number(myIp) + " " +
+                   QString::number(advertised.ipv4) + " " +
                    QString::number(t->peerPort) + " " +
                    QString::number(t->fileSize);
     m_connection->sendCtcp(nick, ctcp);

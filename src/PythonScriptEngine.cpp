@@ -285,8 +285,9 @@ static PyObject *py_hexchat_nickcmp(PyObject * /*self*/, PyObject *args)
 {
     const char *a, *b;
     if (!PyArg_ParseTuple(args, "ss", &a, &b)) return nullptr;
-    // IRC nick comparison: case-insensitive per RFC 1459
-    return PyLong_FromLong(QString::fromUtf8(a).compare(QString::fromUtf8(b), Qt::CaseInsensitive));
+    // IRC nick comparison per the CASEMAPPING default (rfc1459).
+    return PyLong_FromLong(ircCompare(QString::fromUtf8(a), QString::fromUtf8(b),
+                                      IrcCaseMapping::Rfc1459));
 }
 
 static PyObject *py_hexchat_get_list(PyObject * /*self*/, PyObject *args)

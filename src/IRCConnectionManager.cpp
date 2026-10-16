@@ -24,6 +24,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <algorithm>
+#include <type_traits>
 
 IRCConnectionManager::IRCConnectionManager(QObject *parent) : QObject(parent) {
   // ── Lag meter ── ping every connected server every 30s
@@ -117,6 +118,8 @@ void IRCConnectionManager::connectToServer(
 
   m_connections.append(conn);
   m_connToName[conn] = name;
+  // Identity starts at the rfc1459 defaults until this connection's 005.
+  publishSupport(name, IrcSupport());
 
   // Add to tree model
   if (m_treeModel) {
@@ -172,9 +175,7 @@ void IRCConnectionManager::connectToServer(
     qWarning() << "[Manager]" << proxyErr;
     return;
   }
-  if (m_settings)
-    conn->setAllowSelfSignedCerts(
-        m_settings->getBool("conn/allowSelfSignedCerts", false));
+  applyTlsPreferences(conn);
   conn->connectToServer(host, static_cast<quint16>(port), ssl);
 }
 
@@ -215,7 +216,7 @@ void IRCConnectionManager::partChannel(const QString &channel,
 
 void IRCConnectionManager::closeChannel(const QString &serverName,
                                         const QString &channelName) {
-  if (channelName.startsWith('#') || channelName.startsWith('&')) {
+  if (isChannelName(serverName, channelName)) {
     if (auto *conn = connectionForServer(serverName)) {
       conn->partChannel(channelName);
     }
@@ -271,15 +272,15 @@ void IRCConnectionManager::sendMessage(const QString &target,
   if (!conn)
     return;
 
-  if (message.startsWith('/')) {
-    QString cmd  = message.section(' ', 0, 0).mid(1).toUpper();
-    QString args = message.section(' ', 1);
-    handleSlashCommand(conn, target, cmd, args);
+  const OutboundLine outbound = classifyOutbound(message);
+  if (outbound.kind == OutboundKind::Command) {
+    handleSlashCommand(conn, target, outbound.command, outbound.args);
     return;
   }
+  const QString literal = outbound.literal;
 
-  // Regular message
-  conn->sendMessage(target, message);
+  // Regular message (including "//text" and path-like "/etc/passwd")
+  conn->sendMessage(target, literal);
 
   // Show our own message locally with status prefix
   QString nick = conn->nickname();
@@ -287,16 +288,16 @@ void IRCConnectionManager::sendMessage(const QString &target,
   ChannelKey key{m_activeServer, target};
   if (m_users.contains(key)) {
     for (const QString &u : m_users[key]) {
-      auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
-      if (bare.compare(nick, Qt::CaseInsensitive) == 0) {
+      auto [pfx, bare] = conn->support().splitNick(u);
+      if (conn->support().same(bare, nick)) {
         if (!pfx.isEmpty())
           displayNick = pfx[0] + nick;
         break;
       }
     }
   }
-  QString text = "<" + displayNick + "> " + message;
-  if (m_msgModel && ircSame(m_activeChannel, target))
+  QString text = "<" + displayNick + "> " + literal;
+  if (m_msgModel && sameIdentity(m_activeServer, m_activeChannel, target))
     m_msgModel->addMessage("chat", text);
   appendToChannel(m_activeServer, target, "chat", text);
 }
@@ -474,35 +475,19 @@ QString IRCConnectionManager::channelModes() const {
   return m_modes.value(key);
 }
 
-static int prefixRank(const QString &nick) {
-  if (nick.isEmpty())
-    return 99;
-  QChar c = nick.at(0);
-  if (c == '~')
-    return 0; // owner
-  if (c == '&')
-    return 1; // admin / protected
-  if (c == '@')
-    return 2; // op
-  if (c == '%')
-    return 3; // halfop
-  if (c == '+')
-    return 4; // voice
-  return 5;   // regular
-}
-
 QStringList IRCConnectionManager::channelUsers() const {
   ChannelKey key{m_activeServer, m_activeChannel};
   QStringList users = m_users.value(key);
-  std::sort(users.begin(), users.end(), [](const QString &a, const QString &b) {
-    int ra = prefixRank(a);
-    int rb = prefixRank(b);
+  const IrcSupport support =
+      activeConnection() ? activeConnection()->support() : IrcSupport();
+  std::sort(users.begin(), users.end(), [&](const QString &a, const QString &b) {
+    const int ra = a.isEmpty() ? 99 : support.symbolRank(a.at(0));
+    const int rb = b.isEmpty() ? 99 : support.symbolRank(b.at(0));
     if (ra != rb)
       return ra < rb;
-    // Same rank: sort alphabetically (case-insensitive), stripping prefix
-    QString na = (ra < 5) ? a.mid(1) : a;
-    QString nb = (rb < 5) ? b.mid(1) : b;
-    return na.compare(nb, Qt::CaseInsensitive) < 0;
+    const QString na = support.splitNick(a).second;
+    const QString nb = support.splitNick(b).second;
+    return ircCompare(na, nb, support.caseMapping()) < 0;
   });
   return users;
 }
@@ -515,6 +500,19 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
   // Forward raw lines for Raw Log + lag meter PONG detection
   connect(conn, &IrcConnection::rawLineReceived, this,
           [this, conn](const QString &line) {
+            // server-time is parsed before this signal. Stamp the visible
+            // model for the duration of this line, then drop it so the next
+            // locally generated line uses the clock.
+            if (m_msgModel && ircSame(m_activeServer, serverNameFor(conn))) {
+              const QDateTime when = conn->serverTime();
+              m_msgModel->setPendingTimestamp(
+                  when.isValid() ? when.toLocalTime().toString(Qt::ISODate)
+                                 : QString());
+              QTimer::singleShot(0, this, [this] {
+                if (m_msgModel)
+                  m_msgModel->setPendingTimestamp({});
+              });
+            }
             emit rawLineReceived("<<", line);
             if (m_settings) {
               bool showRaw = false;
@@ -593,7 +591,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
       const QStringList autojoinChans =
           ri.autojoin.split(chanSep, Qt::SkipEmptyParts);
       for (const QString &chan : autojoinChans) {
-        if (chan.startsWith('#') || chan.startsWith('&'))
+        if (conn->support().isChannel(chan))
           conn->joinChannel(chan);
       }
     }
@@ -669,7 +667,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             QString channel = target;
             // If target is our nick, it's a PM — use sender's nick as channel
             // (IRC targets are case-insensitive)
-            if (target.compare(conn->nickname(), Qt::CaseInsensitive) == 0) {
+            if (conn->support().same(target, conn->nickname())) {
               channel = nick;
               // Auto-create query tab for incoming PMs
               if (m_treeModel && !m_treeModel->hasChannel(srv, nick)) {
@@ -683,8 +681,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             ChannelKey key{srv, channel};
             if (m_users.contains(key)) {
               for (const QString &u : m_users[key]) {
-                auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
-                if (bare.compare(nick, Qt::CaseInsensitive) == 0) {
+                auto [pfx, bare] = conn->support().splitNick(u);
+                if (conn->support().same(bare, nick)) {
                   if (!pfx.isEmpty())
                     displayNick = pfx[0] + nick;
                   break;
@@ -715,7 +713,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             // Route to the target channel if it's a channel, to query if one
             // exists, otherwise server tab
             QString dest;
-            if (target.startsWith('#') || target.startsWith('&')) {
+            if (conn->support().isChannel(target)) {
               dest = target;
             } else if (m_treeModel && m_treeModel->hasChannel(srv, nick)) {
               // Route to existing query window for this user
@@ -744,7 +742,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         QString srv = serverNameFor(conn);
         QString nick =
             prefix.contains('!') ? prefix.section('!', 0, 0) : prefix;
-        if (ircSame(nick, conn->nickname())) {
+        if (sameIdentity(srv, nick, conn->nickname())) {
           // We joined — add channel to tree
           if (m_treeModel) {
             m_treeModel->addChannel(srv, channel);
@@ -776,7 +774,11 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           // Add to user list
           ChannelKey key{srv, channel};
           if (m_users.contains(key) &&
-              !m_users[key].contains(nick, Qt::CaseInsensitive)) {
+              std::none_of(m_users[key].cbegin(), m_users[key].cend(),
+                           [&](const QString &u) {
+                             return conn->support().same(
+                                 conn->support().splitNick(u).second, nick);
+                           })) {
             m_users[key].append(nick);
             if (isViewing(srv, channel))
               emit channelUsersChanged(channelUsers());
@@ -799,7 +801,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         if (m_msgModel && isViewing(srv, channel)) {
           m_msgModel->addMessage("system", text);
         }
-        if (ircSame(nick, conn->nickname())) {
+        if (sameIdentity(srv, nick, conn->nickname())) {
           emit channelParted(srv, channel);
         }
         // Remove from user list
@@ -809,8 +811,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           users.erase(std::remove_if(
                           users.begin(), users.end(),
                           [&](const QString &u) {
-                            auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
-                            return bare.compare(nick, Qt::CaseInsensitive) == 0;
+                            auto [pfx, bare] = conn->support().splitNick(u);
+                            return conn->support().same(bare, nick);
                           }),
                       users.end());
           if (isViewing(srv, channel))
@@ -838,8 +840,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           users.erase(std::remove_if(
                           users.begin(), users.end(),
                           [&](const QString &u) {
-                            auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
-                            return bare.compare(nick, Qt::CaseInsensitive) == 0;
+                            auto [pfx, bare] = conn->support().splitNick(u);
+                            return conn->support().same(bare, nick);
                           }),
                       users.end());
           if (users.size() != before) {
@@ -878,9 +880,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           users.erase(
               std::remove_if(users.begin(), users.end(),
                              [&](const QString &u) {
-                               auto [pfx, bare] = IrcConnection::stripNickPrefix(u);
-                               return bare.compare(kicked,
-                                                   Qt::CaseInsensitive) == 0;
+                               auto [pfx, bare] = conn->support().splitNick(u);
+                               return conn->support().same(bare, kicked);
                              }),
               users.end());
           if (isViewing(srv, channel))
@@ -893,7 +894,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           [this, conn](const QString &oldNick, const QString &newNick) {
             QString srv = serverNameFor(conn);
             QString text = oldNick + " is now known as " + newNick;
-            if (ircSame(oldNick, conn->nickname()) || ircSame(newNick, conn->nickname())) {
+            if (sameIdentity(srv, oldNick, conn->nickname()) ||
+                sameIdentity(srv, newNick, conn->nickname())) {
               emit currentNickChanged(conn->nickname());
             }
             // Update nick in all channel user lists on this server
@@ -906,8 +908,8 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
               auto &users = it.value();
               for (int i = 0; i < users.size(); i++) {
                 QString entry = users[i];
-                auto [prefix, bare] = IrcConnection::stripNickPrefix(entry);
-                if (bare.compare(oldNick, Qt::CaseInsensitive) == 0) {
+                auto [prefix, bare] = conn->support().splitNick(entry);
+                if (conn->support().same(bare, oldNick)) {
                   users[i] = prefix + newNick;
                   appendToChannel(srv, it.key().channel, "system", text);
                   if (isViewing(srv, it.key().channel)) {
@@ -949,32 +951,18 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         if (!params.isEmpty())
           text += " " + params.join(" ");
         text += " on " + target;
-        QString dest = target.startsWith('#') ? target : srv;
+        const IrcSupport &support = conn->support();
+        QString dest = support.isChannel(target) ? target : srv;
         appendToChannel(srv, dest, "system", text);
         if (m_msgModel && isViewing(srv, dest)) {
           m_msgModel->addMessage("system", text);
         }
 
         // Update user prefixes in the nick list for channel modes
-        if (target.startsWith('#')) {
+        if (support.isChannel(target)) {
           ChannelKey key{srv, target};
           if (!m_users.contains(key))
             return;
-
-          // Map mode chars to prefix symbols
-          auto modeToPrefix = [](QChar m) -> QChar {
-            if (m == 'q')
-              return '~'; // owner
-            if (m == 'a')
-              return '&'; // admin
-            if (m == 'o')
-              return '@'; // op
-            if (m == 'h')
-              return '%'; // halfop
-            if (m == 'v')
-              return '+'; // voice
-            return QChar();
-          };
 
           bool adding = true;
           int paramIdx = 0;
@@ -990,16 +978,11 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
               continue;
             }
 
-            QChar pfx = modeToPrefix(c);
+            QChar pfx = support.prefixForMode(c);
             if (pfx.isNull()) {
-              // Non-user channel mode — keep the parameter index aligned.
-              // Without ISUPPORT CHANMODES we use the common defaults:
-              // list modes and key always take a parameter, limit-style
-              // modes only when being set.
-              static const QString alwaysParam = QStringLiteral("beIk");
-              static const QString paramWhenSet = QStringLiteral("lfj");
-              if (alwaysParam.contains(c) ||
-                  (adding && paramWhenSet.contains(c)))
+              // Non-user channel mode — keep the parameter index aligned
+              // using this server's CHANMODES (defaults until ISUPPORT).
+              if (support.modeTakesParam(c, adding))
                 paramIdx++;
               continue;
             }
@@ -1010,42 +993,24 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
 
             // Find and update the user in the list
             for (int i = 0; i < users.size(); i++) {
-              QString entry = users[i];
-              QString bareNick = entry;
-              QString currentPrefix;
-              // Strip all existing prefixes
-              while (!bareNick.isEmpty() &&
-                     QString("~&@%+").contains(bareNick[0])) {
-                currentPrefix += bareNick[0];
-                bareNick = bareNick.mid(1);
-              }
-              if (bareNick.compare(affected, Qt::CaseInsensitive) != 0)
+              const auto split = support.splitNick(users[i]);
+              QString currentPrefix = split.first;
+              const QString bareNick = split.second;
+              if (!support.same(bareNick, affected))
                 continue;
 
               if (adding) {
-                // Add prefix if not already present
                 if (!currentPrefix.contains(pfx))
                   currentPrefix += pfx;
               } else {
-                // Remove prefix
                 currentPrefix.remove(pfx);
               }
 
-              // Rebuild with highest-rank prefix only (IRC convention)
+              // Highest-rank prefix only, in this server's PREFIX order.
               QChar best;
               int bestRank = 99;
               for (QChar p : currentPrefix) {
-                int r = 99;
-                if (p == '~')
-                  r = 0;
-                else if (p == '&')
-                  r = 1;
-                else if (p == '@')
-                  r = 2;
-                else if (p == '%')
-                  r = 3;
-                else if (p == '+')
-                  r = 4;
+                const int r = support.symbolRank(p);
                 if (r < bestRank) {
                   bestRank = r;
                   best = p;
@@ -1078,7 +1043,7 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             // Determine the proper destination channel
             // (IRC targets are case-insensitive)
             QString channel = target;
-            if (target.compare(conn->nickname(), Qt::CaseInsensitive) == 0) {
+            if (conn->support().same(target, conn->nickname())) {
               channel = nick; // PM
             }
             QString text;
@@ -1154,6 +1119,9 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
         // instead of filing it under a fake "unknown" server.
         if (srv.isEmpty())
           return;
+
+        if (code == 5)
+          publishSupport(srv, conn->support());
 
         // ── WHOIS replies (311–319, 330, 338, 378, 671) ──
         // Accumulate all WHOIS lines into a buffer, then display as a
@@ -1388,14 +1356,15 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
           // Clear any pending WHOIS buffer for ERR_NOSUCHNICK (401)
           if (code == 401 && !params.isEmpty()) {
             QString failedNick = params.value(0);
-            m_whoisBuffer.remove(srv + "\n" + failedNick.toLower());
+            m_whoisBuffer.remove(srv + "\n" +
+                                 conn->support().fold(failedNick));
           }
           QString text = "[" + QString::number(code) + "] " + trailing;
           // Some error numerics mention a channel in params (e.g. 404 #channel
           // :Cannot send)
           QString dest = srv;
           for (int pi = 1; pi < params.size(); pi++) {
-            if (params[pi].startsWith('#') || params[pi].startsWith('&')) {
+            if (conn->support().isChannel(params[pi])) {
               dest = params[pi];
               break;
             }
@@ -1422,7 +1391,7 @@ void IRCConnectionManager::appendToChannel(const QString &server,
   StoredMessage msg;
   msg.type = type;
   msg.text = text;
-  msg.timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
+  msg.timestamp = messageTimestamp(server);
   auto &hist = m_history[key];
   hist.append(msg);
   trimHistory(hist);
@@ -1455,8 +1424,7 @@ void IRCConnectionManager::appendToChannel(const QString &server,
       }
     }
     // Also mark all PMs (non-channel targets) as highlighted
-    if (!channel.startsWith('#') && !channel.startsWith('&') &&
-        channel != server) {
+    if (!isChannelName(server, channel) && channel != server) {
       isPrivateMsg = true;
       if (!m_highlighted.contains(ukey)) {
         m_highlighted.insert(ukey);
@@ -1488,8 +1456,9 @@ void IRCConnectionManager::appendToChannel(const QString &server,
     QString urlNick;
     if (type == "chat" && text.startsWith('<')) {
       urlNick = text.section('>', 0, 0).mid(1);
-      // Strip mode prefix from nick
-      while (!urlNick.isEmpty() && QString("~&@%+").contains(urlNick[0]))
+      // Strip mode prefix from nick using this server's PREFIX symbols.
+      const QString symbols = IrcNetworkRegistry::factsFor(server).prefixSymbols;
+      while (!urlNick.isEmpty() && symbols.contains(urlNick[0]))
         urlNick = urlNick.mid(1);
     } else if (type == "action" && text.startsWith("* ")) {
       urlNick = text.section(' ', 1, 1);
@@ -1500,7 +1469,10 @@ void IRCConnectionManager::appendToChannel(const QString &server,
     auto awayIt = m_awayByServer.find(server);
     if (awayIt != m_awayByServer.end() && awayIt->away) {
       AwayLogEntry entry;
-      entry.timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
+      const QString inbound = messageTimestamp(server);
+      const QDateTime parsed = QDateTime::fromString(inbound, Qt::ISODate);
+      entry.timestamp = (parsed.isValid() ? parsed : QDateTime::currentDateTime())
+                            .toString(QStringLiteral("hh:mm:ss"));
       entry.nick = urlNick;
       entry.channel = channel;
       entry.message = text;
@@ -1852,7 +1824,7 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
 
   ReconnectInfo &ri = m_reconnectInfo[host];
   int maxAttempts = m_settings->getInt("conn/maxReconnectAttempts", 10);
-  int delay = m_settings->getInt("conn/reconnectDelay", 10);
+  const int baseDelay = m_settings->getInt("conn/reconnectDelay", 10);
 
   if (maxAttempts > 0 && ri.attempts >= maxAttempts) {
     QString msg = "Auto-reconnect: max attempts (" +
@@ -1864,6 +1836,8 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
   }
 
   ri.attempts++;
+  const int delayMs = reconnectDelayMs(baseDelay, ri.attempts);
+  const int delay = delayMs / 1000;
   QString msg = "Auto-reconnect: attempting to reconnect to " + ri.host + " in " +
                 QString::number(delay) + "s (attempt " +
                 QString::number(ri.attempts) + "/" +
@@ -1928,12 +1902,10 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
       qWarning() << "[Manager]" << proxyErr;
       return;
     }
-    if (m_settings)
-      conn->setAllowSelfSignedCerts(
-          m_settings->getBool("conn/allowSelfSignedCerts", false));
+    applyTlsPreferences(conn);
     conn->connectToServer(info.host, static_cast<quint16>(info.port), info.ssl);
   });
-  ri.timer->start(delay * 1000);
+  ri.timer->start(delayMs);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2083,7 +2055,83 @@ void IRCConnectionManager::setServerAway(const QString &server, bool away,
 
 bool IRCConnectionManager::isViewing(const QString &server,
                                      const QString &channel) const {
-  return ircSame(m_activeServer, server) && ircSame(m_activeChannel, channel);
+  return ircSame(m_activeServer, server) &&
+         sameIdentity(server, m_activeChannel, channel);
+}
+
+bool IRCConnectionManager::sameIdentity(const QString &server, const QString &a,
+                                        const QString &b) const {
+  if (auto *conn = connectionForServer(server))
+    return conn->support().same(a, b);
+  return ircEquals(a, b, IrcNetworkRegistry::factsFor(server).mapping);
+}
+
+bool IRCConnectionManager::isChannelName(const QString &server,
+                                         const QString &name) const {
+  if (auto *conn = connectionForServer(server))
+    return conn->support().isChannel(name);
+  const QString types = IrcNetworkRegistry::factsFor(server).chanTypes;
+  return !name.isEmpty() && types.contains(name.at(0));
+}
+
+void IRCConnectionManager::publishSupport(const QString &server,
+                                          const IrcSupport &support) {
+  IrcNetworkFacts next;
+  next.mapping = support.caseMapping();
+  next.prefixSymbols = support.prefixSymbols();
+  next.chanTypes = support.channelTypes();
+  const IrcCaseMapping previous = IrcNetworkRegistry::factsFor(server).mapping;
+  const bool mappingChanged = previous != next.mapping;
+
+  auto take = [&](auto &map) {
+    using Map = std::decay_t<decltype(map)>;
+    Map extracted;
+    if (!mappingChanged)
+      return extracted;
+    for (auto it = map.begin(); it != map.end();) {
+      if (ircSame(it.key().server, server)) {
+        extracted.insert(it.key(), it.value());
+        it = map.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    return extracted;
+  };
+  auto hist = take(m_history);
+  auto users = take(m_users);
+  auto topics = take(m_topics);
+  auto modes = take(m_modes);
+
+  IrcNetworkRegistry::set(server, next);
+
+  auto put = [&](auto &map, auto &extracted) {
+    for (auto it = extracted.begin(); it != extracted.end(); ++it)
+      map.insert(it.key(), it.value());
+  };
+  put(m_history, hist);
+  put(m_users, users);
+  put(m_topics, topics);
+  put(m_modes, modes);
+}
+
+void IRCConnectionManager::applyTlsPreferences(IrcConnection *conn) {
+  if (!conn || !m_settings)
+    return;
+  conn->setAllowSelfSignedCerts(
+      m_settings->getBool(QStringLiteral("conn/allowSelfSignedCerts"), false));
+  conn->setClientCertificateFiles(
+      expandHomePath(m_settings->getString(QStringLiteral("auth/certFile"))),
+      expandHomePath(m_settings->getString(QStringLiteral("auth/keyFile"))));
+}
+
+QString IRCConnectionManager::messageTimestamp(const QString &server) const {
+  if (auto *conn = connectionForServer(server)) {
+    const QDateTime when = conn->serverTime();
+    if (when.isValid())
+      return when.toLocalTime().toString(Qt::ISODate);
+  }
+  return QDateTime::currentDateTime().toString(Qt::ISODate);
 }
 
 void IRCConnectionManager::showOnOriginServer(const QString &server,

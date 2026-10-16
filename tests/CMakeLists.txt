@@ -50,6 +50,12 @@ target_link_libraries(test_netsecurity PRIVATE Qt6::Test Qt6::Network nuchatcore
 target_include_directories(test_netsecurity PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME netsecurity COMMAND test_netsecurity)
 
+# ── test_protocol (ISUPPORT, casemapping, SASL, timers, DCC prefs, dicts) ──
+add_executable(test_protocol test_protocol.cpp)
+target_link_libraries(test_protocol PRIVATE Qt6::Test Qt6::Widgets Qt6::Network nuchatcore)
+target_include_directories(test_protocol PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME protocol COMMAND test_protocol)
+
 # ── test_plugins (C++ plugins, JS, Python/Lua hook dispatch) ─────────────────
 add_executable(test_plugins test_plugins.cpp)
 # Qt6::Qml so ScriptManager.h sees QJSEngine, matching nuchatcore's layout.

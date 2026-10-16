@@ -200,9 +200,9 @@ Appears when right-clicking a URL in the chat area.
 | **Text and Fonts** | Font family/size. Timestamps + format. Max scrollback. Indent. Highlight words. |
 | **Input** | Spell check. Tab completion settings + suffix. Per-channel history + max size. |
 | **User Info** | Primary nick + 3 alternates. Username, real name. Quit/part/away messages. |
-| **Connection** | Auto-reconnect (delay, max attempts). Auto-join. Proxy (SOCKS5, HTTP CONNECT; SOCKS4 is refused). Accept self-signed SSL certificates (`conn/allowSelfSignedCerts`) — hostname mismatches, self-signed certs, and untrusted issuers only. |
-| **SASL / Auth** | Auth method (PLAIN, EXTERNAL, SCRAM, ECDSA, NickServ, CERTFP). Certificate paths. |
-| **DCC** | Download folder. Auto-accept (public peers only, unless private-LAN peers are allowed). Max file size. IP detection. Port range. Loopback and non-unicast offers are rejected. Receives follow the proxy setting or fail closed. Active sends are refused while a proxy is on. |
+| **Connection** | Auto-reconnect (initial delay, then exponential backoff capped at 15 minutes, max attempts). A connect that does not finish within 30 seconds is aborted. Auto-join. Proxy (SOCKS5, HTTP CONNECT; SOCKS4 is refused). Accept self-signed SSL certificates (`conn/allowSelfSignedCerts`) — hostname mismatches, self-signed certs, and untrusted issuers only. |
+| **SASL / Auth** | Auth method (PLAIN, EXTERNAL, SCRAM, ECDSA, NickServ, CERTFP). PEM client certificate and unencrypted key, sent on the TLS handshake. SASL PLAIN responses are split into 400-byte `AUTHENTICATE` chunks. |
+| **DCC** | Download folder. Auto-accept (public peers only, unless private-LAN peers are allowed). Max file size. Listen port range (`dcc/portLow`–`dcc/portHigh`, default 1024–5000). Advertised address: the IRC connection's local IPv4, or a manual IPv4 when that method is selected. The listen socket still binds to the local address. Loopback and non-unicast offers are rejected. Receives follow the proxy setting or fail closed. Active sends are refused while a proxy is on. |
 | **Logging** | Enable/disable, directory, format (Plain/HTML/JSON), PM logging, per-channel files. The dialog saves these keys. The logger does not read them: every channel is still written under the application config directory, with a 10 MB rotation. |
 | **Notifications** | Desktop notifications. Flash taskbar. Tray unread. Highlight on nick mention. Timeout. |
 | **Sounds** | Enable/disable. Per-event toggles (highlight, PM, connect). Custom beep command. |

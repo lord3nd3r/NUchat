@@ -3,6 +3,8 @@
 #include "NetSafety.h"
 #include "Version.h"
 #include <QDebug>
+#include <QFile>
+#include <QScopeGuard>
 
 IrcConnection::IrcConnection(QObject *parent)
     : QObject(parent), m_socket(new QSslSocket(this)), m_port(6697),
@@ -17,6 +19,10 @@ IrcConnection::IrcConnection(QObject *parent)
   // Flood protection: drain one queued message per timer tick
   m_sendTimer.setInterval(kDrainIntervalMs);
   connect(&m_sendTimer, &QTimer::timeout, this, &IrcConnection::drainSendQueue);
+
+  m_connectTimeoutTimer.setSingleShot(true);
+  connect(&m_connectTimeoutTimer, &QTimer::timeout, this,
+          &IrcConnection::handleConnectTimeout);
 
   // CAP/SASL negotiation timeout — if registration stalls, force CAP END
   m_regTimeoutTimer.setSingleShot(true);
@@ -42,10 +48,15 @@ void IrcConnection::connectToServer(const QString &host, quint16 port,
   m_port = port;
   m_useSsl = useSsl;
   m_registered = false;
+  m_socketReady = false;
+  m_connectPending = true;
   m_readBuffer.clear();
+  m_support = IrcSupport();
 
   if (m_socket->isOpen())
     m_socket->disconnectFromHost();
+
+  m_connectTimeoutTimer.start(kConnectTimeoutMs);
 
   // Drop any previous connect wiring: if this object last connected in the
   // other SSL mode, the stale signal would fire registration on plain
@@ -57,6 +68,11 @@ void IrcConnection::connectToServer(const QString &host, quint16 port,
              &IrcConnection::onSocketConnected);
 
   if (useSsl) {
+    if (!applyClientCertificate()) {
+      m_connectPending = false;
+      m_connectTimeoutTimer.stop();
+      return;
+    }
     // Connect the encrypted signal for SSL
     connect(m_socket, &QSslSocket::encrypted, this,
             &IrcConnection::onSocketConnected, Qt::UniqueConnection);
@@ -124,13 +140,7 @@ void IrcConnection::drainSendQueue() {
 }
 
 QPair<QString, QString> IrcConnection::stripNickPrefix(const QString &nick) {
-  static const QString prefixes = QStringLiteral("~&@%+");
-  QString pfx, bare = nick;
-  while (!bare.isEmpty() && prefixes.contains(bare[0])) {
-    pfx += bare[0];
-    bare = bare.mid(1);
-  }
-  return {pfx, bare};
+  return IrcSupport().splitNick(nick);
 }
 
 void IrcConnection::setNickname(const QString &nick) {
@@ -279,12 +289,18 @@ void IrcConnection::onReadyRead() {
 }
 
 void IrcConnection::onSocketConnected() {
+  m_connectTimeoutTimer.stop();
+  m_connectPending = false;
+  m_socketReady = true;
   qDebug() << "[IRC] Socket connected to" << m_host;
   emit socketConnected();
   sendRegistration();
 }
 
 void IrcConnection::onDisconnectedSlot() {
+  m_connectTimeoutTimer.stop();
+  m_connectPending = false;
+  m_socketReady = false;
   m_regTimeoutTimer.stop();
   bool wasRegistered = m_registered;
   m_registered = false;
@@ -296,6 +312,86 @@ void IrcConnection::onDisconnectedSlot() {
 
 void IrcConnection::setAllowSelfSignedCerts(bool allow) {
   m_allowSelfSignedCerts = allow;
+}
+
+void IrcConnection::setClientCertificateFiles(const QString &certPath,
+                                             const QString &keyPath) {
+  m_clientCertPath = certPath;
+  m_clientKeyPath = keyPath;
+}
+
+void IrcConnection::handleConnectTimeout() {
+  if (!m_connectPending || m_socketReady || m_registered)
+    return;
+  m_connectPending = false;
+  emit errorOccurred(tr("Connection to %1 timed out").arg(m_host));
+  m_socket->abort();
+}
+
+ClientCertMaterial loadClientCertificate(const QString &certPath,
+                                         const QString &keyPath) {
+  ClientCertMaterial out;
+  if (certPath.isEmpty() && keyPath.isEmpty())
+    return out;
+  out.requested = true;
+  if (certPath.isEmpty() || keyPath.isEmpty()) {
+    out.error = QStringLiteral(
+        "Client certificate and private key must both be set");
+    return out;
+  }
+
+  QFile certFile(certPath);
+  if (!certFile.open(QIODevice::ReadOnly)) {
+    out.error = QStringLiteral("Cannot read client certificate: %1").arg(certPath);
+    return out;
+  }
+  const QList<QSslCertificate> chain =
+      QSslCertificate::fromData(certFile.readAll(), QSsl::Pem);
+  if (chain.isEmpty() || chain.first().isNull()) {
+    out.error = QStringLiteral("Client certificate is not a valid PEM file");
+    return out;
+  }
+
+  QFile keyFile(keyPath);
+  if (!keyFile.open(QIODevice::ReadOnly)) {
+    out.error = QStringLiteral("Cannot read client private key: %1").arg(keyPath);
+    return out;
+  }
+  const QByteArray keyPem = keyFile.readAll();
+  const QSsl::KeyAlgorithm algorithms[] = {QSsl::Rsa, QSsl::Ec, QSsl::Dsa,
+                                           QSsl::Dh};
+  QSslKey key;
+  for (QSsl::KeyAlgorithm alg : algorithms) {
+    QSslKey candidate(keyPem, alg, QSsl::Pem);
+    if (!candidate.isNull()) {
+      key = candidate;
+      break;
+    }
+  }
+  if (key.isNull()) {
+    out.error = QStringLiteral(
+        "Client private key is not a readable unencrypted PEM key");
+    return out;
+  }
+  out.chain = chain;
+  out.key = key;
+  return out;
+}
+
+bool IrcConnection::applyClientCertificate() {
+  m_socket->setLocalCertificate(QSslCertificate());
+  m_socket->setPrivateKey(QSslKey());
+  const ClientCertMaterial material =
+      loadClientCertificate(m_clientCertPath, m_clientKeyPath);
+  if (!material.error.isEmpty()) {
+    emit errorOccurred(material.error);
+    return false;
+  }
+  if (!material.requested)
+    return true;
+  m_socket->setLocalCertificateChain(material.chain);
+  m_socket->setPrivateKey(material.key);
+  return true;
 }
 
 void IrcConnection::onSslErrors(const QList<QSslError> &errors) {
@@ -361,25 +457,36 @@ QString IrcConnection::nickFromPrefix(const QString &prefix) {
 
 void IrcConnection::processLine(const QString &line) {
   m_eatCurrentLine = false;
+  m_serverTime = {};
+  m_lastTags.clear();
+
+  // Parse tags before emitting so slots can read server-time for this line.
+  // The signal still carries the original line, tags included.
+  QString rest = line;
+  if (rest.startsWith('@')) {
+    int sp = rest.indexOf(' ');
+    if (sp > 0) {
+      m_lastTags = parseTags(rest.mid(1, sp - 1));
+      rest = rest.mid(sp + 1).trimmed();
+      m_serverTime = parseServerTime(m_lastTags.value(QStringLiteral("time")));
+    }
+  }
+  // Drop the timestamp once every slot queued by this line has run. A later
+  // local message must not inherit it. QObject-context singleShot is
+  // cancelled if this connection is destroyed first.
+  const auto clearTime = qScopeGuard([this] {
+    QTimer::singleShot(0, this, [this] { m_serverTime = {}; });
+  });
+  Q_UNUSED(clearTime);
+
   emit rawLineReceived(line);
   qDebug() << "[IRC <]" << NetSafety::redactIrcLine(line);
   if (m_eatCurrentLine) {
     m_eatCurrentLine = false;
     return;
   }
-
-  // ── IRCv3 message-tags: strip @tags prefix ──
-  // Format: @tag1=val;tag2;tag3=val :prefix COMMAND ...
-  QString rest = line;
-  m_lastTags.clear();
-  if (rest.startsWith('@')) {
-    int sp = rest.indexOf(' ');
-    if (sp > 0) {
-      m_lastTags = parseTags(rest.mid(1, sp - 1));
-      rest = rest.mid(sp + 1).trimmed();
-      emit taggedMessageReceived(m_lastTags);
-    }
-  }
+  if (!m_lastTags.isEmpty())
+    emit taggedMessageReceived(m_lastTags);
 
   // PING/PONG (no prefix)
   if (rest.startsWith("PING ")) {
@@ -489,11 +596,15 @@ void IrcConnection::processLine(const QString &line) {
     if (params.size() >= 1 && params[0] == "+") {
       if (m_saslMethod == "PLAIN") {
         // SASL PLAIN: base64(authzid \0 authcid \0 password)
+        // Responses longer than 400 bytes are split per the IRCv3 SASL spec.
         QString authStr =
             m_saslUser + QChar('\0') + m_saslUser + QChar('\0') + m_saslPass;
         QByteArray encoded = authStr.toUtf8().toBase64();
-        sendRawImmediate("AUTHENTICATE " + QString::fromLatin1(encoded));
-        qDebug() << "[IRC] Sent SASL PLAIN response";
+        const QStringList lines = saslAuthenticateCommands(encoded);
+        for (const QString &line : lines)
+          sendRawImmediate(line);
+        qDebug() << "[IRC] Sent SASL PLAIN response in" << lines.size()
+                 << "AUTHENTICATE line(s)";
         // Zero credentials from memory immediately after use
         m_saslPass.fill('\0');
         m_saslPass.clear();
@@ -517,6 +628,11 @@ void IrcConnection::processLine(const QString &line) {
     if (!numParams.isEmpty())
       numParams.removeFirst(); // remove our nick
     QString numTrailing = numParams.isEmpty() ? QString() : numParams.last();
+
+    // RPL_ISUPPORT (005) before listeners, so mode and identity handlers
+    // on this same delivery already see PREFIX / CHANTYPES / CASEMAPPING.
+    if (numeric == 5)
+      m_support.apply005(numParams);
 
     emit numericReceived(numeric, numParams, numTrailing);
 
@@ -607,7 +723,7 @@ void IrcConnection::processLine(const QString &line) {
       if (!channel.isEmpty()) {
         QStringList names = namesList.split(' ', Qt::SkipEmptyParts);
         // If this is the first 353 for a new names sequence, start fresh.
-        const QString key = ircFold(channel);
+        const QString key = m_support.fold(channel);
         if (!m_namesStarted.contains(key)) {
           m_channelNames[key] = QStringList();
           m_namesStarted.insert(key);
@@ -618,7 +734,7 @@ void IrcConnection::processLine(const QString &line) {
     // RPL_ENDOFNAMES (366)
     else if (numeric == 366) {
       QString channel = numParams.isEmpty() ? "" : numParams[0];
-      const QString key = ircFold(channel);
+      const QString key = m_support.fold(channel);
       if (m_channelNames.contains(key)) {
         emit namesReceived(channel, m_channelNames[key]);
         m_channelNames.remove(key);
@@ -682,8 +798,8 @@ void IrcConnection::processLine(const QString &line) {
     QString channel = params.isEmpty() ? "" : params[0];
     emit joinReceived(prefix, channel);
     // If it's us joining, init names list
-    if (ircSame(nickFromPrefix(prefix), m_nickname)) {
-      const QString key = ircFold(channel);
+    if (m_support.same(nickFromPrefix(prefix), m_nickname)) {
+      const QString key = m_support.fold(channel);
       m_channelNames[key] = QStringList();
       m_namesStarted.remove(key);  // allow fresh tracking on next 353
     }
@@ -704,7 +820,7 @@ void IrcConnection::processLine(const QString &line) {
   } else if (command == "NICK") {
     QString newNick = params.isEmpty() ? "" : params[0];
     QString oldNick = nickFromPrefix(prefix);
-    if (ircSame(oldNick, m_nickname)) {
+    if (m_support.same(oldNick, m_nickname)) {
       m_nickname = newNick;
       emit nicknameChanged(m_nickname);
     }

@@ -1,4 +1,5 @@
 #include "SpellChecker.h"
+#include "SpellDict.h"
 #include <QDebug>
 #include <QFile>
 #include <hunspell.hxx>
@@ -7,18 +8,14 @@
 
 SpellChecker::SpellChecker(const QString &lang, QObject *parent)
     : QObject(parent), m_hunspell(nullptr) {
-  // Common paths in Linux for Hunspell dictionaries
-  QString dicPath =
-      QStringLiteral("/usr/share/hunspell/") + lang + QStringLiteral(".dic");
-  QString affPath =
-      QStringLiteral("/usr/share/hunspell/") + lang + QStringLiteral(".aff");
-
-  if (QFile::exists(dicPath) && QFile::exists(affPath)) {
-    m_hunspell = new Hunspell(affPath.toLocal8Bit().constData(),
-                              dicPath.toLocal8Bit().constData());
+  const QStringList roots = spellDictionaryRoots();
+  const QPair<QString, QString> found = locateHunspellDictionary(lang, roots);
+  if (!found.first.isEmpty() && !found.second.isEmpty()) {
+    m_hunspell = new Hunspell(found.second.toLocal8Bit().constData(),
+                              found.first.toLocal8Bit().constData());
   } else {
-    qWarning() << "SpellChecker: Could not find dictionary for" << lang << "at"
-               << dicPath;
+    qWarning() << "SpellChecker: Could not find dictionary for" << lang
+               << "in" << roots;
   }
 }
 

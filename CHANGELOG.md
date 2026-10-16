@@ -4,6 +4,16 @@ All notable changes to NUchat are documented in this file.
 
 ## [Unreleased]
 
+### Protocol
+- **ISUPPORT** — `PREFIX`, `CHANTYPES`, `CHANMODES`, and `CASEMAPPING` (`ascii`, `rfc1459`, `strict-rfc1459`) are parsed and used for channel detection, nick prefixes, mode parameters, and nick/channel identity. Until 005 arrives the client assumes rfc1459 and the usual `#&` / `qaohv` defaults.
+- **server-time** timestamps are applied to messages that carry a `time` tag.
+- **SASL** `AUTHENTICATE` payloads are split into 400-byte chunks. A PEM client certificate and unencrypted key from Preferences are presented on the TLS handshake.
+- Connections that do not complete within 30 seconds are aborted. Auto-reconnect waits the configured delay on the first attempt and doubles it after each later attempt, up to 15 minutes.
+- `//text` sends the literal message `/text`. A token such as `/etc/passwd` is sent as text rather than as a command. Multi-line pastes that start with `/` still ask for confirmation.
+- `/TIMER` rejects delays that overflow the timer.
+- Spell checking looks for Hunspell dictionaries on Windows, macOS, and Linux, not only `/usr/share/hunspell`.
+- DCC sends listen in the configured port range and can advertise a manual IPv4 while still binding to the IRC connection's local address.
+
 ### Security
 - Outbound IRC lines have CR, LF, and NUL stripped before they are sent, so one call cannot inject a second command.
 - Debug logs redact `PASS`, `OPER`, SASL `AUTHENTICATE` payloads, and NickServ `IDENTIFY` / credential commands.

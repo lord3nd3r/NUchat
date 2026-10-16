@@ -28,7 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for what's new in each release.
 - **Tab nick-completion** with cycling
 - **Input history** — Up/Down arrow keys recall previous messages
 - **Paste flood protection** — confirmation dialog when pasting multiple lines
-- **Spell checker** — Hunspell, when a dictionary such as `en_US.dic` is installed under `/usr/share/hunspell/` (the usual Linux path). Windows and macOS builds can link Hunspell and still have no suggestions, because the checker does not look anywhere else.
+- **Spell checker** — Hunspell. Dictionaries are searched in `DICPATH`, next to the application (`hunspell/` and `dictionaries/`), the usual Linux paths (`/usr/share/hunspell`, `/usr/share/myspell/dicts`), Homebrew locations on macOS, and the user data directory. `en_US` and `en-US` names both match.
 - **Auto-focus input** — typing anywhere in the window goes to the input bar
 - **Smart chat area** — auto-scroll, jump-to-bottom button, and "new messages" marker line
 - **Collapsible event groups** — groups multiple joins/parts/quits into a single clickable summary line

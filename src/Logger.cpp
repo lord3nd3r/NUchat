@@ -269,7 +269,9 @@ void Logger::log(const QString &network, const QString &channel,
 #ifdef Q_OS_UNIX
   const mode_t oldMask = umask(0077);
 #endif
-  const bool opened = file.open(QIODevice::Append | QIODevice::Text);
+  // Binary mode so the newline stays '\n' on Windows. Text mode would write
+  // "\r\n", and loadScrollback would keep the '\r' on the message.
+  const bool opened = file.open(QIODevice::Append);
 #ifdef Q_OS_UNIX
   umask(oldMask);
 #endif
@@ -347,7 +349,11 @@ QVector<Logger::LogEntry> Logger::loadScrollback(const QString &network,
 
   int start = qMax(0, allLines.size() - maxLines);
   for (int i = start; i < allLines.size(); ++i) {
-    const QString &line = allLines[i];
+    QString line = allLines[i];
+    if (line.endsWith(QLatin1Char('\r')))
+      line.chop(1);
+    if (line.isEmpty())
+      continue;
     LogEntry entry;
 
     if (hasTimestampPrefix(line)) {

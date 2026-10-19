@@ -2,6 +2,13 @@
 
 All notable changes to NUchat are documented in this file.
 
+## [1.7.1] — 2026-10-19
+
+### Fixed
+- High CPU usage: removed the infinitely looping highlight pulse animation in the channel list, which forced the window to redraw every frame.
+- A live message no longer restarts the 50 ms scroll-settle timer; it scrolls once. The timer only runs after a full buffer reload.
+- Default scrollback lowered from 10000 to 2000 lines (adjustable in Preferences).
+
 ## [1.7.0] — 2026-10-16
 
 ### Security

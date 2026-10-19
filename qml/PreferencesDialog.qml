@@ -55,7 +55,7 @@ Dialog {
         spnFontSize.value           = intSetting("ui/fontSize", 12)
         chkShowTimestamps.checked   = boolSetting("ui/showTimestamps", true)
         cboTimestampFmt.currentIndex = intSetting("ui/timestampFmtIndex", 0)
-        spnScrollback.value         = intSetting("ui/maxScrollback", 10000)
+        spnScrollback.value         = intSetting("ui/maxScrollback", 2000)
         chkIndentWrap.checked       = boolSetting("ui/indentWrap", true)
         chkCollapseEvents.checked   = boolSetting("ui/collapseEvents", true)
         chkHighlighting.checked     = boolSetting("ui/textHighlighting", true)

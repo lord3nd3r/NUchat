@@ -266,7 +266,7 @@ ApplicationWindow {
         return fonts[idx] || "Monospace"
     }
     property int prefFontSize: parseInt(appSettings.value("ui/fontSize", 12)) || 12
-    property int prefMaxScrollback: parseInt(appSettings.value("ui/maxScrollback", 10000)) || 10000
+    property int prefMaxScrollback: parseInt(appSettings.value("ui/maxScrollback", 2000)) || 2000
 
     // Helper: run a command for each selected nick
     function forEachSelectedNick(callback) {
@@ -1044,15 +1044,9 @@ ApplicationWindow {
                                 font.pixelSize: 12
                                 font.bold: entryType === "server" || hasUnread || hasHighlight
 
-                                // Pulse animation for nick highlights
-                                SequentialAnimation on opacity {
-                                    id: pulseAnim
-                                    running: hasHighlight && serverTree.currentIndex !== index
-                                    loops: Animation.Infinite
-                                    NumberAnimation { from: 1.0; to: 0.4; duration: 800; easing.type: Easing.InOutSine }
-                                    NumberAnimation { from: 0.4; to: 1.0; duration: 800; easing.type: Easing.InOutSine }
-                                    onRunningChanged: if (!running) channelLabel.opacity = 1.0
-                                }
+                                // Highlighted channels are shown in red/bold; no looping
+                                // animation (an infinite animation forces the window to
+                                // redraw every frame and pegged the CPU).
                             }
                         }
 
@@ -1375,7 +1369,12 @@ ApplicationWindow {
                                     chatScrollView.contentItem.contentY = oldContentY
                                 }
                             } else if (!root.userScrolledUp) {
-                                chatArea.startScrollSettle()
+                                // Single-line append: one deferred scroll is enough.
+                                // The 50 ms settle timer is only needed after a full
+                                // text reload, and restarting it on every live message
+                                // kept it ticking constantly in busy channels.
+                                if (!chatArea.pendingScrollToBottom)
+                                    Qt.callLater(chatArea.scrollToBottom)
                             }
                         }
                         function onCleared() {

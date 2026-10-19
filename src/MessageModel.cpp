@@ -90,7 +90,7 @@ void MessageModel::addMessage(const QString &type, const QString &text,
 
   // Enforce max scrollback line limit to prevent unbounded memory growth
   static QSettings prefs;
-  int maxScrollback = prefs.value(QStringLiteral("ui/maxScrollback"), 10000).toInt();
+  int maxScrollback = prefs.value(QStringLiteral("ui/maxScrollback"), 2000).toInt();
   if (maxScrollback < 100)
     maxScrollback = 100;
   if (m_messages.count() > maxScrollback) {

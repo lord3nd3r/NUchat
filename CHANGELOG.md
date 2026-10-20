@@ -2,6 +2,12 @@
 
 All notable changes to NUchat are documented in this file.
 
+## [1.7.2] — 2026-10-19
+
+### Fixed
+- ZNC: messages you send from another client attached to the same bouncer (for example The Lounge) now show up in NUchat. NUchat requests the `znc.in/self-message` capability and files relayed private messages and /me actions under the person you sent them to, opening the query tab if needed.
+- Your own relayed lines no longer mark tabs unread, highlight them, or fire desktop notifications, and NUchat no longer auto-replies to relayed copies of CTCP requests you sent.
+
 ## [1.7.1] — 2026-10-19
 
 ### Fixed

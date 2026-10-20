@@ -669,15 +669,22 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
               return;
 
             QString channel = target;
+            const bool fromSelf = conn->support().same(nick, conn->nickname());
             // If target is our nick, it's a PM — use sender's nick as channel
             // (IRC targets are case-insensitive)
+            bool isQuery = false;
             if (conn->support().same(target, conn->nickname())) {
               channel = nick;
-              // Auto-create query tab for incoming PMs
-              if (m_treeModel && !m_treeModel->hasChannel(srv, nick)) {
-                m_treeModel->addChannel(srv, nick);
-                emit channelAdded(srv, nick);
-              }
+              isQuery = true;
+            } else if (fromSelf && !conn->support().isChannel(target)) {
+              // A PM we sent from another client, relayed by ZNC
+              // (znc.in/self-message): file it under the recipient.
+              isQuery = true;
+            }
+            // Auto-create query tab for PMs
+            if (isQuery && m_treeModel && !m_treeModel->hasChannel(srv, channel)) {
+              m_treeModel->addChannel(srv, channel);
+              emit channelAdded(srv, channel);
             }
 
             // Look up user's channel prefix (@, +, etc.)
@@ -695,7 +702,9 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             }
 
             QString text = "<" + displayNick + "> " + message;
+            m_appendingOwnLine = fromSelf;
             appendToChannel(srv, channel, "chat", text);
+            m_appendingOwnLine = false;
             if (m_msgModel && isViewing(srv, channel)) {
               m_msgModel->addMessage("chat", text);
             }
@@ -1047,13 +1056,22 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             // Determine the proper destination channel
             // (IRC targets are case-insensitive)
             QString channel = target;
+            const bool fromSelf = conn->support().same(nick, conn->nickname());
             if (conn->support().same(target, conn->nickname())) {
               channel = nick; // PM
             }
             QString text;
             if (command == "ACTION") {
+              // /me we sent to someone from another client (ZNC self-message)
+              if (fromSelf && !conn->support().isChannel(target) &&
+                  m_treeModel && !m_treeModel->hasChannel(srv, channel)) {
+                m_treeModel->addChannel(srv, channel);
+                emit channelAdded(srv, channel);
+              }
               text = "* " + nick + " " + args;
+              m_appendingOwnLine = fromSelf;
               appendToChannel(srv, channel, "action", text);
+              m_appendingOwnLine = false;
               if (m_msgModel && isViewing(srv, channel)) {
                 m_msgModel->addMessage("action", text);
               }
@@ -1406,7 +1424,7 @@ void IRCConnectionManager::appendToChannel(const QString &server,
 
   // Track unread state for non-active channels
   bool isActive = isViewing(server, channel);
-  if (!isActive && (type == "chat" || type == "action")) {
+  if (!isActive && !m_appendingOwnLine && (type == "chat" || type == "action")) {
     QString ukey = unreadKey(server, channel);
     bool changed = false;
     bool isNickHighlight = false;

@@ -221,6 +221,9 @@ private:
   // Unread / highlight tracking
   QSet<QString> m_unread;      // "server\nchannel" keys with new messages
   QSet<QString> m_highlighted; // "server\nchannel" keys with nick mentions
+  // True while appending a line we sent from another client (ZNC
+  // self-message), so it doesn't mark unread, highlight or notify.
+  bool m_appendingOwnLine = false;
   QSet<QString>
       m_scrollbackLoaded; // "server\nchannel" keys mapped to loaded scrollback
   QString unreadKey(const QString &server, const QString &channel) const {

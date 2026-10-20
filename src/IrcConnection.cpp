@@ -557,6 +557,8 @@ void IrcConnection::processLine(const QString &line) {
         capsToReq << "server-time";
       if (capList.contains("multi-prefix", Qt::CaseInsensitive))
         capsToReq << "multi-prefix";  // NAMES includes all mode prefixes
+      if (capList.contains("znc.in/self-message", Qt::CaseInsensitive))
+        capsToReq << "znc.in/self-message";  // ZNC relays lines we send from other clients
       if (serverHasSasl && wantSasl)
         capsToReq << "sasl";
 
@@ -778,7 +780,9 @@ void IrcConnection::processLine(const QString &line) {
       QString ctcpArgs = (sp >= 0) ? ctcp.mid(sp + 1) : "";
       // Auto-reply to common CTCPs
       QString nick = nickFromPrefix(prefix);
-      if (ctcpCmd == "VERSION") {
+      if (m_support.same(nick, m_nickname)) {
+        // Relayed copy of a CTCP we sent from another client: never auto-reply.
+      } else if (ctcpCmd == "VERSION") {
         sendRaw("NOTICE " + nick +
                 " :\x01VERSION NUchat " NUCHAT_VERSION " (Qt6)\x01");
       } else if (ctcpCmd == "PING") {

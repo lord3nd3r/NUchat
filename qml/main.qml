@@ -273,7 +273,7 @@ ApplicationWindow {
         for (var i = 0; i < selectedNicks.length; i++) callback(selectedNicks[i])
     }
     // Helper: strip prefix from nick entry
-    function bareNick(entry) { return entry.replace(/^[@%+~&]/, '') }
+    function bareNick(entry) { return entry.replace(/^[@%+~&!.]+/, '') }
 
     // Helper: simulate sidebar click at index
     function sidebarClickAt(idx) {
@@ -1670,7 +1670,7 @@ ApplicationWindow {
                                 var matches = []
                                 var lp = partial.toLowerCase()
                                 for (var i = 0; i < channelUsers.length; i++) {
-                                    var nick = channelUsers[i].replace(/^[@%+~&]/, '')
+                                    var nick = channelUsers[i].replace(/^[@%+~&!.]+/, '')
                                     if (nick.toLowerCase().indexOf(lp) === 0)
                                         matches.push(nick)
                                 }
@@ -1878,7 +1878,7 @@ ApplicationWindow {
                         required property string modelData
                         width: nickList.width
                         height: 22
-                        property string bareN: modelData.replace(/^[@%+~&]/, '')
+                        property string bareN: modelData.replace(/^[@%+~&!.]+/, '')
                         property bool isSelected: root.selectedNicks.indexOf(bareN) !== -1
                         color: isSelected ? theme.highlight : (nickMouse.containsMouse ? theme.hoverBg : "transparent")
 

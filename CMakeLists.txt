@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(NUchat VERSION 1.7.2 LANGUAGES CXX)
+project(NUchat VERSION 1.7.3 LANGUAGES CXX)
 
 # Single-config generators (Unix Makefiles, Ninja) otherwise compile with an
 # empty build type: no optimization and no debug symbols. Multi-config

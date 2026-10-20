@@ -2,7 +2,7 @@
 
 A modern, full-featured IRC client built with Qt 6 and QML — inspired by HexChat.
 
-![Version](https://img.shields.io/badge/version-1.7.2-blue)
+![Version](https://img.shields.io/badge/version-1.7.3-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS%20%7C%20FreeBSD-lightgrey)
 
@@ -182,21 +182,21 @@ Each file rotates at 10 MB and keeps `.log.1` through `.log.5`. Lines strip C0 c
 
 ## Downloads
 
-Pre-built binaries and installers for **NUchat 1.7.2** are available on the [GitHub Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.7.2).
+Pre-built binaries and installers for **NUchat 1.7.3** are available on the [GitHub Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.7.3).
 
 | Platform   | Archive                        | Approx. Size | Contents |
 |------------|--------------------------------|--------------|----------|
 | Linux      | `nuchat-linux.zip`             | 620 KiB      | Single `nuchat` executable (extract + `chmod +x ./nuchat`) |
 | FreeBSD    | `nuchat-freebsd.zip`           | 528 KiB      | Single `nuchat` executable |
 | macOS      | `nuchat-macos.zip`             | 54 MiB       | `nuchat-macos.dmg` — open the DMG and drag NUchat to Applications |
-| Windows    | `nuchat-windows-installer.zip` | 20 MiB       | `NUchat_1.7.2_Windows_x64.exe` (NSIS installer) |
+| Windows    | `nuchat-windows-installer.zip` | 20 MiB       | `NUchat_1.7.3_Windows_x64.exe` (NSIS installer) |
 
-**Direct download links** (or visit the [Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.7.2) for all assets and release notes):
+**Direct download links** (or visit the [Releases page](https://github.com/lord3nd3r/NUchat/releases/tag/v1.7.3) for all assets and release notes):
 
-- Linux: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.2/nuchat-linux.zip
-- FreeBSD: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.2/nuchat-freebsd.zip
-- macOS: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.2/nuchat-macos.zip
-- Windows: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.2/nuchat-windows-installer.zip
+- Linux: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.3/nuchat-linux.zip
+- FreeBSD: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.3/nuchat-freebsd.zip
+- macOS: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.3/nuchat-macos.zip
+- Windows: https://github.com/lord3nd3r/NUchat/releases/download/v1.7.3/nuchat-windows-installer.zip
 
 Older / CI builds are still available from the GitHub Actions artifacts if needed.
 

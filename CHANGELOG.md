@@ -2,6 +2,11 @@
 
 All notable changes to NUchat are documented in this file.
 
+## [1.7.3] — 2026-10-19
+
+### Fixed
+- Tab nick completion, and clicking or acting on a nick in the nick list, now work for users with more than one channel mode (for example `~@owner` or `@+op`). Since 1.7.0, NUchat requests `multi-prefix`, but only the first mode symbol was being stripped.
+
 ## [1.7.2] — 2026-10-19
 
 ### Fixed

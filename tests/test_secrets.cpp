@@ -7,6 +7,7 @@
 #include <QTemporaryDir>
 #include "Settings.h"
 #include "SecretStore.h"
+#include "NetSafety.h"
 
 // Isolated QSettings plus an in-memory keychain, so tests never touch the
 // real NUchat.conf or the OS keychain.
@@ -268,6 +269,32 @@ private slots:
         QString leftover;
         QCOMPARE(SecretStore::instance().read(QStringLiteral("proxy.password"), &leftover),
                  SecretStore::ReadStatus::Missing);
+    }
+
+    void testProxyFromSettingsUsesKeychainPassword()
+    {
+        {
+            Settings s;
+            s.setValue(QStringLiteral("conn/proxyTypeIndex"), 2); // SOCKS5
+            s.setValue(QStringLiteral("conn/proxyHost"), QStringLiteral("proxy.example"));
+            s.setValue(QStringLiteral("conn/proxyPort"), 1080);
+            s.setValue(QStringLiteral("conn/proxyAuth"), true);
+            s.setValue(QStringLiteral("conn/proxyUser"), QStringLiteral("bob"));
+            s.setValue(QStringLiteral("conn/proxyPass"), QStringLiteral("PROXY-SECRET"));
+        }
+        // The password is only in the keychain now; the conf value is blank.
+        QSettings raw;
+        raw.sync();
+        QVERIFY(raw.value(QStringLiteral("conn/proxyPass")).toString().isEmpty());
+
+        const auto r = NetSafety::proxyFromSettings();
+        QCOMPARE(r.result, NetSafety::ProxyResolution::Result::UseProxy);
+        QCOMPARE(r.proxy.user(), QStringLiteral("bob"));
+        QCOMPARE(r.proxy.password(), QStringLiteral("PROXY-SECRET"));
+
+        for (const char *k : {"conn/proxyTypeIndex", "conn/proxyHost", "conn/proxyPort",
+                              "conn/proxyAuth", "conn/proxyUser"})
+            raw.remove(QString::fromLatin1(k));
     }
 
     void testUnavailableKeychainKeepsPlaintext()

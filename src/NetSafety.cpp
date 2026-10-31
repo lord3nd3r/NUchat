@@ -2,6 +2,8 @@
 
 #include <QSettings>
 
+#include "Settings.h"
+
 namespace {
 
 bool startsCommand(const QString &line, const QString &cmd) {
@@ -219,7 +221,11 @@ NetSafety::ProxyResolution NetSafety::proxyFromSettings() {
   QString pass;
   if (useAuth) {
     user = settings.value(QStringLiteral("conn/proxyUser")).toString();
-    pass = settings.value(QStringLiteral("conn/proxyPass")).toString();
+    // The password lives in the OS keychain once stored (the conf value is
+    // blanked); Settings::value() hydrates it, a raw QSettings read does not
+    // and produced an empty-password authenticated proxy.
+    Settings hydrated;
+    pass = hydrated.value(QStringLiteral("conn/proxyPass")).toString();
   }
   return resolveProxy(typeIndex, host, port, useAuth, user, pass);
 }

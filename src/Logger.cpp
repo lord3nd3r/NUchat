@@ -3,7 +3,10 @@
 #include "Settings.h"
 #include "UserPaths.h"
 
+#include <QCoreApplication>
 #include <QDebug>
+#include <QThread>
+#include <QTimer>
 #include <QFileDevice>
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -17,7 +20,13 @@
 #include <windows.h>
 #endif
 
-Logger::Logger(QObject *parent) : QObject(parent) {}
+Logger::Logger(QObject *parent) : QObject(parent) {
+  if (QCoreApplication::instance())
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this,
+            &Logger::flushPending);
+}
+
+Logger::~Logger() { flushPending(); }
 
 bool Logger::loggingEnabled() const {
   if (!m_settings)
@@ -243,6 +252,42 @@ void Logger::rotateIfNeeded(const QString &filePath) const {
     qWarning("Logger: could not rotate %s", qPrintable(filePath));
 }
 
+static constexpr int kLogSyncIntervalMs = 2000;
+
+void Logger::markDirty(const QString &filePath) {
+  {
+    QMutexLocker lock(&m_dirtyMutex);
+    m_dirty.insert(filePath);
+  }
+  // QTimer must be used from its own thread. Logging normally happens on the
+  // GUI thread; from elsewhere the batch is synced on the next flush/quit.
+  if (QThread::currentThread() != thread())
+    return;
+  if (!m_syncTimer) {
+    m_syncTimer = new QTimer(this);
+    m_syncTimer->setSingleShot(true);
+    m_syncTimer->setInterval(kLogSyncIntervalMs);
+    connect(m_syncTimer, &QTimer::timeout, this, &Logger::flushPending);
+  }
+  if (!m_syncTimer->isActive())
+    m_syncTimer->start();
+}
+
+void Logger::flushPending() {
+  QSet<QString> paths;
+  {
+    QMutexLocker lock(&m_dirtyMutex);
+    paths.swap(m_dirty);
+  }
+  for (const QString &path : paths) {
+    if (!QFile::exists(path))
+      continue; // rotated away; the OS will write it back on its own
+    QFile f(path);
+    if (f.open(QIODevice::Append | QIODevice::WriteOnly))
+      durableSync(f);
+  }
+}
+
 void Logger::log(const QString &network, const QString &channel,
                  const QString &type, const QString &message) {
   if (!loggingEnabled() || network.isEmpty() || channel.isEmpty())
@@ -300,7 +345,9 @@ void Logger::log(const QString &network, const QString &channel,
     qWarning("Logger: write failed for %s", qPrintable(filePath));
     return;
   }
-  durableSync(file);
+  // Hand the line to the OS now; fsync is batched (see flushPending()).
+  file.flush();
+  markDirty(filePath);
 }
 
 static bool hasTimestampPrefix(const QString &line) {

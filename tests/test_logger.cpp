@@ -242,6 +242,19 @@ private slots:
         QCOMPARE(entries.at(0).timestamp.size(), 19);
     }
 
+    void testBatchedSyncKeepsContent()
+    {
+        Scratch scratch;
+        for (int i = 0; i < 50; ++i)
+            scratch.logger.log(QStringLiteral("net"), QStringLiteral("#chan"),
+                               QStringLiteral("msg"), QStringLiteral("line %1").arg(i));
+        // Lines are in the file before any fsync batch has run
+        QCOMPARE(scratch.logger.loadScrollback(QStringLiteral("net"), QStringLiteral("#chan"), 100).size(), 50);
+        scratch.logger.flushPending();
+        scratch.logger.flushPending(); // idempotent when nothing is pending
+        QCOMPARE(scratch.logger.loadScrollback(QStringLiteral("net"), QStringLiteral("#chan"), 100).size(), 50);
+    }
+
     void testPlainUnicodeIsPreserved()
     {
         Scratch scratch;

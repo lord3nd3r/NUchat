@@ -101,6 +101,8 @@ public:
   Q_INVOKABLE void clearAwayLog();
   bool isAway() const;
   Q_INVOKABLE void openExternalUrl(const QString &url);
+  // Scheme allowlist (http, https, irc, ircs, mailto) for openExternalUrl.
+  static bool isSafeExternalUrl(const QString &url);
 
   // ── URL Grabber ──
   Q_INVOKABLE QVariantList grabbedUrls() const;

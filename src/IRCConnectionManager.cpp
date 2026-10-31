@@ -948,7 +948,10 @@ void IRCConnectionManager::wireConnection(IrcConnection *conn) {
             appendToChannel(srv, channel, "system", text);
             if (m_msgModel && isViewing(srv, channel)) {
               m_msgModel->addMessage("system", text);
-              emit channelTopicChanged(topic);
+              // Never emit the raw topic: the bar renders it as rich text.
+              // channelTopic() goes through the same escape+colorize+linkify
+              // path as the buffer-switch case.
+              emit channelTopicChanged(channelTopic());
             }
           });
 
@@ -2224,9 +2227,25 @@ void IRCConnectionManager::refreshDccSettings() {
   m_dccManager->setMaxFileSize(dccMaxFileBytes(m_settings));
 }
 
+bool IRCConnectionManager::isSafeExternalUrl(const QString &url) {
+  const QUrl u(url, QUrl::StrictMode);
+  if (!u.isValid())
+    return false;
+  static const QStringList allowed = {
+      QStringLiteral("http"), QStringLiteral("https"), QStringLiteral("irc"),
+      QStringLiteral("ircs"), QStringLiteral("mailto")};
+  return allowed.contains(u.scheme().toLower());
+}
+
 void IRCConnectionManager::openExternalUrl(const QString &url) {
   if (url.isEmpty())
     return;
+  // Links come from untrusted chat/topic text: never hand file:, javascript:,
+  // smb:, custom handlers etc. to the desktop or the user's browser command.
+  if (!isSafeExternalUrl(url)) {
+    qWarning() << "[Manager] Refusing to open URL with disallowed scheme:" << url;
+    return;
+  }
   if (m_settings && !m_settings->getBool(QStringLiteral("url/clickable"), true))
     return;
   const QString cmd =

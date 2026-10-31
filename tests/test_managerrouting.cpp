@@ -209,6 +209,45 @@ private slots:
         QCOMPARE(joined.count(), 2);
     }
 
+    void testTopicSignalIsEscapedHtml()
+    {
+        IRCConnectionManager mgr;
+        MessageModel model;
+        ServerChannelModel tree;
+        Settings settings;
+        mgr.setMessageModel(&model);
+        mgr.setServerChannelModel(&tree);
+        mgr.setSettings(&settings);
+        IrcConnection *conn = attach(mgr, tree, QStringLiteral("alpha"));
+        mgr.m_activeServer = QStringLiteral("alpha");
+        mgr.m_activeChannel = QStringLiteral("#foo");
+
+        QSignalSpy topicSpy(&mgr, &IRCConnectionManager::channelTopicChanged);
+        conn->topicReceived(
+            QStringLiteral("#foo"),
+            QStringLiteral("<img src=x onerror=alert(1)> <a href=\"file:///etc\">x</a>"));
+        QCOMPARE(topicSpy.count(), 1);
+        const QString html = topicSpy.first().at(0).toString();
+        QVERIFY(!html.contains(QStringLiteral("<img")));
+        QVERIFY(!html.contains(QStringLiteral("<a href=\"file")));
+        QVERIFY(html.contains(QStringLiteral("&lt;img")));
+        // Same output as the buffer-switch path
+        QCOMPARE(html, mgr.channelTopic());
+    }
+
+    void testExternalUrlAllowlist()
+    {
+        QVERIFY(IRCConnectionManager::isSafeExternalUrl(QStringLiteral("https://example.com/a?b=1")));
+        QVERIFY(IRCConnectionManager::isSafeExternalUrl(QStringLiteral("HTTP://example.com")));
+        QVERIFY(IRCConnectionManager::isSafeExternalUrl(QStringLiteral("ircs://irc.example.net:6697/#chan")));
+        QVERIFY(IRCConnectionManager::isSafeExternalUrl(QStringLiteral("mailto:a@b.c")));
+        QVERIFY(!IRCConnectionManager::isSafeExternalUrl(QStringLiteral("file:///etc/passwd")));
+        QVERIFY(!IRCConnectionManager::isSafeExternalUrl(QStringLiteral("javascript:alert(1)")));
+        QVERIFY(!IRCConnectionManager::isSafeExternalUrl(QStringLiteral("smb://host/share")));
+        QVERIFY(!IRCConnectionManager::isSafeExternalUrl(QStringLiteral("example.com")));
+        QVERIFY(!IRCConnectionManager::isSafeExternalUrl(QString()));
+    }
+
     void testTabsInBackgroundDoesNotStealFocus()
     {
         IRCConnectionManager mgr;

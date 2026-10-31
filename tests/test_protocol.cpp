@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QHostAddress>
 #include <QSignalSpy>
+#include <QTcpServer>
 #include <QTemporaryDir>
 
 class IrcConnectionTestable : public IrcConnection {
@@ -255,6 +256,26 @@ private slots:
     QVERIFY(spy.first().at(0).toString().contains(QStringLiteral("timed out")));
     conn.forceConnectTimeout();
     QCOMPARE(spy.count(), 1);
+  }
+
+  void testRefusedConnectEmitsDisconnectOnce() {
+    // A closed localhost port is refused immediately: Qt emits errorOccurred
+    // but never disconnected(), so the connection must report it itself.
+    quint16 port = 0;
+    {
+      QTcpServer probe;
+      QVERIFY(probe.listen(QHostAddress::LocalHost, 0));
+      port = probe.serverPort();
+    }
+    IrcConnection conn;
+    QSignalSpy errors(&conn, &IrcConnection::errorOccurred);
+    QSignalSpy gone(&conn, &IrcConnection::disconnectedFromServer);
+    conn.connectToServer(QStringLiteral("127.0.0.1"), port, false);
+    QTRY_VERIFY_WITH_TIMEOUT(gone.count() >= 1, 5000);
+    QTest::qWait(200);
+    QCOMPARE(gone.count(), 1);
+    QVERIFY(errors.count() >= 1);
+    QVERIFY(errors.first().at(0).toString().contains(QStringLiteral("failed")));
   }
 
   void testLiteralSlashAndIsupportInManager() {

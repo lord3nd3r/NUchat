@@ -14,6 +14,10 @@ IrcConnection::IrcConnection(QObject *parent)
   connect(m_socket, &QSslSocket::readyRead, this, &IrcConnection::onReadyRead);
   connect(m_socket, &QSslSocket::disconnected, this,
           &IrcConnection::onDisconnectedSlot);
+  // A connect that fails (refused, DNS, proxy, unreachable) never emits
+  // disconnected(); without this the auto-reconnect chain never started.
+  connect(m_socket, &QAbstractSocket::errorOccurred, this,
+          &IrcConnection::onSocketError);
   connect(m_socket, qOverload<const QList<QSslError> &>(&QSslSocket::sslErrors),
           this, &IrcConnection::onSslErrors);
 
@@ -51,6 +55,7 @@ void IrcConnection::connectToServer(const QString &host, quint16 port,
   m_registered = false;
   m_socketReady = false;
   m_connectPending = true;
+  m_disconnectNotified = false;
   m_readBuffer.clear();
   m_support = IrcSupport();
 
@@ -292,6 +297,7 @@ void IrcConnection::onReadyRead() {
 void IrcConnection::onSocketConnected() {
   m_connectTimeoutTimer.stop();
   m_connectPending = false;
+  m_disconnectNotified = false;
   m_socketReady = true;
   qDebug() << "[IRC] Socket connected to" << m_host;
   emit socketConnected();
@@ -307,8 +313,39 @@ void IrcConnection::onDisconnectedSlot() {
   m_registered = false;
   if (wasRegistered)
     emit connectionStateChanged(false);
-  emit disconnectedFromServer();
+  notifyDisconnected();
   qDebug() << "[IRC] Disconnected from" << m_host;
+}
+
+// Emit disconnectedFromServer() at most once per connection attempt, whichever
+// of disconnected(), errorOccurred() or the connect timeout gets there first,
+// so the manager schedules exactly one reconnect.
+void IrcConnection::notifyDisconnected() {
+  if (m_disconnectNotified)
+    return;
+  m_disconnectNotified = true;
+  emit disconnectedFromServer();
+}
+
+void IrcConnection::onSocketError(QAbstractSocket::SocketError err) {
+  // Only failures before the connection was established matter here. Errors
+  // on an established connection are followed by disconnected(). TLS
+  // handshake failures are reported by onSslErrors() and also end in
+  // disconnected().
+  if (!m_connectPending || m_socketReady)
+    return;
+  if (err == QAbstractSocket::SslHandshakeFailedError ||
+      err == QAbstractSocket::SslInternalError ||
+      err == QAbstractSocket::SslInvalidUserDataError)
+    return;
+  if (m_socket->state() != QAbstractSocket::UnconnectedState)
+    return;
+  m_connectPending = false;
+  m_connectTimeoutTimer.stop();
+  m_regTimeoutTimer.stop();
+  emit errorOccurred(tr("Connection to %1 failed: %2")
+                         .arg(m_host, m_socket->errorString()));
+  notifyDisconnected();
 }
 
 void IrcConnection::setAllowSelfSignedCerts(bool allow) {
@@ -327,6 +364,8 @@ void IrcConnection::handleConnectTimeout() {
   m_connectPending = false;
   emit errorOccurred(tr("Connection to %1 timed out").arg(m_host));
   m_socket->abort();
+  // abort() on a socket that never connected may not emit disconnected().
+  notifyDisconnected();
 }
 
 ClientCertMaterial loadClientCertificate(const QString &certPath,

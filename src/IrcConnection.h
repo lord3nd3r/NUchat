@@ -120,6 +120,8 @@ private slots:
     void onReadyRead();
     void onSocketConnected();
     void onDisconnectedSlot();
+    void onSocketError(QAbstractSocket::SocketError err);
+    void notifyDisconnected();
     void onSslErrors(const QList<QSslError> &errors);
     void drainSendQueue();
 
@@ -167,6 +169,7 @@ private:
     QTimer m_connectTimeoutTimer;
     bool m_socketReady = false;
     bool m_connectPending = false;
+    bool m_disconnectNotified = false;
 
     // ISUPPORT and the server-time of the line in flight.
     IrcSupport m_support;

@@ -1922,6 +1922,8 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
       if (m_msgModel && m_activeServer == host)
         m_msgModel->addMessage("system", proxyErr);
       qWarning() << "[Manager]" << proxyErr;
+      // Keep the retry chain alive instead of leaving a dead connection.
+      attemptReconnect(host);
       return;
     }
     applyTlsPreferences(conn);

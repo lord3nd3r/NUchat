@@ -41,12 +41,30 @@ jobs:
       - name: Install NSIS
         run: choco install nsis
 
+      # No package-manager QtKeychain matches this Qt (6.5.3 MSVC), so build it
+      # from source against it. Static, so the NSIS installer needs no extra DLL.
+      - name: Build QtKeychain (static)
+        shell: bash
+        run: |
+          TMP="$(cygpath -m "$RUNNER_TEMP")"
+          git clone --depth 1 --branch 0.15.0 \
+            https://github.com/frankosterfeld/qtkeychain.git "$TMP/qtkeychain-src"
+          cmake -S "$TMP/qtkeychain-src" -B "$TMP/qtkeychain-build" -A x64 \
+            -DBUILD_WITH_QT6=ON -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_TRANSLATIONS=OFF -DBUILD_TEST_APPLICATION=OFF \
+            -DCMAKE_INSTALL_PREFIX="$TMP/qtkeychain"
+          cmake --build "$TMP/qtkeychain-build" --config Release --parallel
+          cmake --install "$TMP/qtkeychain-build" --config Release
+          echo "QTKEYCHAIN_PREFIX=$TMP/qtkeychain" >> "$GITHUB_ENV"
+
       # Python is pre-installed on the runner. Lua and Hunspell are optional.
       # The action automatically sets up Qt6_DIR, PATH, and the environment.
 
       - name: Configure
         run: |
-          cmake -B build -A x64 -DCMAKE_DISABLE_FIND_PACKAGE_Python3=ON
+          cmake -B build -A x64 -DCMAKE_DISABLE_FIND_PACKAGE_Python3=ON `
+            "-DCMAKE_PREFIX_PATH=$env:QTKEYCHAIN_PREFIX" `
+            -DNUCHAT_REQUIRE_KEYCHAIN=ON
 
       - name: Build
         run: |

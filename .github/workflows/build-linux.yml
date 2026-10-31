@@ -47,7 +47,7 @@ jobs:
             qtkeychain-qt6-dev
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DNUCHAT_REQUIRE_KEYCHAIN=ON
 
       - name: Build
         run: cmake --build build --parallel $(nproc)

@@ -49,8 +49,27 @@ jobs:
           echo "Qt6_DIR=$HOME/Qt/6.8.3/macos/lib/cmake/Qt6" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=$HOME/Qt/6.8.3/macos" >> "$GITHUB_ENV"
 
+      # Built from source against the same aqt Qt as the app (Homebrew's
+      # qtkeychain is built against Homebrew's Qt, a different version).
+      # Static, so macdeployqt has no extra dylib to bundle.
+      - name: Build QtKeychain (static, against aqt Qt)
+        run: |
+          git clone --depth 1 --branch 0.15.0 \
+            https://github.com/frankosterfeld/qtkeychain.git "$RUNNER_TEMP/qtkeychain-src"
+          cmake -S "$RUNNER_TEMP/qtkeychain-src" -B "$RUNNER_TEMP/qtkeychain-build" \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_WITH_QT6=ON -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_TRANSLATIONS=OFF -DBUILD_TEST_APPLICATION=OFF \
+            -DCMAKE_PREFIX_PATH="$HOME/Qt/6.8.3/macos" \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/qtkeychain"
+          cmake --build "$RUNNER_TEMP/qtkeychain-build" --parallel
+          cmake --install "$RUNNER_TEMP/qtkeychain-build"
+          echo "QTKEYCHAIN_PREFIX=$RUNNER_TEMP/qtkeychain" >> "$GITHUB_ENV"
+
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QTKEYCHAIN_PREFIX;$HOME/Qt/6.8.3/macos" \
+            -DNUCHAT_REQUIRE_KEYCHAIN=ON
 
       - name: Build
         run: cmake --build build --parallel $(sysctl -n hw.logicalcpu)

@@ -107,7 +107,14 @@ endif()
 
 # Optional OS keychain (libsecret / Keychain / Credential Manager). Without it,
 # passwords remain in NUchat.conf. See the README.
-find_package(Qt6Keychain QUIET)
+# CI/release builds pass -DNUCHAT_REQUIRE_KEYCHAIN=ON so a missing QtKeychain
+# fails the build instead of silently shipping a plaintext-password binary.
+option(NUCHAT_REQUIRE_KEYCHAIN "Fail configuration if QtKeychain is not found" OFF)
+if(NUCHAT_REQUIRE_KEYCHAIN)
+    find_package(Qt6Keychain REQUIRED)
+else()
+    find_package(Qt6Keychain QUIET)
+endif()
 if(Qt6Keychain_FOUND)
     message(STATUS "Qt6Keychain found — passwords will be stored in the OS keychain")
     target_link_libraries(nuchatcore PRIVATE Qt6Keychain::Qt6Keychain)

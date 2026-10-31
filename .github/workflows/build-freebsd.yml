@@ -32,11 +32,13 @@ jobs:
               python3 \
               lua54 \
               hunspell \
+              qtkeychain-qt6 \
               pkgconf
           run: |
             cmake -B build \
               -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_PREFIX_PATH=/usr/local
+              -DCMAKE_PREFIX_PATH=/usr/local \
+              -DNUCHAT_REQUIRE_KEYCHAIN=ON
             cmake --build build --parallel $(sysctl -n hw.ncpu)
             ctest --test-dir build --output-on-failure
 

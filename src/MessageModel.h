@@ -41,6 +41,7 @@ public:
   void setPendingTimestamp(const QString &isoTimestamp);
   Q_INVOKABLE void clear();
   Q_INVOKABLE QString allFormattedText() const;
+  Q_INVOKABLE int messageCount() const { return int(m_messages.size()); }
   Q_INVOKABLE void setDarkMode(bool dark);
   Q_INVOKABLE QString formatLineFromQml(const QString &text,
                                         const QString &type,

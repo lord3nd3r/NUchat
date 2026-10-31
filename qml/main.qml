@@ -1356,12 +1356,19 @@ ApplicationWindow {
                         function onMessageAdded(formattedLine) {
                             // Live incoming message — fast single-line append
                             chatArea.append(formattedLine)
-                            // Bound QTextDocument memory if lineCount exceeds max scrollback buffer
-                            if (chatArea.lineCount > root.prefMaxScrollback + 500) {
+                            chatArea.docMessages++
+                            // Bound QTextDocument memory. MessageModel already caps itself
+                            // at the scrollback limit, so count MESSAGES (TextEdit.lineCount
+                            // counts wrapped visual lines and would fire on nearly every
+                            // message once the buffer is full) and only rebuild the document
+                            // after a batch of extra messages, so the O(n) cost is amortised.
+                            var cap = Math.max(100, root.prefMaxScrollback)
+                            if (chatArea.docMessages > cap + Math.max(100, Math.floor(cap / 4))) {
                                 var oldContentY = chatScrollView.contentItem.contentY
                                 var oldCursor = chatArea.cursorPosition
                                 var wasAtBottom = !root.userScrolledUp
                                 chatArea.text = msgModel.allFormattedText()
+                                chatArea.docMessages = msgModel.messageCount()
                                 chatArea.cursorPosition = oldCursor
                                 if (wasAtBottom) {
                                     chatArea.startScrollSettle()
@@ -1379,11 +1386,13 @@ ApplicationWindow {
                         }
                         function onCleared() {
                             chatArea.text = ""
+                            chatArea.docMessages = 0
                         }
                         function onReloaded() {
                             var fullText = msgModel.allFormattedText()
                             // Channel switch: set entire text in one shot.
                             chatArea.text = fullText
+                            chatArea.docMessages = msgModel.messageCount()
                             // Immediately position cursor at end — prevents Qt's
                             // internal ensureVisible(0) from scrolling to top
                             // after the text assignment resets cursorPosition.
@@ -1397,6 +1406,9 @@ ApplicationWindow {
                     // still being laid out.  Cleared by scrollSettleTimer once
                     // content height has been stable long enough.
                     property bool pendingScrollToBottom: false
+                    // Messages currently represented in the document (upper bound;
+                    // collapsed event groups count as their individual messages).
+                    property int docMessages: 0
 
                     // Keep scrolling on every contentHeight change while pending.
                     onContentHeightChanged: {

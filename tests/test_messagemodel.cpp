@@ -157,6 +157,18 @@ private slots:
         QVERIFY(spy.at(1).at(2).toString().contains(QStringLiteral("file:///tmp/b.png")));
     }
 
+    void testMessageCountIsCappedAtScrollback()
+    {
+        setPref(QStringLiteral("ui/maxScrollback"), 100);
+        MessageModel model;
+        for (int i = 0; i < 130; ++i)
+            model.addMessage(QStringLiteral("chat"),
+                             QStringLiteral("<nick> line %1").arg(i));
+        QCOMPARE(model.messageCount(), 100);
+        QCOMPARE(model.rowCount(), 100);
+        setPref(QStringLiteral("ui/maxScrollback"), 2000);
+    }
+
 private:
     void setPref(const QString &key, const QVariant &value)
     {

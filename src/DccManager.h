@@ -2,12 +2,15 @@
 
 #include <QAbstractListModel>
 #include <QObject>
+#include <QPointer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QFile>
 #include <QTimer>
 #include <QElapsedTimer>
 #include <QHostAddress>
+
+#include "IrcConnection.h"
 
 class IrcConnection;
 
@@ -161,7 +164,9 @@ private:
   QString m_downloadDir;
   bool m_autoAccept = false;
   qint64 m_maxFileSize = 100 * 1024 * 1024; // 100MB default
-  IrcConnection *m_connection = nullptr;
+  // QPointer: the connection is retired/deleted on reconnect while DCC
+  // transfers outlive it; a raw pointer dangled.
+  QPointer<IrcConnection> m_connection;
   static constexpr int kMaxActiveTransfers = 32;
 
   int activeTransferCount() const;

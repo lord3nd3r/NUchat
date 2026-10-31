@@ -1905,21 +1905,18 @@ void IRCConnectionManager::attemptReconnect(const QString &host) {
     wireConnection(conn);
     emit clientAdded(conn);
 
-    m_activeServer = host;
-    m_activeChannel = host;
-    if (m_msgModel)
-      m_msgModel->setBufferContext(host, host);
-
+    // Do NOT touch m_activeServer/m_activeChannel here: a background
+    // reconnect must not yank the user's view to the status buffer.
     QString reconnMsg =
         "Reconnecting to " + info.host + ":" + QString::number(info.port) + "...";
     appendToChannel(host, host, "system", reconnMsg);
-    if (m_msgModel)
+    if (m_msgModel && ircSame(m_activeServer, host))
       m_msgModel->addMessage("system", reconnMsg);
 
     const QString proxyErr = applyProxySettings(conn);
     if (!proxyErr.isEmpty()) {
       appendToChannel(host, host, "system", proxyErr);
-      if (m_msgModel && m_activeServer == host)
+      if (m_msgModel && ircSame(m_activeServer, host))
         m_msgModel->addMessage("system", proxyErr);
       qWarning() << "[Manager]" << proxyErr;
       // Keep the retry chain alive instead of leaving a dead connection.

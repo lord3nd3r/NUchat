@@ -6,6 +6,7 @@
 
 #include "IrcConnection.h"
 #include "IrcLineParse.h"
+#include "LuaAlloc.h"
 #include "PluginManager.h"
 #include "ScriptDispatch.h"
 #include "ScriptEat.h"
@@ -41,6 +42,44 @@ class TestPlugins : public QObject
     Q_OBJECT
 
 private slots:
+    void luaAllocAccountingFollowsContract()
+    {
+        LuaAllocState st;
+        st.limit = 1024;
+        // ptr == NULL: osize is a type tag (here 4), not a size
+        void *p = luaLimitedAlloc(&st, nullptr, 4, 100);
+        QVERIFY(p);
+        QCOMPARE(st.used, size_t(100));
+        // grow, shrink
+        p = luaLimitedAlloc(&st, p, 100, 300);
+        QVERIFY(p);
+        QCOMPARE(st.used, size_t(300));
+        p = luaLimitedAlloc(&st, p, 300, 50);
+        QVERIFY(p);
+        QCOMPARE(st.used, size_t(50));
+        // over the limit: denied, old block and accounting untouched
+        QVERIFY(!luaLimitedAlloc(&st, p, 50, 5000));
+        QCOMPARE(st.used, size_t(50));
+        QVERIFY(!luaLimitedAlloc(&st, nullptr, 3, 5000));
+        QCOMPARE(st.used, size_t(50));
+        // free returns to zero
+        QVERIFY(!luaLimitedAlloc(&st, p, 50, 0));
+        QCOMPARE(st.used, size_t(0));
+        // freeing NULL is a no-op even with a tag in osize
+        QVERIFY(!luaLimitedAlloc(&st, nullptr, 4, 0));
+        QCOMPARE(st.used, size_t(0));
+        // many tagged allocations and frees do not drift
+        void *blocks[200];
+        for (int i = 0; i < 200; ++i) {
+            blocks[i] = luaLimitedAlloc(&st, nullptr, size_t(i % 9), 4);
+            QVERIFY(blocks[i]);
+        }
+        QCOMPARE(st.used, size_t(800));
+        for (int i = 0; i < 200; ++i)
+            luaLimitedAlloc(&st, blocks[i], 4, 0);
+        QCOMPARE(st.used, size_t(0));
+    }
+
     void testParseCommandSkipsTagsAndPrefix();
     void testParseUnprefixedPing();
     void testParseNumeric();

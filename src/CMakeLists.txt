@@ -67,7 +67,7 @@ endif()
 # Lua scripting engine (optional, requires Lua 5.4 dev)
 if(LUA_FOUND)
     list(APPEND CORE_SRC LuaScriptEngine.cpp)
-    list(APPEND CORE_HEADERS LuaScriptEngine.h)
+    list(APPEND CORE_HEADERS LuaScriptEngine.h LuaAlloc.h)
 endif()
 
 # include qml and theme resources

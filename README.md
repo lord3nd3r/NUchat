@@ -25,7 +25,7 @@ The image is an earlier window. The current UI adds a menu bar, a topic bar (cha
 - **Multi-server** — connect to multiple networks simultaneously
 - **SSL/TLS** on all connections with **per-network SASL** and **NickServ auto-identify**. The connection implements **PLAIN** and **EXTERNAL** only. `AUTHENTICATE PLAIN` is split into 400-byte chunks. A PEM client certificate and unencrypted key from Preferences are presented on the TLS handshake. The network list also offers `SCRAM-SHA-256` and `ECDSA-NIST256P-CHALLENGE`. The SASL preferences combo lists SCRAM-SHA-256 and ECDSA-NIST256P among other labels. Those choices are stored, and the connection rejects anything other than `PLAIN` and `EXTERNAL`. `auth/methodIndex` is saved and is not read when connecting
 - **IRCv3** — requests `server-time` and `multi-prefix`. ISUPPORT `PREFIX`, `CHANTYPES`, `CHANMODES`, and `CASEMAPPING` (`ascii`, `rfc1459`, `strict-rfc1459`) drive channel detection, nick prefixes, and identity. Until 005 arrives the client assumes rfc1459 and the usual `#&` / `qaohv` defaults
-- **Reconnect** — a connection that does not finish within 30 seconds is aborted. Auto-reconnect waits the configured delay, then doubles it after each later attempt, up to 15 minutes
+- **Reconnect** — a connection that does not finish within 30 seconds is aborted. Auto-reconnect also starts when a connection is refused or a DNS or proxy lookup fails. It waits the configured delay, then doubles it after each later attempt, up to 15 minutes
 - **25 built-in themes** — HexChat Dark, Monokai, Dracula, Nord, Gruvbox, Catppuccin, and more. Each theme object has 42 color properties. The theme named in the menu is **Rosé Pine**
 - **mIRC color codes** — foreground and background (palette and hex), bold, italic, underline, and strikethrough. Input shortcuts insert color, bold, underline, italic, and reset. There is no strikethrough shortcut (`\x1E` is rendered when it is already in the text). Reverse video swaps the two colors
 - **Clickable URLs** with inline image previews (off by default; enable under Preferences → URL Handlers). Fetches allow only http(s), block private and special-use addresses, check each redirect, and cap the on-disk cache at 100 MB
@@ -160,6 +160,8 @@ QtKeychain is optional at build time:
 | macOS | QtKeychain built for Qt 6 (`brew` / a source build) |
 | Windows | QtKeychain built for the same Qt 6 used to compile NUchat |
 
+The official release binaries for all four platforms are built with QtKeychain. Configure with `-DNUCHAT_REQUIRE_KEYCHAIN=ON` to make a missing QtKeychain a configure error instead of a warning; the release workflows use it.
+
 If CMake does not find Qt6Keychain, the build still succeeds and passwords stay in `NUchat.conf` as plaintext — the same place they lived in older versions. The CMake warning names the missing package. A keychain write that fails at runtime (no secret service, locked keychain, denied prompt) also leaves the plaintext value in `NUchat.conf`, so a failed migration cannot drop a saved password.
 
 `/msg NickServ IDENTIFY` (and the same kind of command to ChanServ, OperServ, Q, X, and the other service bots: `AUTH`, `REGISTER`, `GHOST`, `SET PASSWORD`, …) is still sent to the server, but the password is replaced with `***` in the chat buffer, the channel log, and the raw log. `PASS`, SASL `AUTHENTICATE` payloads, and `OPER` passwords are redacted there too.
@@ -180,7 +182,7 @@ Outbound IRC lines have CR, LF, and NUL removed before they are sent. Debug logs
 
 Logs are written under the directory from Preferences (`log/directory`). A leading `~` is expanded. When that setting is empty, the logger uses Qt's application config location plus `/logs` (`~/.config/NUchat/NUchat/logs/<network>/<channel>.log`). The Logging page displays `~/.config/NUchat/logs` when the key is unset, and saving Preferences writes that field, so the first OK moves logs there unless you edit it. `log/enable` turns logging off. `log/privateMessages` skips queries when it is off; the server tab is still written. `log/perChannel` off folds every channel of a network into `messages.log`. `log/timestamps` off writes `[type] message` with no time prefix. The format combo is disabled. The logger always writes plain text and does not read a format key.
 
-Each file rotates at 10 MB and keeps `.log.1` through `.log.5`. Lines strip C0 controls, ANSI escapes, and mIRC color codes so one message stays one line. Writes are flushed and `fsync`'d, and new log files and directories are owner-only. A name of `.` or `..` stays inside the log directory. Trailing dots are removed so Windows stores the same path the logger opens.
+Each file rotates at 10 MB and keeps `.log.1` through `.log.5`. Lines strip C0 controls, ANSI escapes, and mIRC color codes so one message stays one line. Each line is flushed to the OS as it is written. Open log files are `fsync`'d every 2 seconds and on quit, not after every line, so logging never stalls the UI. New log files and directories are owner-only. A name of `.` or `..` stays inside the log directory. Trailing dots are removed so Windows stores the same path the logger opens.
 
 ## Downloads
 
